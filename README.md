@@ -18,6 +18,7 @@
 
 ## 文件怎么用
 
+- [AGENTS.md](AGENTS.md)：Codex 的仓库开发约定，包含按任务查阅文档、模块边界、验证及协作规则。
 - `docs/`：架构、协议、数据库、验收计划。
 - `contracts/v1.schema.json` 与 `contracts/examples/`：直接维护的接口定义与联调样例，变更时同步修改并检查。
 - `database/`：迁移和约束验证；新库依次执行001、002。
@@ -31,3 +32,11 @@ python tools/check_docs.py
 ```
 
 数据库验证命令见[数据库设计第6节](docs/数据库设计.md#6-执行与验证)。
+
+## 使用 Codex
+
+在 Codex 中打开克隆后的 Git 仓库根目录并新建任务，确认已读取 `AGENTS.md`；已有会话可直接要求重新读取。仓库级指令的加载方式见 [OpenAI 官方说明](https://learn.chatgpt.com/docs/agent-configuration/agents-md)。
+
+成员可用下面的格式开始任务：
+
+> 我负责【前端/后端/数据库/音频/视频】，本次实现【FR编号与具体功能】，使用【分支名】。请按 AGENTS.md 查阅相关文档，完成【交付项】并验证【验收条件】，说明需要其他模块配合的部分。

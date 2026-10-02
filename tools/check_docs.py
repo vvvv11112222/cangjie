@@ -21,7 +21,7 @@ def main():
             raise AssertionError(f"{entry['file']}: unexpected validity; {errors[:1]}")
         if entry["valid"]:
             check_semantics(value)
-    docs = [ROOT / "README.md", ROOT / "项目文档.md", *sorted((ROOT / "docs").glob("*.md"))]
+    docs = [ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "项目文档.md", *sorted((ROOT / "docs").glob("*.md"))]
     for file in docs:
         body = file.read_text(encoding="utf-8")
         in_code = False
