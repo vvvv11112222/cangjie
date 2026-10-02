@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "job_id": "00000000-0000-4000-8000-000000000015",
+  "run_id": "00000000-0000-4000-8000-000000000003",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "media_asset_id": "00000000-0000-4000-8000-000000000002",
+  "stage": "probe",
+  "duration_ms": 600000,
+  "has_audio": true,
+  "width": 1920,
+  "height": 1080,
+  "video_codec": "h264",
+  "playback_asset_id": "00000000-0000-4000-8000-000000000002",
+  "origin_offset_ms": 0,
+  "limitations": []
+}

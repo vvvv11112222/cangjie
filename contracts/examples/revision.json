@@ -1,0 +1,23 @@
+{
+  "id": "00000000-0000-4000-8000-000000000011",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "media_asset_id": "00000000-0000-4000-8000-000000000002",
+  "source_run_id": "00000000-0000-4000-8000-000000000003",
+  "parent_revision_id": "00000000-0000-4000-8000-000000000008",
+  "revision_no": 2,
+  "source_type": "manual",
+  "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "created_by": "00000000-0000-4000-8000-000000000012",
+  "created_at": "2026-10-02T09:00:00+08:00",
+  "reason": "纠正专业术语",
+  "transcript_lock_version": 2,
+  "segments": [
+    {
+      "segment_no": 0,
+      "start_ms": 1000,
+      "end_ms": 5000,
+      "text_content": "这节课介绍矩阵的基本运算。",
+      "speaker_label": "unknown"
+    }
+  ]
+}

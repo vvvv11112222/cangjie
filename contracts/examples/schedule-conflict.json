@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": "SCHEDULE_CONFLICT",
+    "message": "合成失败样例",
+    "details": {
+      "resource_type": "teacher",
+      "row_numbers": [
+        1
+      ],
+      "conflict_start": "2026-10-02T09:00:00+08:00",
+      "conflict_end": "2026-10-02T10:00:00+08:00"
+    }
+  },
+  "request_id": "fixture-request-01"
+}

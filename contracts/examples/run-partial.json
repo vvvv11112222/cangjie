@@ -1,0 +1,34 @@
+{
+  "id": "00000000-0000-4000-8000-000000000003",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "media_asset_id": "00000000-0000-4000-8000-000000000002",
+  "mode": "full",
+  "input_transcript_revision_id": null,
+  "status": "partial",
+  "jobs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000017",
+      "stage": "report",
+      "status": "failed",
+      "progress": 0,
+      "error_code": "MODEL_RESULT_UNKNOWN",
+      "attempts": 1
+    }
+  ],
+  "stage_plan": [
+    "probe",
+    "audio_analysis",
+    "video_analysis",
+    "evidence",
+    "report",
+    "validate"
+  ],
+  "report_id": null,
+  "error_code": "MODEL_RESULT_UNKNOWN",
+  "limitations": [
+    "计费状态待管理员核对"
+  ],
+  "allowed_actions": [
+    "view_results"
+  ]
+}

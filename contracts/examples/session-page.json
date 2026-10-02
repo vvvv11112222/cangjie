@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "offering_id": "00000000-0000-4000-8000-000000000014",
+      "schedule_entry_id": null,
+      "title": "合成课堂",
+      "planned_start_at": "2026-10-02T09:00:00+08:00",
+      "planned_end_at": "2026-10-02T10:00:00+08:00",
+      "is_demo": true,
+      "status": "ready",
+      "transcript_lock_version": 2
+    }
+  ],
+  "next_cursor": null
+}

@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "REVISION_CONFLICT",
+    "message": "合成失败样例",
+    "details": {
+      "current_lock_version": 2
+    }
+  },
+  "request_id": "fixture-request-01"
+}

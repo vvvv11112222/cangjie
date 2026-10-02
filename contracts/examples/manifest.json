@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "synthetic": true,
+  "examples": [
+    {
+      "file": "create-full-run.json",
+      "definition": "CreateRun",
+      "valid": true
+    },
+    {
+      "file": "create-report-only.json",
+      "definition": "CreateRun",
+      "valid": true
+    },
+    {
+      "file": "invalid-report-only-without-revision.json",
+      "definition": "CreateRun",
+      "valid": false
+    },
+    {
+      "file": "claim-request.json",
+      "definition": "ClaimRequest",
+      "valid": true
+    },
+    {
+      "file": "invalid-worker-report-capability.json",
+      "definition": "ClaimRequest",
+      "valid": false
+    },
+    {
+      "file": "claim.json",
+      "definition": "Claim",
+      "valid": true
+    },
+    {
+      "file": "probe-result.json",
+      "definition": "StageResult",
+      "valid": true
+    },
+    {
+      "file": "audio-result.json",
+      "definition": "StageResult",
+      "valid": true
+    },
+    {
+      "file": "invalid-negative-time.json",
+      "definition": "StageResult",
+      "valid": false
+    },
+    {
+      "file": "video-result.json",
+      "definition": "StageResult",
+      "valid": true
+    },
+    {
+      "file": "report-draft.json",
+      "definition": "Report",
+      "valid": true
+    },
+    {
+      "file": "invalid-observation-without-evidence.json",
+      "definition": "Observation",
+      "valid": false
+    },
+    {
+      "file": "create-revision.json",
+      "definition": "CreateRevision",
+      "valid": true
+    },
+    {
+      "file": "revision.json",
+      "definition": "Revision",
+      "valid": true
+    },
+    {
+      "file": "run-partial.json",
+      "definition": "Run",
+      "valid": true
+    },
+    {
+      "file": "revision-conflict.json",
+      "definition": "ErrorResponse",
+      "valid": true
+    },
+    {
+      "file": "lease-lost.json",
+      "definition": "ErrorResponse",
+      "valid": true
+    },
+    {
+      "file": "schedule-conflict.json",
+      "definition": "ErrorResponse",
+      "valid": true
+    },
+    {
+      "file": "results.json",
+      "definition": "Results",
+      "valid": true
+    },
+    {
+      "file": "session-page.json",
+      "definition": "SessionPage",
+      "valid": true
+    }
+  ]
+}

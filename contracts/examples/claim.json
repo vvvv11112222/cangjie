@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "job_id": "00000000-0000-4000-8000-000000000004",
+  "run_id": "00000000-0000-4000-8000-000000000003",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "media_asset_id": "00000000-0000-4000-8000-000000000002",
+  "stage": "audio_analysis",
+  "lease_token": "00000000-0000-4000-8000-000000000009",
+  "lease_expires_at": "2026-10-02T09:02:00+08:00",
+  "input_url": "/internal/v1/jobs/00000000-0000-4000-8000-000000000004/input",
+  "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "duration_ms": 600000,
+  "parameters": {
+    "config_profile": "p0-v1",
+    "keyframe_interval_ms": 30000,
+    "max_keyframes": 240
+  }
+}

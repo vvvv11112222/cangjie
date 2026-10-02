@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "LEASE_LOST",
+    "message": "合成失败样例",
+    "details": {}
+  },
+  "request_id": "fixture-request-01"
+}

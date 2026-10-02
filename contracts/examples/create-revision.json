@@ -1,0 +1,15 @@
+{
+  "media_asset_id": "00000000-0000-4000-8000-000000000002",
+  "base_revision_id": "00000000-0000-4000-8000-000000000008",
+  "transcript_lock_version": 1,
+  "reason": "纠正专业术语",
+  "segments": [
+    {
+      "segment_no": 0,
+      "start_ms": 1000,
+      "end_ms": 5000,
+      "text_content": "这节课介绍矩阵的基本运算。",
+      "speaker_label": "unknown"
+    }
+  ]
+}

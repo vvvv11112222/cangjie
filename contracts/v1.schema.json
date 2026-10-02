@@ -1,0 +1,1354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cangjie:api:v1",
+  "title": "Cangjie API v1 DTO definitions",
+  "$comment": "Select a $defs definition; HTTP data envelope is documented in 开发协议.md.",
+  "$defs": {
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "details": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "details"
+          ],
+          "additionalProperties": false
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "error",
+        "request_id"
+      ],
+      "additionalProperties": false
+    },
+    "Segment": {
+      "type": "object",
+      "properties": {
+        "segment_no": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text_content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "speaker_label": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "segment_no",
+        "start_ms",
+        "end_ms",
+        "text_content",
+        "speaker_label"
+      ],
+      "additionalProperties": false
+    },
+    "Interval": {
+      "type": "object",
+      "properties": {
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "start_ms",
+        "end_ms"
+      ],
+      "additionalProperties": false
+    },
+    "Frame": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "timestamp_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "asset_id",
+        "timestamp_ms"
+      ],
+      "additionalProperties": false
+    },
+    "Event": {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "enum": [
+            "hand_raise",
+            "leave_seat",
+            "head_down",
+            "possible_phone"
+          ]
+        },
+        "track_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_asset_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "required": [
+        "event_type",
+        "track_id",
+        "start_ms",
+        "end_ms",
+        "confidence",
+        "frame_asset_ids"
+      ],
+      "additionalProperties": false
+    },
+    "Model": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "CreateRun": {
+      "type": "object",
+      "properties": {
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "mode": {
+          "enum": [
+            "full",
+            "report_only"
+          ]
+        },
+        "input_transcript_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "config_profile": {
+          "const": "p0-v1"
+        }
+      },
+      "required": [
+        "media_asset_id",
+        "mode",
+        "input_transcript_revision_id",
+        "config_profile"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "report_only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input_transcript_revision_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "input_transcript_revision_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ClaimRequest": {
+      "type": "object",
+      "properties": {
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "probe",
+              "audio_analysis",
+              "video_analysis"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "worker_id",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "Claim": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "enum": [
+            "probe",
+            "audio_analysis",
+            "video_analysis"
+          ]
+        },
+        "lease_token": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "lease_expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "input_url": {
+          "type": "string",
+          "pattern": "^/internal/v1/jobs/"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "config_profile": {
+              "const": "p0-v1"
+            },
+            "keyframe_interval_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_keyframes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "config_profile",
+            "keyframe_interval_ms",
+            "max_keyframes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "stage",
+        "lease_token",
+        "lease_expires_at",
+        "input_url",
+        "input_sha256",
+        "duration_ms",
+        "parameters"
+      ],
+      "additionalProperties": false
+    },
+    "ProbeResult": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "const": "probe"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "has_audio": {
+          "type": "boolean"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "video_codec": {
+          "enum": [
+            "h264",
+            "hevc"
+          ]
+        },
+        "playback_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "origin_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "stage",
+        "duration_ms",
+        "has_audio",
+        "width",
+        "height",
+        "video_codec",
+        "playback_asset_id",
+        "origin_offset_ms",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "AudioResult": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "const": "audio_analysis"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Segment"
+          }
+        },
+        "audio_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "stage",
+        "segments",
+        "audio_asset_id",
+        "model",
+        "coverage",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "VideoResult": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "const": "video_analysis"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Frame"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Event"
+          }
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Model"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sampling": {
+          "type": "object",
+          "properties": {
+            "interval_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_frames": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "interval_ms",
+            "max_frames"
+          ],
+          "additionalProperties": false
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "stage",
+        "frames",
+        "events",
+        "model",
+        "sampling",
+        "coverage",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "StageResult": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ProbeResult"
+        },
+        {
+          "$ref": "#/$defs/AudioResult"
+        },
+        {
+          "$ref": "#/$defs/VideoResult"
+        }
+      ]
+    },
+    "Job": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "enum": [
+            "probe",
+            "audio_analysis",
+            "video_analysis",
+            "evidence",
+            "report",
+            "validate"
+          ]
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "skipped"
+          ]
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "stage",
+        "status",
+        "progress",
+        "error_code",
+        "attempts"
+      ],
+      "additionalProperties": false
+    },
+    "Run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "mode": {
+          "enum": [
+            "full",
+            "report_only"
+          ]
+        },
+        "input_transcript_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "partial",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          }
+        },
+        "stage_plan": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "probe",
+              "audio_analysis",
+              "video_analysis",
+              "evidence",
+              "report",
+              "validate"
+            ]
+          }
+        },
+        "report_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "media_asset_id",
+        "mode",
+        "input_transcript_revision_id",
+        "status",
+        "jobs",
+        "stage_plan",
+        "report_id",
+        "error_code",
+        "limitations",
+        "allowed_actions"
+      ],
+      "additionalProperties": false
+    },
+    "CreateRevision": {
+      "type": "object",
+      "properties": {
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "base_revision_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "transcript_lock_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Segment"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "media_asset_id",
+        "base_revision_id",
+        "transcript_lock_version",
+        "reason",
+        "segments"
+      ],
+      "additionalProperties": false
+    },
+    "Revision": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "source_run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "parent_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision_no": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_type": {
+          "enum": [
+            "asr",
+            "manual"
+          ]
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "created_by": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transcript_lock_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Segment"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "media_asset_id",
+        "source_run_id",
+        "parent_revision_id",
+        "revision_no",
+        "source_type",
+        "content_sha256",
+        "created_by",
+        "created_at",
+        "reason",
+        "transcript_lock_version",
+        "segments"
+      ],
+      "additionalProperties": false
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "kind": {
+          "enum": [
+            "transcript",
+            "frame",
+            "manual",
+            "behavior"
+          ]
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transcript_segment_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "availability": {
+          "enum": [
+            "available",
+            "expired",
+            "removed"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "kind",
+        "start_ms",
+        "end_ms",
+        "transcript_segment_id",
+        "frame_asset_id",
+        "availability",
+        "description",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "Dimension": {
+      "type": "object",
+      "properties": {
+        "dimension_code": {
+          "enum": [
+            "content",
+            "pace",
+            "thinking",
+            "expression",
+            "management",
+            "technology"
+          ]
+        },
+        "coverage_status": {
+          "enum": [
+            "observed",
+            "insufficient",
+            "not_applicable"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "limitation": {
+          "type": "string"
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        }
+      },
+      "required": [
+        "dimension_code",
+        "coverage_status",
+        "summary",
+        "limitation",
+        "coverage"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "coverage_status": {
+                "enum": [
+                  "insufficient",
+                  "not_applicable"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "limitation": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Observation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "dimension_code": {
+          "enum": [
+            "content",
+            "pace",
+            "thinking",
+            "expression",
+            "management",
+            "technology"
+          ]
+        },
+        "observation_type": {
+          "enum": [
+            "highlight",
+            "issue",
+            "observation"
+          ]
+        },
+        "observation_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "review_status": {
+          "enum": [
+            "unreviewed",
+            "accepted",
+            "revised",
+            "rejected"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "dimension_code",
+        "observation_type",
+        "observation_text",
+        "suggestion",
+        "review_status",
+        "evidence_ids"
+      ],
+      "additionalProperties": false
+    },
+    "Report": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "in_review",
+            "published",
+            "superseded",
+            "withdrawn"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Dimension"
+          },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Observation"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "session_id",
+        "revision",
+        "lock_version",
+        "status",
+        "summary",
+        "dimensions",
+        "observations"
+      ],
+      "additionalProperties": false
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "offering_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "schedule_entry_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planned_start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "planned_end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "is_demo": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "ready",
+            "archived",
+            "deleting",
+            "deleted"
+          ]
+        },
+        "transcript_lock_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "offering_id",
+        "schedule_entry_id",
+        "title",
+        "planned_start_at",
+        "planned_end_at",
+        "is_demo",
+        "status",
+        "transcript_lock_version"
+      ],
+      "additionalProperties": false
+    },
+    "SessionPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Session"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Results": {
+      "type": "object",
+      "properties": {
+        "run_status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "partial",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "transcript_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Segment"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          }
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Frame"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Event"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "run_status",
+        "transcript_revision_id",
+        "segments",
+        "evidence",
+        "frames",
+        "events",
+        "limitations"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

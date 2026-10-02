@@ -1,0 +1,71 @@
+{
+  "id": "00000000-0000-4000-8000-000000000006",
+  "run_id": "00000000-0000-4000-8000-000000000003",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "revision": 1,
+  "lock_version": 1,
+  "status": "draft",
+  "summary": "合成样例：介绍矩阵运算。",
+  "dimensions": [
+    {
+      "dimension_code": "content",
+      "coverage_status": "observed",
+      "summary": "介绍矩阵运算",
+      "limitation": "",
+      "coverage": [
+        {
+          "start_ms": 1000,
+          "end_ms": 5000
+        }
+      ]
+    },
+    {
+      "dimension_code": "pace",
+      "coverage_status": "insufficient",
+      "summary": "",
+      "limitation": "样例证据不足",
+      "coverage": []
+    },
+    {
+      "dimension_code": "thinking",
+      "coverage_status": "insufficient",
+      "summary": "",
+      "limitation": "样例证据不足",
+      "coverage": []
+    },
+    {
+      "dimension_code": "expression",
+      "coverage_status": "insufficient",
+      "summary": "",
+      "limitation": "样例证据不足",
+      "coverage": []
+    },
+    {
+      "dimension_code": "management",
+      "coverage_status": "insufficient",
+      "summary": "",
+      "limitation": "样例证据不足",
+      "coverage": []
+    },
+    {
+      "dimension_code": "technology",
+      "coverage_status": "insufficient",
+      "summary": "",
+      "limitation": "样例证据不足",
+      "coverage": []
+    }
+  ],
+  "observations": [
+    {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "dimension_code": "content",
+      "observation_type": "observation",
+      "observation_text": "教师介绍了本节课的矩阵运算主题。",
+      "suggestion": "",
+      "review_status": "unreviewed",
+      "evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    }
+  ]
+}

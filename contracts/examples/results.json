@@ -1,0 +1,35 @@
+{
+  "run_status": "succeeded",
+  "transcript_revision_id": "00000000-0000-4000-8000-000000000008",
+  "segments": [
+    {
+      "segment_no": 0,
+      "start_ms": 1000,
+      "end_ms": 5000,
+      "text_content": "这节课介绍矩阵的基本运算。",
+      "speaker_label": "unknown"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "kind": "transcript",
+      "start_ms": 1000,
+      "end_ms": 5000,
+      "transcript_segment_id": "00000000-0000-4000-8000-000000000013",
+      "frame_asset_id": null,
+      "availability": "available",
+      "description": "这节课介绍矩阵的基本运算。",
+      "provenance": {
+        "source_revision_id": "00000000-0000-4000-8000-000000000008",
+        "source_segment_no": 0
+      }
+    }
+  ],
+  "frames": [],
+  "events": [],
+  "limitations": []
+}
