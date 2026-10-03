@@ -190,7 +190,8 @@
         "mode": {
           "enum": [
             "full",
-            "report_only"
+            "report_only",
+            "media_prepare"
           ]
         },
         "input_transcript_revision_id": {
@@ -272,7 +273,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.0"
+          "const": "1.1"
         },
         "job_id": {
           "type": "string",
@@ -337,14 +338,36 @@
             "max_keyframes": {
               "type": "integer",
               "minimum": 1
+            },
+            "asr_device": {
+              "enum": [
+                "cpu",
+                "cuda"
+              ]
             }
           },
           "required": [
             "config_profile",
             "keyframe_interval_ms",
-            "max_keyframes"
+            "max_keyframes",
+            "asr_device"
           ],
           "additionalProperties": false
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution"
+        },
+        "execution_deadline_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "rights_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
@@ -359,7 +382,11 @@
         "input_url",
         "input_sha256",
         "duration_ms",
-        "parameters"
+        "parameters",
+        "execution",
+        "execution_deadline_at",
+        "rights_version",
+        "storage_generation"
       ],
       "additionalProperties": false
     },
@@ -367,7 +394,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.0"
+          "const": "1.1"
         },
         "job_id": {
           "type": "string",
@@ -414,8 +441,7 @@
           "format": "uuid"
         },
         "origin_offset_ms": {
-          "type": "integer",
-          "minimum": 0
+          "const": 0
         },
         "limitations": {
           "type": "array",
@@ -423,6 +449,9 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution"
         }
       },
       "required": [
@@ -439,7 +468,8 @@
         "video_codec",
         "playback_asset_id",
         "origin_offset_ms",
-        "limitations"
+        "limitations",
+        "execution"
       ],
       "additionalProperties": false
     },
@@ -447,7 +477,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.0"
+          "const": "1.1"
         },
         "job_id": {
           "type": "string",
@@ -500,6 +530,9 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution"
         }
       },
       "required": [
@@ -513,7 +546,8 @@
         "audio_asset_id",
         "model",
         "coverage",
-        "limitations"
+        "limitations",
+        "execution"
       ],
       "additionalProperties": false
     },
@@ -521,7 +555,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.0"
+          "const": "1.1"
         },
         "job_id": {
           "type": "string",
@@ -552,17 +586,11 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Event"
-          }
+          },
+          "maxItems": 0
         },
         "model": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Model"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": "null"
         },
         "sampling": {
           "type": "object",
@@ -594,6 +622,9 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution"
         }
       },
       "required": [
@@ -608,7 +639,8 @@
         "model",
         "sampling",
         "coverage",
-        "limitations"
+        "limitations",
+        "execution"
       ],
       "additionalProperties": false
     },
@@ -671,6 +703,21 @@
         "attempts": {
           "type": "integer",
           "minimum": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "execution_deadline_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -679,7 +726,9 @@
         "status",
         "progress",
         "error_code",
-        "attempts"
+        "attempts",
+        "max_attempts",
+        "execution_deadline_at"
       ],
       "additionalProperties": false
     },
@@ -701,7 +750,8 @@
         "mode": {
           "enum": [
             "full",
-            "report_only"
+            "report_only",
+            "media_prepare"
           ]
         },
         "input_transcript_revision_id": {
@@ -742,7 +792,8 @@
               "report",
               "validate"
             ]
-          }
+          },
+          "uniqueItems": true
         },
         "report_id": {
           "anyOf": [
@@ -776,9 +827,13 @@
         "allowed_actions": {
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
-          }
+            "enum": [
+              "view_results",
+              "cancel",
+              "retry"
+            ]
+          },
+          "uniqueItems": true
         }
       },
       "required": [
@@ -795,7 +850,33 @@
         "limitations",
         "allowed_actions"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "report_only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input_transcript_revision_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "input_transcript_revision_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "CreateRevision": {
       "type": "object",
@@ -1037,6 +1118,14 @@
           "items": {
             "$ref": "#/$defs/Interval"
           }
+        },
+        "summary_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
         }
       },
       "required": [
@@ -1044,7 +1133,8 @@
         "coverage_status",
         "summary",
         "limitation",
-        "coverage"
+        "coverage",
+        "summary_evidence_ids"
       ],
       "additionalProperties": false,
       "allOf": [
@@ -1178,6 +1268,84 @@
           "items": {
             "$ref": "#/$defs/Observation"
           }
+        },
+        "summary_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_content_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "edit",
+              "submit",
+              "review",
+              "confirm_report",
+              "publish",
+              "withdraw",
+              "revise",
+              "export"
+            ]
+          },
+          "uniqueItems": true
         }
       },
       "required": [
@@ -1189,7 +1357,14 @@
         "status",
         "summary",
         "dimensions",
-        "observations"
+        "observations",
+        "summary_evidence_ids",
+        "content_sha256",
+        "reviewed_content_sha256",
+        "reviewed_by",
+        "reviewed_at",
+        "provenance",
+        "allowed_actions"
       ],
       "additionalProperties": false
     },
@@ -1242,6 +1417,55 @@
         "transcript_lock_version": {
           "type": "integer",
           "minimum": 0
+        },
+        "primary_media_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current_report_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "upload",
+              "prepare_media",
+              "analyze",
+              "edit_transcript",
+              "view_results",
+              "view_report",
+              "archive",
+              "delete"
+            ]
+          },
+          "uniqueItems": true
         }
       },
       "required": [
@@ -1253,7 +1477,11 @@
         "planned_end_at",
         "is_demo",
         "status",
-        "transcript_lock_version"
+        "transcript_lock_version",
+        "primary_media_asset_id",
+        "latest_run_id",
+        "current_report_id",
+        "allowed_actions"
       ],
       "additionalProperties": false
     },
@@ -1347,6 +1575,3296 @@
         "frames",
         "events",
         "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "ReportProvenance": {
+      "type": "object",
+      "properties": {
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "transcript_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "attribution": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uri"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rights_version": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "attribution",
+            "source_url",
+            "rights_version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "media_asset_id",
+        "input_sha256",
+        "transcript_revision_id",
+        "model",
+        "prompt_version",
+        "prompt_sha256",
+        "manifest_sha256",
+        "coverage",
+        "limitations",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "Execution": {
+      "type": "object",
+      "properties": {
+        "processor_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ffmpeg_build_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "asr_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Model"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameters_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "processor_version",
+        "ffmpeg_build_sha256",
+        "asr_model",
+        "parameters_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "WritableObservation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dimension_code": {
+          "enum": [
+            "content",
+            "pace",
+            "thinking",
+            "expression",
+            "management",
+            "technology"
+          ]
+        },
+        "observation_type": {
+          "enum": [
+            "highlight",
+            "issue",
+            "observation"
+          ]
+        },
+        "observation_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "dimension_code",
+        "observation_type",
+        "observation_text",
+        "suggestion",
+        "evidence_ids"
+      ],
+      "additionalProperties": false
+    },
+    "CandidateObservation": {
+      "type": "object",
+      "properties": {
+        "dimension_code": {
+          "enum": [
+            "content",
+            "pace",
+            "thinking",
+            "expression",
+            "management",
+            "technology"
+          ]
+        },
+        "observation_type": {
+          "enum": [
+            "highlight",
+            "issue",
+            "observation"
+          ]
+        },
+        "observation_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "dimension_code",
+        "observation_type",
+        "observation_text",
+        "suggestion",
+        "evidence_ids"
+      ],
+      "additionalProperties": false
+    },
+    "ReportCandidate": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "summary_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Dimension"
+          },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CandidateObservation"
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "summary_evidence_ids",
+        "dimensions",
+        "observations"
+      ],
+      "additionalProperties": false
+    },
+    "PatchReport": {
+      "type": "object",
+      "properties": {
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summary": {
+          "type": "string"
+        },
+        "summary_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Dimension"
+          },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WritableObservation"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "lock_version",
+        "summary",
+        "summary_evidence_ids",
+        "dimensions",
+        "observations",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "ReviewReport": {
+      "type": "object",
+      "properties": {
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "action": {
+          "enum": [
+            "submit",
+            "accept",
+            "revise",
+            "reject",
+            "confirm_report"
+          ]
+        },
+        "observation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "lock_version",
+        "action",
+        "observation_id",
+        "content_sha256",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "submit",
+                  "confirm_report"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "observation_id": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "observation_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "confirm_report"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "content_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "content_sha256": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PublishReport": {
+      "type": "object",
+      "properties": {
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_current_report_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "lock_version",
+        "expected_current_report_id"
+      ],
+      "additionalProperties": false
+    },
+    "VersionReason": {
+      "type": "object",
+      "properties": {
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "lock_version",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "Empty": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "Reason": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "PrimaryMedia": {
+      "type": "object",
+      "properties": {
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "media_asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "AssignSource": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "additionalProperties": false
+    },
+    "CreateSession": {
+      "type": "object",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "schedule_entry_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planned_start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "planned_end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "is_demo": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "offering_id",
+        "schedule_entry_id",
+        "title",
+        "planned_start_at",
+        "planned_end_at",
+        "is_demo"
+      ],
+      "additionalProperties": false
+    },
+    "PatchSession": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "ready",
+            "archived"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "CreateSource": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "source_type": {
+          "enum": [
+            "self_recorded",
+            "open_course",
+            "school_authorized"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authorization_note": {
+          "type": "string"
+        },
+        "requested_uses": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "playback",
+              "analysis",
+              "export"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "external_processing_requested": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "session_id",
+        "source_type",
+        "title",
+        "attribution",
+        "source_url",
+        "authorization_note",
+        "requested_uses",
+        "external_processing_requested"
+      ],
+      "additionalProperties": false
+    },
+    "VerifySource": {
+      "type": "object",
+      "properties": {
+        "rights_status": {
+          "enum": [
+            "verified",
+            "rejected"
+          ]
+        },
+        "allowed_uses": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "playback",
+              "analysis",
+              "export"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "external_processing_allowed": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "rights_status",
+        "allowed_uses",
+        "external_processing_allowed",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "Source": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_type": {
+          "enum": [
+            "self_recorded",
+            "open_course",
+            "school_authorized"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authorization_note": {
+          "type": "string"
+        },
+        "requested_uses": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "playback",
+              "analysis",
+              "export"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "external_processing_requested": {
+          "type": "boolean"
+        },
+        "rights_status": {
+          "enum": [
+            "pending",
+            "verified",
+            "rejected"
+          ]
+        },
+        "allowed_uses": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "playback",
+              "analysis",
+              "export"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "external_processing_allowed": {
+          "type": "boolean"
+        },
+        "rights_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "verified_by": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "verify",
+              "upload",
+              "assign_session"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "source_type",
+        "title",
+        "attribution",
+        "source_url",
+        "authorization_note",
+        "requested_uses",
+        "external_processing_requested",
+        "rights_status",
+        "allowed_uses",
+        "external_processing_allowed",
+        "rights_version",
+        "verified_by",
+        "verified_at",
+        "allowed_actions"
+      ],
+      "additionalProperties": false
+    },
+    "UploadMedia": {
+      "type": "object",
+      "properties": {
+        "source_record_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "file": {
+          "type": "string",
+          "format": "binary"
+        }
+      },
+      "required": [
+        "source_record_id",
+        "file"
+      ],
+      "additionalProperties": false
+    },
+    "Media": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "proxy",
+            "audio",
+            "keyframe",
+            "report_export"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "ready",
+            "failed",
+            "deleting",
+            "deleted"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "mime_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "playback_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "playback_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^/api/v1/media/"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "prepare_media",
+              "analyze",
+              "playback",
+              "select_primary"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "source_record_id",
+        "parent_asset_id",
+        "kind",
+        "status",
+        "sha256",
+        "mime_type",
+        "byte_size",
+        "duration_ms",
+        "expires_at",
+        "playback_asset_id",
+        "playback_url",
+        "allowed_actions"
+      ],
+      "additionalProperties": false
+    },
+    "CreateExport": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "enum": [
+            "pdf",
+            "json"
+          ]
+        }
+      },
+      "required": [
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "Export": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "report_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "expired"
+          ]
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "download_url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^/api/v1/exports/"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "report_id",
+        "status",
+        "error_code",
+        "download_url",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "Deletion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "requested",
+            "processing",
+            "blocked",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "status",
+        "error_code",
+        "completed_at"
+      ],
+      "additionalProperties": false
+    },
+    "RoleBinding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "role_code": {
+          "enum": [
+            "sys_admin",
+            "academic_admin",
+            "supervisor",
+            "teacher"
+          ]
+        },
+        "scope_org_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "role_code",
+        "scope_org_id"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role_code": {
+                "enum": [
+                  "sys_admin",
+                  "teacher"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_org_id": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "scope_org_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CreateRoleBinding": {
+      "type": "object",
+      "properties": {
+        "role_code": {
+          "enum": [
+            "sys_admin",
+            "academic_admin",
+            "supervisor",
+            "teacher"
+          ]
+        },
+        "scope_org_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "role_code",
+        "scope_org_id"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role_code": {
+                "enum": [
+                  "sys_admin",
+                  "teacher"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_org_id": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "scope_org_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CSRF": {
+      "type": "object",
+      "properties": {
+        "csrf_token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "csrf_token"
+      ],
+      "additionalProperties": false
+    },
+    "Login": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "additionalProperties": false
+    },
+    "LoginResult": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RoleBinding"
+          }
+        },
+        "csrf_token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "user_id",
+        "roles",
+        "csrf_token"
+      ],
+      "additionalProperties": false
+    },
+    "Me": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RoleBinding"
+          }
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "manage_academic",
+              "manage_users",
+              "upload",
+              "analyze",
+              "review",
+              "publish",
+              "operate",
+              "delete"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "user_id",
+        "display_name",
+        "roles",
+        "allowed_actions"
+      ],
+      "additionalProperties": false
+    },
+    "OrgUnit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "school",
+            "college",
+            "department"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "parent_id",
+        "code",
+        "name",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "CreateOrgUnit": {
+      "type": "object",
+      "properties": {
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "school",
+            "college",
+            "department"
+          ]
+        }
+      },
+      "required": [
+        "parent_id",
+        "code",
+        "name",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "PatchOrgUnit": {
+      "type": "object",
+      "properties": {
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "school",
+            "college",
+            "department"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "OrgUnitPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OrgUnit"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "User": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "org_unit_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "disabled"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "org_unit_id",
+        "username",
+        "display_name",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "CreateUser": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "disabled"
+          ]
+        },
+        "initial_password": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "org_unit_id",
+        "username",
+        "display_name",
+        "status",
+        "initial_password"
+      ],
+      "additionalProperties": false
+    },
+    "PatchUser": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "disabled"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "UserPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/User"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Term": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "start_date",
+        "end_date"
+      ],
+      "additionalProperties": false
+    },
+    "CreateTerm": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "start_date",
+        "end_date"
+      ],
+      "additionalProperties": false
+    },
+    "PatchTerm": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "TermPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Term"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Course": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "org_unit_id",
+        "code",
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "CreateCourse": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "org_unit_id",
+        "code",
+        "name",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "PatchCourse": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "CoursePage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Course"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "ClassGroup": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enrollment_year": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1900,
+              "maximum": 2200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "org_unit_id",
+        "code",
+        "name",
+        "enrollment_year",
+        "expected_size"
+      ],
+      "additionalProperties": false
+    },
+    "CreateClassGroup": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enrollment_year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2200
+        },
+        "expected_size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "org_unit_id",
+        "code",
+        "name",
+        "enrollment_year",
+        "expected_size"
+      ],
+      "additionalProperties": false
+    },
+    "PatchClassGroup": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enrollment_year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2200
+        },
+        "expected_size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "ClassGroupPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ClassGroup"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Classroom": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capacity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "capacity"
+      ],
+      "additionalProperties": false
+    },
+    "CreateClassroom": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capacity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "capacity"
+      ],
+      "additionalProperties": false
+    },
+    "PatchClassroom": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capacity": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "ClassroomPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Classroom"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Offering": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "term_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "course_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "teacher_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "class_group_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "org_unit_id",
+        "term_id",
+        "course_id",
+        "teacher_id",
+        "class_group_id",
+        "code",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "CreateOffering": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "term_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "course_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "teacher_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "class_group_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived"
+          ]
+        }
+      },
+      "required": [
+        "org_unit_id",
+        "term_id",
+        "course_id",
+        "teacher_id",
+        "class_group_id",
+        "code",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "PatchOffering": {
+      "type": "object",
+      "properties": {
+        "org_unit_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "term_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "course_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "teacher_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "class_group_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "OfferingPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Offering"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Schedule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "offering_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "classroom_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "starts_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ends_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "cancelled"
+          ]
+        },
+        "teacher_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "class_group_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "id",
+        "offering_id",
+        "classroom_id",
+        "starts_at",
+        "ends_at",
+        "status",
+        "teacher_id",
+        "class_group_id"
+      ],
+      "additionalProperties": false
+    },
+    "CreateSchedule": {
+      "type": "object",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "classroom_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "starts_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ends_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "cancelled"
+          ]
+        }
+      },
+      "required": [
+        "offering_id",
+        "classroom_id",
+        "starts_at",
+        "ends_at",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "PatchSchedule": {
+      "type": "object",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "classroom_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "starts_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ends_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "cancelled"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "SchedulePage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Schedule"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "ImportSchedules": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "offering_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "classroom_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "starts_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "ends_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "offering_id",
+              "classroom_id",
+              "starts_at",
+              "ends_at"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "additionalProperties": false
+    },
+    "ImportResult": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Schedule"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "SourcePage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Source"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "MediaPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Media"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "RunPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Run"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "RevisionPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Revision"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "ReportPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Report"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "Heartbeat": {
+      "type": "object",
+      "properties": {
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        }
+      },
+      "required": [
+        "progress"
+      ],
+      "additionalProperties": false
+    },
+    "HeartbeatResult": {
+      "type": "object",
+      "properties": {
+        "lease_expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "cancel_requested": {
+          "const": false
+        }
+      },
+      "required": [
+        "lease_expires_at",
+        "cancel_requested"
+      ],
+      "additionalProperties": false
+    },
+    "ArtifactUpload": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "format": "binary"
+        },
+        "artifact_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "proxy",
+            "audio",
+            "keyframe"
+          ]
+        },
+        "timestamp_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin_offset_ms": {
+          "const": 0
+        }
+      },
+      "required": [
+        "file",
+        "artifact_key",
+        "kind",
+        "timestamp_ms",
+        "origin_offset_ms"
+      ],
+      "additionalProperties": false
+    },
+    "Artifact": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "asset_id",
+        "sha256",
+        "byte_size"
+      ],
+      "additionalProperties": false
+    },
+    "CompleteResult": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "const": "succeeded"
+        },
+        "duplicate": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "job_id",
+        "status",
+        "duplicate"
+      ],
+      "additionalProperties": false
+    },
+    "Fail": {
+      "type": "object",
+      "properties": {
+        "error_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "error_code",
+        "message",
+        "retryable"
+      ],
+      "additionalProperties": false
+    },
+    "FailResult": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "next_retry_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "job_id",
+        "status",
+        "next_retry_at"
+      ],
+      "additionalProperties": false
+    },
+    "ModelCall": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "reserved",
+            "unknown",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "reserved_cost": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]{6}$"
+        },
+        "actual_cost": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]{6}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "const": "CNY"
+        },
+        "billing_period": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-01$"
+        },
+        "price_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dispatch_started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settled_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "reserved_cost",
+        "actual_cost",
+        "currency",
+        "billing_period",
+        "price_version",
+        "lock_version",
+        "dispatch_started_at",
+        "settled_at"
+      ],
+      "additionalProperties": false
+    },
+    "ModelCallPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelCall"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "ReconcileCall": {
+      "type": "object",
+      "properties": {
+        "lock_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed"
+          ]
+        },
+        "actual_cost": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]{6}$"
+        },
+        "provider_request_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "lock_version",
+        "status",
+        "actual_cost",
+        "provider_request_id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "Operations": {
+      "type": "object",
+      "properties": {
+        "workers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "worker_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "last_seen_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "probe",
+                    "audio_analysis",
+                    "video_analysis"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "worker_id",
+              "last_seen_at",
+              "capabilities"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "queued_jobs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "storage_free_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "currency": {
+              "const": "CNY"
+            },
+            "billing_period": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-01$"
+            },
+            "limit": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]{6}$"
+            },
+            "charged": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]{6}$"
+            },
+            "reserved": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]{6}$"
+            },
+            "unknown": {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]{6}$"
+            }
+          },
+          "required": [
+            "currency",
+            "billing_period",
+            "limit",
+            "charged",
+            "reserved",
+            "unknown"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "workers",
+        "queued_jobs",
+        "storage_free_bytes",
+        "budget"
+      ],
+      "additionalProperties": false
+    },
+    "ModelInput": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "transcript_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "prompt_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "selection_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "course_context": {
+          "type": "object",
+          "properties": {
+            "course_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "session_title": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "course_name",
+            "session_title"
+          ],
+          "additionalProperties": false
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "enum": [
+                  "transcript",
+                  "manual"
+                ]
+              },
+              "start_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "text_content": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "start_ms",
+              "end_ms",
+              "text_content",
+              "text_sha256"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "input_sha256",
+        "transcript_revision_id",
+        "model",
+        "prompt_version",
+        "prompt_sha256",
+        "selection_version",
+        "course_context",
+        "coverage",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "PageQuery": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "SessionQuery": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "college_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "enrollment_year": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1900,
+              "maximum": 2200
+            },
+            {
+              "const": "unknown"
+            }
+          ]
+        },
+        "class_group_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "teacher_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "ready",
+            "archived",
+            "deleting",
+            "deleted"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "ScheduleQuery": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "teacher_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "classroom_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "class_group_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "RevisionQuery": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "media_asset_id"
       ],
       "additionalProperties": false
     }

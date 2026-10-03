@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "synthetic": true,
   "examples": [
     {
@@ -102,5 +102,8 @@
       "definition": "SessionPage",
       "valid": true
     }
+  ],
+  "case_sets": [
+    "api-cases.json"
   ]
 }

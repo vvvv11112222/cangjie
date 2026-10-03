@@ -1,0 +1,904 @@
+{
+  "schema_version": "1.1",
+  "error_response": "ErrorResponse",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/csrf",
+      "request": null,
+      "response": "CSRF",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "request": "Login",
+      "response": "LoginResult",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "request": null,
+      "response": "Me",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "request": "Empty",
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions",
+      "request": "CreateSession",
+      "response": "Session",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/sessions/{id}",
+      "request": "PatchSession",
+      "response": "Session",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sources",
+      "request": "CreateSource",
+      "response": "Source",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sources/{id}/verify",
+      "request": "VerifySource",
+      "response": "Source",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sources/{id}/assign-session",
+      "request": "AssignSource",
+      "response": "Source",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sources/{id}",
+      "request": null,
+      "response": "Source",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media/{id}",
+      "request": null,
+      "response": "Media",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{id}/primary-media",
+      "request": "PrimaryMedia",
+      "response": "Session",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{id}/analysis-runs",
+      "request": "CreateRun",
+      "response": "Run",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        202,
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analysis-runs/{id}",
+      "request": null,
+      "response": "Run",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/analysis-runs/{id}/cancel",
+      "request": "Empty",
+      "response": "Run",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analysis-runs/{id}/results",
+      "request": null,
+      "response": "Results",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transcript-revisions/{id}",
+      "request": null,
+      "response": "Revision",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{id}/transcript-revisions",
+      "request": "CreateRevision",
+      "response": "Revision",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/{id}",
+      "request": null,
+      "response": "Report",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/{id}/revisions",
+      "request": "VersionReason",
+      "response": "Report",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/reports/{id}",
+      "request": "PatchReport",
+      "response": "Report",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/{id}/review",
+      "request": "ReviewReport",
+      "response": "Report",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/{id}/publish",
+      "request": "PublishReport",
+      "response": "Report",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/{id}/withdraw",
+      "request": "VersionReason",
+      "response": "Report",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/{id}/exports",
+      "request": "CreateExport",
+      "response": "Export",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        202,
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/exports/{id}",
+      "request": null,
+      "response": "Export",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{id}/deletion-requests",
+      "request": "Reason",
+      "response": "Deletion",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        202,
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/deletion-requests/{id}",
+      "request": null,
+      "response": "Deletion",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/operations",
+      "request": null,
+      "response": "Operations",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/model-calls/{id}/reconcile",
+      "request": "ReconcileCall",
+      "response": "ModelCall",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/{id}/role-bindings",
+      "request": "CreateRoleBinding",
+      "response": "RoleBinding",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/users/{id}/role-bindings/{binding_id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions",
+      "request": null,
+      "response": "SessionPage",
+      "transport": "json",
+      "query": "SessionQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/{id}/sources",
+      "request": null,
+      "response": "SourcePage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/{id}/media",
+      "request": null,
+      "response": "MediaPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/{id}/analysis-runs",
+      "request": null,
+      "response": "RunPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/{id}/transcript-revisions",
+      "request": null,
+      "response": "RevisionPage",
+      "transport": "json",
+      "query": "RevisionQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/{id}/reports",
+      "request": null,
+      "response": "ReportPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/model-calls",
+      "request": null,
+      "response": "ModelCallPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/org-units",
+      "request": null,
+      "response": "OrgUnitPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/org-units/{id}",
+      "request": null,
+      "response": "OrgUnit",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/org-units",
+      "request": "CreateOrgUnit",
+      "response": "OrgUnit",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/org-units/{id}",
+      "request": "PatchOrgUnit",
+      "response": "OrgUnit",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users",
+      "request": null,
+      "response": "UserPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/{id}",
+      "request": null,
+      "response": "User",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users",
+      "request": "CreateUser",
+      "response": "User",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/users/{id}",
+      "request": "PatchUser",
+      "response": "User",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/terms",
+      "request": null,
+      "response": "TermPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/terms/{id}",
+      "request": null,
+      "response": "Term",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/terms",
+      "request": "CreateTerm",
+      "response": "Term",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/terms/{id}",
+      "request": "PatchTerm",
+      "response": "Term",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/courses",
+      "request": null,
+      "response": "CoursePage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/courses/{id}",
+      "request": null,
+      "response": "Course",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/courses",
+      "request": "CreateCourse",
+      "response": "Course",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/courses/{id}",
+      "request": "PatchCourse",
+      "response": "Course",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/class-groups",
+      "request": null,
+      "response": "ClassGroupPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/class-groups/{id}",
+      "request": null,
+      "response": "ClassGroup",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/class-groups",
+      "request": "CreateClassGroup",
+      "response": "ClassGroup",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/class-groups/{id}",
+      "request": "PatchClassGroup",
+      "response": "ClassGroup",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classrooms",
+      "request": null,
+      "response": "ClassroomPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/classrooms/{id}",
+      "request": null,
+      "response": "Classroom",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/classrooms",
+      "request": "CreateClassroom",
+      "response": "Classroom",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/classrooms/{id}",
+      "request": "PatchClassroom",
+      "response": "Classroom",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offerings",
+      "request": null,
+      "response": "OfferingPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offerings/{id}",
+      "request": null,
+      "response": "Offering",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offerings",
+      "request": "CreateOffering",
+      "response": "Offering",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/offerings/{id}",
+      "request": "PatchOffering",
+      "response": "Offering",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/schedules",
+      "request": null,
+      "response": "SchedulePage",
+      "transport": "json",
+      "query": "ScheduleQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/schedules/{id}",
+      "request": null,
+      "response": "Schedule",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/schedules",
+      "request": "CreateSchedule",
+      "response": "Schedule",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/schedules/{id}",
+      "request": "PatchSchedule",
+      "response": "Schedule",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/schedules/import",
+      "request": "ImportSchedules",
+      "response": "ImportResult",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{id}/media",
+      "request": "UploadMedia",
+      "response": "Media",
+      "transport": "multipart",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/media/{id}/content",
+      "request": null,
+      "response": null,
+      "transport": "bytes",
+      "query": null,
+      "success_statuses": [
+        200,
+        206
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/exports/{id}/content",
+      "request": null,
+      "response": null,
+      "transport": "bytes",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/internal/v1/jobs/{id}/input",
+      "request": null,
+      "response": null,
+      "transport": "bytes",
+      "query": null,
+      "success_statuses": [
+        200,
+        206
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/jobs/claim",
+      "request": "ClaimRequest",
+      "response": "Claim",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200,
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/jobs/{id}/heartbeat",
+      "request": "Heartbeat",
+      "response": "HeartbeatResult",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/jobs/{id}/complete",
+      "request": "StageResult",
+      "response": "CompleteResult",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/jobs/{id}/fail",
+      "request": "Fail",
+      "response": "FailResult",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/jobs/{id}/artifacts",
+      "request": "ArtifactUpload",
+      "response": "Artifact",
+      "transport": "multipart",
+      "query": null,
+      "success_statuses": [
+        201,
+        200
+      ]
+    }
+  ]
+}

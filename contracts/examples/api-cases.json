@@ -1,0 +1,2678 @@
+[
+  {
+    "name": "endpoint-Artifact",
+    "definition": "Artifact",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "asset_id": "00000000-0000-4000-8000-000000000001",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "byte_size": 1
+    }
+  },
+  {
+    "name": "endpoint-ArtifactUpload",
+    "definition": "ArtifactUpload",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "file": "",
+      "artifact_key": "synthetic",
+      "kind": "proxy",
+      "timestamp_ms": null,
+      "origin_offset_ms": 0
+    }
+  },
+  {
+    "name": "endpoint-AssignSource",
+    "definition": "AssignSource",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "session_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-CSRF",
+    "definition": "CSRF",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "csrf_token": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-ClassGroup",
+    "definition": "ClassGroup",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_unit_id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "name": "synthetic",
+      "enrollment_year": null,
+      "expected_size": null
+    }
+  },
+  {
+    "name": "endpoint-ClassGroupPage",
+    "definition": "ClassGroupPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-Classroom",
+    "definition": "Classroom",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "name": "synthetic",
+      "capacity": null
+    }
+  },
+  {
+    "name": "endpoint-ClassroomPage",
+    "definition": "ClassroomPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-CompleteResult",
+    "definition": "CompleteResult",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "job_id": "00000000-0000-4000-8000-000000000001",
+      "status": "succeeded",
+      "duplicate": false
+    }
+  },
+  {
+    "name": "endpoint-Course",
+    "definition": "Course",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_unit_id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "name": "synthetic",
+      "description": ""
+    }
+  },
+  {
+    "name": "endpoint-CoursePage",
+    "definition": "CoursePage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-CreateClassGroup",
+    "definition": "CreateClassGroup",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "name": "synthetic",
+      "enrollment_year": 1900,
+      "expected_size": null
+    }
+  },
+  {
+    "name": "endpoint-CreateClassroom",
+    "definition": "CreateClassroom",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "code": "synthetic",
+      "name": "synthetic",
+      "capacity": null
+    }
+  },
+  {
+    "name": "endpoint-CreateCourse",
+    "definition": "CreateCourse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "name": "synthetic",
+      "description": ""
+    }
+  },
+  {
+    "name": "endpoint-CreateExport",
+    "definition": "CreateExport",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "format": "pdf"
+    }
+  },
+  {
+    "name": "endpoint-CreateOffering",
+    "definition": "CreateOffering",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": "00000000-0000-4000-8000-000000000001",
+      "term_id": "00000000-0000-4000-8000-000000000001",
+      "course_id": "00000000-0000-4000-8000-000000000001",
+      "teacher_id": "00000000-0000-4000-8000-000000000001",
+      "class_group_id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "status": "active"
+    }
+  },
+  {
+    "name": "endpoint-CreateOrgUnit",
+    "definition": "CreateOrgUnit",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "parent_id": null,
+      "code": "synthetic",
+      "name": "synthetic",
+      "kind": "school"
+    }
+  },
+  {
+    "name": "endpoint-CreateRoleBinding",
+    "definition": "CreateRoleBinding",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "role_code": "sys_admin",
+      "scope_org_id": null
+    }
+  },
+  {
+    "name": "endpoint-CreateSchedule",
+    "definition": "CreateSchedule",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "offering_id": "00000000-0000-4000-8000-000000000001",
+      "classroom_id": "00000000-0000-4000-8000-000000000001",
+      "starts_at": "2026-10-03T10:00:00+08:00",
+      "ends_at": "2026-10-04T10:00:00+08:00",
+      "status": "active"
+    }
+  },
+  {
+    "name": "endpoint-CreateSession",
+    "definition": "CreateSession",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "offering_id": "00000000-0000-4000-8000-000000000001",
+      "schedule_entry_id": null,
+      "title": "synthetic",
+      "planned_start_at": "2026-10-03T10:00:00+08:00",
+      "planned_end_at": "2026-10-04T10:00:00+08:00",
+      "is_demo": false
+    }
+  },
+  {
+    "name": "endpoint-CreateSource",
+    "definition": "CreateSource",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "source_type": "self_recorded",
+      "title": "synthetic",
+      "attribution": "synthetic",
+      "source_url": null,
+      "authorization_note": "",
+      "requested_uses": [],
+      "external_processing_requested": false
+    }
+  },
+  {
+    "name": "endpoint-CreateTerm",
+    "definition": "CreateTerm",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "code": "synthetic",
+      "name": "synthetic",
+      "start_date": "2026-10-03",
+      "end_date": "2026-10-04"
+    }
+  },
+  {
+    "name": "endpoint-CreateUser",
+    "definition": "CreateUser",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": null,
+      "username": "synthetic",
+      "display_name": "synthetic",
+      "status": "active",
+      "initial_password": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-Deletion",
+    "definition": "Deletion",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "status": "requested",
+      "error_code": null,
+      "completed_at": null
+    }
+  },
+  {
+    "name": "endpoint-Empty",
+    "definition": "Empty",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {}
+  },
+  {
+    "name": "endpoint-Export",
+    "definition": "Export",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "report_id": "00000000-0000-4000-8000-000000000001",
+      "status": "queued",
+      "error_code": null,
+      "download_url": null,
+      "expires_at": "2026-10-03T10:00:00+08:00"
+    }
+  },
+  {
+    "name": "endpoint-Fail",
+    "definition": "Fail",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error_code": "synthetic",
+      "message": "synthetic",
+      "retryable": false
+    }
+  },
+  {
+    "name": "endpoint-FailResult",
+    "definition": "FailResult",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "job_id": "00000000-0000-4000-8000-000000000001",
+      "status": "queued",
+      "next_retry_at": null
+    }
+  },
+  {
+    "name": "endpoint-Heartbeat",
+    "definition": "Heartbeat",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "progress": 0
+    }
+  },
+  {
+    "name": "endpoint-HeartbeatResult",
+    "definition": "HeartbeatResult",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "lease_expires_at": "2026-10-03T10:00:00+08:00",
+      "cancel_requested": false
+    }
+  },
+  {
+    "name": "endpoint-ImportResult",
+    "definition": "ImportResult",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "offering_id": "00000000-0000-4000-8000-000000000001",
+          "classroom_id": "00000000-0000-4000-8000-000000000001",
+          "starts_at": "2026-10-03T10:00:00+08:00",
+          "ends_at": "2026-10-04T10:00:00+08:00",
+          "status": "active",
+          "teacher_id": "00000000-0000-4000-8000-000000000001",
+          "class_group_id": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    }
+  },
+  {
+    "name": "endpoint-ImportSchedules",
+    "definition": "ImportSchedules",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "rows": [
+        {
+          "offering_id": "00000000-0000-4000-8000-000000000001",
+          "classroom_id": "00000000-0000-4000-8000-000000000001",
+          "starts_at": "2026-10-03T10:00:00+08:00",
+          "ends_at": "2026-10-04T10:00:00+08:00"
+        }
+      ]
+    }
+  },
+  {
+    "name": "endpoint-Login",
+    "definition": "Login",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "username": "synthetic",
+      "password": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-LoginResult",
+    "definition": "LoginResult",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "user_id": "00000000-0000-4000-8000-000000000001",
+      "roles": [],
+      "csrf_token": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-Me",
+    "definition": "Me",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "user_id": "00000000-0000-4000-8000-000000000001",
+      "display_name": "synthetic",
+      "roles": [],
+      "allowed_actions": []
+    }
+  },
+  {
+    "name": "endpoint-Media",
+    "definition": "Media",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "source_record_id": null,
+      "parent_asset_id": null,
+      "kind": "source",
+      "status": "pending",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mime_type": "synthetic",
+      "byte_size": 1,
+      "duration_ms": null,
+      "expires_at": null,
+      "playback_asset_id": null,
+      "playback_url": null,
+      "allowed_actions": []
+    }
+  },
+  {
+    "name": "endpoint-MediaPage",
+    "definition": "MediaPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-ModelCall",
+    "definition": "ModelCall",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "reserved",
+      "reserved_cost": "0.000000",
+      "actual_cost": null,
+      "currency": "CNY",
+      "billing_period": "2026-10-01",
+      "price_version": null,
+      "lock_version": 1,
+      "dispatch_started_at": null,
+      "settled_at": null
+    }
+  },
+  {
+    "name": "endpoint-ModelCallPage",
+    "definition": "ModelCallPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-Offering",
+    "definition": "Offering",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_unit_id": "00000000-0000-4000-8000-000000000001",
+      "term_id": "00000000-0000-4000-8000-000000000001",
+      "course_id": "00000000-0000-4000-8000-000000000001",
+      "teacher_id": "00000000-0000-4000-8000-000000000001",
+      "class_group_id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "status": "active"
+    }
+  },
+  {
+    "name": "endpoint-OfferingPage",
+    "definition": "OfferingPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-Operations",
+    "definition": "Operations",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "workers": [],
+      "queued_jobs": 0,
+      "storage_free_bytes": 0,
+      "budget": {
+        "currency": "CNY",
+        "billing_period": "2026-10-01",
+        "limit": "0.000000",
+        "charged": "0.000000",
+        "reserved": "0.000000",
+        "unknown": "0.000000"
+      }
+    }
+  },
+  {
+    "name": "endpoint-OrgUnit",
+    "definition": "OrgUnit",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "parent_id": null,
+      "code": "synthetic",
+      "name": "synthetic",
+      "kind": "school"
+    }
+  },
+  {
+    "name": "endpoint-OrgUnitPage",
+    "definition": "OrgUnitPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-PageQuery",
+    "definition": "PageQuery",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {}
+  },
+  {
+    "name": "endpoint-PatchClassGroup",
+    "definition": "PatchClassGroup",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-PatchClassroom",
+    "definition": "PatchClassroom",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "code": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-PatchCourse",
+    "definition": "PatchCourse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-PatchOffering",
+    "definition": "PatchOffering",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-PatchOrgUnit",
+    "definition": "PatchOrgUnit",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "parent_id": null
+    }
+  },
+  {
+    "name": "endpoint-PatchReport",
+    "definition": "PatchReport",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "summary": "合成样例：介绍矩阵运算。",
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "reason": "Correct synthetic wording"
+    }
+  },
+  {
+    "name": "endpoint-PatchSchedule",
+    "definition": "PatchSchedule",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "offering_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-PatchSession",
+    "definition": "PatchSession",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "title": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-PatchTerm",
+    "definition": "PatchTerm",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "code": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-PatchUser",
+    "definition": "PatchUser",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "org_unit_id": null
+    }
+  },
+  {
+    "name": "endpoint-PrimaryMedia",
+    "definition": "PrimaryMedia",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "media_asset_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-PublishReport",
+    "definition": "PublishReport",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "expected_current_report_id": null
+    }
+  },
+  {
+    "name": "endpoint-Reason",
+    "definition": "Reason",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "reason": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-ReconcileCall",
+    "definition": "ReconcileCall",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "status": "succeeded",
+      "actual_cost": "0.000000",
+      "provider_request_id": null,
+      "reason": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-ReportPage",
+    "definition": "ReportPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-ReviewReport",
+    "definition": "ReviewReport",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "action": "confirm_report",
+      "observation_id": null,
+      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reason": "Reviewed all text, references and coverage"
+    }
+  },
+  {
+    "name": "endpoint-RevisionPage",
+    "definition": "RevisionPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-RevisionQuery",
+    "definition": "RevisionQuery",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "media_asset_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-RoleBinding",
+    "definition": "RoleBinding",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "role_code": "sys_admin",
+      "scope_org_id": null
+    }
+  },
+  {
+    "name": "endpoint-RunPage",
+    "definition": "RunPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-Schedule",
+    "definition": "Schedule",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "offering_id": "00000000-0000-4000-8000-000000000001",
+      "classroom_id": "00000000-0000-4000-8000-000000000001",
+      "starts_at": "2026-10-03T10:00:00+08:00",
+      "ends_at": "2026-10-04T10:00:00+08:00",
+      "status": "active",
+      "teacher_id": "00000000-0000-4000-8000-000000000001",
+      "class_group_id": "00000000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "endpoint-SchedulePage",
+    "definition": "SchedulePage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-ScheduleQuery",
+    "definition": "ScheduleQuery",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {}
+  },
+  {
+    "name": "endpoint-Session",
+    "definition": "Session",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "offering_id": "00000000-0000-4000-8000-000000000014",
+      "schedule_entry_id": null,
+      "title": "合成课堂",
+      "planned_start_at": "2026-10-02T09:00:00+08:00",
+      "planned_end_at": "2026-10-02T10:00:00+08:00",
+      "is_demo": true,
+      "status": "ready",
+      "transcript_lock_version": 2,
+      "primary_media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "latest_run_id": "00000000-0000-4000-8000-000000000003",
+      "current_report_id": null,
+      "allowed_actions": [
+        "upload",
+        "prepare_media",
+        "analyze"
+      ]
+    }
+  },
+  {
+    "name": "endpoint-SessionQuery",
+    "definition": "SessionQuery",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {}
+  },
+  {
+    "name": "endpoint-Source",
+    "definition": "Source",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": null,
+      "source_type": "self_recorded",
+      "title": "synthetic",
+      "attribution": "synthetic",
+      "source_url": null,
+      "authorization_note": "",
+      "requested_uses": [
+        "playback"
+      ],
+      "external_processing_requested": false,
+      "rights_status": "pending",
+      "allowed_uses": [],
+      "external_processing_allowed": false,
+      "rights_version": 1,
+      "verified_by": null,
+      "verified_at": null,
+      "allowed_actions": []
+    }
+  },
+  {
+    "name": "endpoint-SourcePage",
+    "definition": "SourcePage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-Term",
+    "definition": "Term",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "code": "synthetic",
+      "name": "synthetic",
+      "start_date": "2026-10-03",
+      "end_date": "2026-10-04"
+    }
+  },
+  {
+    "name": "endpoint-TermPage",
+    "definition": "TermPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-UploadMedia",
+    "definition": "UploadMedia",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "source_record_id": "00000000-0000-4000-8000-000000000001",
+      "file": ""
+    }
+  },
+  {
+    "name": "endpoint-User",
+    "definition": "User",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "org_unit_id": null,
+      "username": "synthetic",
+      "display_name": "synthetic",
+      "status": "active"
+    }
+  },
+  {
+    "name": "endpoint-UserPage",
+    "definition": "UserPage",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "items": [],
+      "next_cursor": null
+    }
+  },
+  {
+    "name": "endpoint-VerifySource",
+    "definition": "VerifySource",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "rights_status": "verified",
+      "allowed_uses": [],
+      "external_processing_allowed": false,
+      "reason": "synthetic"
+    }
+  },
+  {
+    "name": "endpoint-VersionReason",
+    "definition": "VersionReason",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "reason": "synthetic"
+    }
+  },
+  {
+    "name": "prepare-request",
+    "definition": "CreateRun",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "mode": "media_prepare",
+      "input_transcript_revision_id": null,
+      "config_profile": "p0-v1"
+    }
+  },
+  {
+    "name": "prepare-succeeded",
+    "definition": "Run",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "mode": "media_prepare",
+      "input_transcript_revision_id": null,
+      "status": "succeeded",
+      "jobs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000030",
+          "stage": "probe",
+          "status": "succeeded",
+          "progress": 100,
+          "error_code": null,
+          "attempts": 1,
+          "max_attempts": 3,
+          "execution_deadline_at": null
+        }
+      ],
+      "stage_plan": [
+        "probe"
+      ],
+      "report_id": null,
+      "error_code": null,
+      "limitations": [],
+      "allowed_actions": [
+        "view_results"
+      ]
+    }
+  },
+  {
+    "name": "terminal-run-waiting",
+    "definition": "Run",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "mode": "media_prepare",
+      "input_transcript_revision_id": null,
+      "status": "succeeded",
+      "jobs": [],
+      "stage_plan": [
+        "probe"
+      ],
+      "report_id": null,
+      "error_code": null,
+      "limitations": [],
+      "allowed_actions": [
+        "view_results"
+      ]
+    }
+  },
+  {
+    "name": "prepare-report-forbidden",
+    "definition": "Run",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "mode": "media_prepare",
+      "input_transcript_revision_id": null,
+      "status": "succeeded",
+      "jobs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000030",
+          "stage": "probe",
+          "status": "succeeded",
+          "progress": 100,
+          "error_code": null,
+          "attempts": 1,
+          "max_attempts": 3,
+          "execution_deadline_at": null
+        }
+      ],
+      "stage_plan": [
+        "probe"
+      ],
+      "report_id": "00000000-0000-4000-8000-000000000006",
+      "error_code": null,
+      "limitations": [],
+      "allowed_actions": [
+        "view_results"
+      ]
+    }
+  },
+  {
+    "name": "edit-readonly-review-status",
+    "definition": "PatchReport",
+    "valid": false,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "summary": "合成样例：介绍矩阵运算。",
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ],
+          "review_status": "accepted"
+        }
+      ],
+      "reason": "Correct synthetic wording"
+    }
+  },
+  {
+    "name": "confirmation-requires-digest",
+    "definition": "ReviewReport",
+    "valid": false,
+    "semantic_valid": true,
+    "value": {
+      "lock_version": 1,
+      "action": "confirm_report",
+      "observation_id": null,
+      "content_sha256": null,
+      "reason": "Reviewed all text, references and coverage"
+    }
+  },
+  {
+    "name": "ungrounded-summary",
+    "definition": "Report",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "lock_version": 1,
+      "status": "draft",
+      "summary": "合成样例：介绍矩阵运算。",
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "review_status": "unreviewed",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "summary_evidence_ids": [],
+      "content_sha256": "6a1a5c57f05e496f9b56c7ee99ce01695d4641a9d005eacca2cbdf1ee2a7dc18",
+      "reviewed_content_sha256": null,
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "provenance": {
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+        "model": {
+          "name": "synthetic-report",
+          "revision": "fixture-1"
+        },
+        "prompt_version": "p0-v1",
+        "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": [
+          {
+            "start_ms": 1000,
+            "end_ms": 5000
+          }
+        ],
+        "limitations": [
+          "Synthetic text evidence only"
+        ],
+        "source": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Synthetic classroom recording",
+          "attribution": "Synthetic teaching team",
+          "source_url": null,
+          "rights_version": 1
+        }
+      },
+      "allowed_actions": [
+        "edit",
+        "submit"
+      ]
+    }
+  },
+  {
+    "name": "duplicate-dimension",
+    "definition": "Report",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "lock_version": 1,
+      "status": "draft",
+      "summary": "合成样例：介绍矩阵运算。",
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "content",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "review_status": "unreviewed",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "content_sha256": "f92b6dd66104f88011c6c8654a1ec493721657c10b8e94ca1828b40901c6a4a5",
+      "reviewed_content_sha256": null,
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "provenance": {
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+        "model": {
+          "name": "synthetic-report",
+          "revision": "fixture-1"
+        },
+        "prompt_version": "p0-v1",
+        "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": [
+          {
+            "start_ms": 1000,
+            "end_ms": 5000
+          }
+        ],
+        "limitations": [
+          "Synthetic text evidence only"
+        ],
+        "source": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Synthetic classroom recording",
+          "attribution": "Synthetic teaching team",
+          "source_url": null,
+          "rights_version": 1
+        }
+      },
+      "allowed_actions": [
+        "edit",
+        "submit"
+      ]
+    }
+  },
+  {
+    "name": "unconfirmed-publication",
+    "definition": "Report",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "lock_version": 1,
+      "status": "published",
+      "summary": "合成样例：介绍矩阵运算。",
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "review_status": "unreviewed",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reviewed_content_sha256": null,
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "provenance": {
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+        "model": {
+          "name": "synthetic-report",
+          "revision": "fixture-1"
+        },
+        "prompt_version": "p0-v1",
+        "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": [
+          {
+            "start_ms": 1000,
+            "end_ms": 5000
+          }
+        ],
+        "limitations": [
+          "Synthetic text evidence only"
+        ],
+        "source": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Synthetic classroom recording",
+          "attribution": "Synthetic teaching team",
+          "source_url": null,
+          "rights_version": 1
+        }
+      },
+      "allowed_actions": [
+        "edit",
+        "submit"
+      ]
+    }
+  },
+  {
+    "name": "stale-content-confirmation",
+    "definition": "Report",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "lock_version": 1,
+      "status": "draft",
+      "summary": "合成样例：介绍矩阵运算。",
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "review_status": "unreviewed",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reviewed_content_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "reviewed_by": "00000000-0000-4000-8000-000000000010",
+      "reviewed_at": "2026-10-03T10:00:00+08:00",
+      "provenance": {
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+        "model": {
+          "name": "synthetic-report",
+          "revision": "fixture-1"
+        },
+        "prompt_version": "p0-v1",
+        "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": [
+          {
+            "start_ms": 1000,
+            "end_ms": 5000
+          }
+        ],
+        "limitations": [
+          "Synthetic text evidence only"
+        ],
+        "source": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Synthetic classroom recording",
+          "attribution": "Synthetic teaching team",
+          "source_url": null,
+          "rights_version": 1
+        }
+      },
+      "allowed_actions": [
+        "edit",
+        "submit"
+      ]
+    }
+  },
+  {
+    "name": "candidate",
+    "definition": "ReportCandidate",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "summary": "合成样例：介绍矩阵运算。",
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ]
+    },
+    "context": {
+      "allowed_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ]
+    }
+  },
+  {
+    "name": "same-run-but-not-model-input",
+    "definition": "ReportCandidate",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "summary": "合成样例：介绍矩阵运算。",
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ]
+    },
+    "context": {
+      "allowed_evidence_ids": [
+        "00000000-0000-4000-8000-000000000099"
+      ]
+    }
+  },
+  {
+    "name": "audio-out-of-source",
+    "definition": "StageResult",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "schema_version": "1.1",
+      "job_id": "00000000-0000-4000-8000-000000000004",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "stage": "audio_analysis",
+      "segments": [
+        {
+          "segment_no": 0,
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "这节课介绍矩阵的基本运算。",
+          "speaker_label": "unknown"
+        }
+      ],
+      "audio_asset_id": null,
+      "model": {
+        "name": "synthetic-fixture-asr",
+        "revision": "fixture-v1"
+      },
+      "coverage": [
+        {
+          "start_ms": 0,
+          "end_ms": 600000
+        }
+      ],
+      "limitations": [
+        "合成协议样例，非实际模型结果"
+      ],
+      "execution": {
+        "processor_version": "synthetic-worker-1",
+        "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "asr_model": {
+          "name": "synthetic-fixture-asr",
+          "revision": "fixture-v1"
+        },
+        "parameters_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "context": {
+      "duration_ms": 1
+    }
+  },
+  {
+    "name": "overlap-coverage",
+    "definition": "StageResult",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "schema_version": "1.1",
+      "job_id": "00000000-0000-4000-8000-000000000004",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "stage": "audio_analysis",
+      "segments": [
+        {
+          "segment_no": 0,
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "这节课介绍矩阵的基本运算。",
+          "speaker_label": "unknown"
+        }
+      ],
+      "audio_asset_id": null,
+      "model": {
+        "name": "synthetic-fixture-asr",
+        "revision": "fixture-v1"
+      },
+      "coverage": [
+        {
+          "start_ms": 0,
+          "end_ms": 5000
+        },
+        {
+          "start_ms": 4000,
+          "end_ms": 6000
+        }
+      ],
+      "limitations": [
+        "合成协议样例，非实际模型结果"
+      ],
+      "execution": {
+        "processor_version": "synthetic-worker-1",
+        "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "asr_model": {
+          "name": "synthetic-fixture-asr",
+          "revision": "fixture-v1"
+        },
+        "parameters_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  },
+  {
+    "name": "worker-version-mismatch",
+    "definition": "StageResult",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "schema_version": "1.1",
+      "job_id": "00000000-0000-4000-8000-000000000004",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "stage": "audio_analysis",
+      "segments": [
+        {
+          "segment_no": 0,
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "这节课介绍矩阵的基本运算。",
+          "speaker_label": "unknown"
+        }
+      ],
+      "audio_asset_id": null,
+      "model": {
+        "name": "synthetic-fixture-asr",
+        "revision": "fixture-v1"
+      },
+      "coverage": [
+        {
+          "start_ms": 0,
+          "end_ms": 600000
+        }
+      ],
+      "limitations": [
+        "合成协议样例，非实际模型结果"
+      ],
+      "execution": {
+        "processor_version": "unexpected",
+        "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "asr_model": {
+          "name": "synthetic-fixture-asr",
+          "revision": "fixture-v1"
+        },
+        "parameters_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "context": {
+      "claim": {
+        "job_id": "00000000-0000-4000-8000-000000000004",
+        "run_id": "00000000-0000-4000-8000-000000000003",
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "stage": "audio_analysis",
+        "execution": {
+          "processor_version": "synthetic-worker-1",
+          "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "asr_model": {
+            "name": "synthetic-fixture-asr",
+            "revision": "fixture-v1"
+          },
+          "parameters_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    }
+  },
+  {
+    "name": "asr-version-mismatch",
+    "definition": "StageResult",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "schema_version": "1.1",
+      "job_id": "00000000-0000-4000-8000-000000000004",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "stage": "audio_analysis",
+      "segments": [
+        {
+          "segment_no": 0,
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "这节课介绍矩阵的基本运算。",
+          "speaker_label": "unknown"
+        }
+      ],
+      "audio_asset_id": null,
+      "model": {
+        "name": "synthetic-fixture-asr",
+        "revision": "unexpected"
+      },
+      "coverage": [
+        {
+          "start_ms": 0,
+          "end_ms": 600000
+        }
+      ],
+      "limitations": [
+        "合成协议样例，非实际模型结果"
+      ],
+      "execution": {
+        "processor_version": "synthetic-worker-1",
+        "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "asr_model": {
+          "name": "synthetic-fixture-asr",
+          "revision": "fixture-v1"
+        },
+        "parameters_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  },
+  {
+    "name": "export-through-media-forbidden",
+    "definition": "Media",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "source_record_id": null,
+      "parent_asset_id": null,
+      "kind": "report_export",
+      "status": "ready",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mime_type": "synthetic",
+      "byte_size": 1,
+      "duration_ms": null,
+      "expires_at": null,
+      "playback_asset_id": null,
+      "playback_url": "/api/v1/media/00000000-0000-4000-8000-000000000002/content",
+      "allowed_actions": []
+    }
+  },
+  {
+    "name": "ambiguous-schedule-filter",
+    "definition": "ScheduleQuery",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "at": "2026-10-03T10:00:00+08:00",
+      "from": "2026-10-03T09:00:00+08:00",
+      "to": "2026-10-03T11:00:00+08:00"
+    }
+  },
+  {
+    "name": "model-input",
+    "definition": "ModelInput",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "schema_version": "1.1",
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000001",
+      "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "transcript_revision_id": null,
+      "model": {
+        "name": "synthetic",
+        "revision": "synthetic"
+      },
+      "prompt_version": "synthetic",
+      "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "selection_version": "synthetic",
+      "course_context": {
+        "course_name": "synthetic",
+        "session_title": "synthetic"
+      },
+      "coverage": [
+        {
+          "start_ms": 1000,
+          "end_ms": 5000
+        }
+      ],
+      "evidence": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "kind": "transcript",
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "Synthetic matrix lesson",
+          "text_sha256": "18003ecad00ce0c5925e010bac7297ca379666310df238ecb204d02c09a55ae4"
+        }
+      ]
+    }
+  },
+  {
+    "name": "model-input-hash-mismatch",
+    "definition": "ModelInput",
+    "valid": true,
+    "semantic_valid": false,
+    "value": {
+      "schema_version": "1.1",
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000001",
+      "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "transcript_revision_id": null,
+      "model": {
+        "name": "synthetic",
+        "revision": "synthetic"
+      },
+      "prompt_version": "synthetic",
+      "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "selection_version": "synthetic",
+      "course_context": {
+        "course_name": "synthetic",
+        "session_title": "synthetic"
+      },
+      "coverage": [
+        {
+          "start_ms": 1000,
+          "end_ms": 5000
+        }
+      ],
+      "evidence": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "kind": "transcript",
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "Synthetic matrix lesson",
+          "text_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  },
+  {
+    "name": "error-SOURCE_NOT_VERIFIED",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "SOURCE_NOT_VERIFIED",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "error-FORBIDDEN",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "error-INVALID_STATE",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "INVALID_STATE",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "error-BUDGET_EXHAUSTED",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "BUDGET_EXHAUSTED",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "error-IDEMPOTENCY_CONFLICT",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "IDEMPOTENCY_CONFLICT",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "error-REVISION_CONFLICT",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "REVISION_CONFLICT",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "error-RESOURCE_EXPIRED",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "error": {
+        "code": "RESOURCE_EXPIRED",
+        "message": "Synthetic rejection",
+        "details": {}
+      },
+      "request_id": "synthetic-request"
+    }
+  },
+  {
+    "name": "published-whole-confirmed",
+    "definition": "Report",
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "lock_version": 1,
+      "status": "published",
+      "summary": "合成样例：介绍矩阵运算。",
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "review_status": "accepted",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reviewed_content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reviewed_by": "00000000-0000-4000-8000-000000000010",
+      "reviewed_at": "2026-10-03T10:00:00+08:00",
+      "provenance": {
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+        "model": {
+          "name": "synthetic-report",
+          "revision": "fixture-1"
+        },
+        "prompt_version": "p0-v1",
+        "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": [
+          {
+            "start_ms": 1000,
+            "end_ms": 5000
+          }
+        ],
+        "limitations": [
+          "Synthetic text evidence only"
+        ],
+        "source": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Synthetic classroom recording",
+          "attribution": "Synthetic teaching team",
+          "source_url": null,
+          "rights_version": 1
+        }
+      },
+      "allowed_actions": [
+        "revise",
+        "withdraw",
+        "export"
+      ]
+    },
+    "valid": true,
+    "semantic_valid": true
+  },
+  {
+    "name": "published-observation-unreviewed",
+    "definition": "Report",
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 1,
+      "lock_version": 1,
+      "status": "published",
+      "summary": "合成样例：介绍矩阵运算。",
+      "dimensions": [
+        {
+          "dimension_code": "content",
+          "coverage_status": "observed",
+          "summary": "介绍矩阵运算",
+          "limitation": "",
+          "coverage": [
+            {
+              "start_ms": 1000,
+              "end_ms": 5000
+            }
+          ],
+          "summary_evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        },
+        {
+          "dimension_code": "pace",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "thinking",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "expression",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "management",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        },
+        {
+          "dimension_code": "technology",
+          "coverage_status": "insufficient",
+          "summary": "",
+          "limitation": "样例证据不足",
+          "coverage": [],
+          "summary_evidence_ids": []
+        }
+      ],
+      "observations": [
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "dimension_code": "content",
+          "observation_type": "observation",
+          "observation_text": "教师介绍了本节课的矩阵运算主题。",
+          "suggestion": "",
+          "review_status": "unreviewed",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000005"
+          ]
+        }
+      ],
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reviewed_content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "reviewed_by": "00000000-0000-4000-8000-000000000010",
+      "reviewed_at": "2026-10-03T10:00:00+08:00",
+      "provenance": {
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+        "model": {
+          "name": "synthetic-report",
+          "revision": "fixture-1"
+        },
+        "prompt_version": "p0-v1",
+        "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "coverage": [
+          {
+            "start_ms": 1000,
+            "end_ms": 5000
+          }
+        ],
+        "limitations": [
+          "Synthetic text evidence only"
+        ],
+        "source": {
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "Synthetic classroom recording",
+          "attribution": "Synthetic teaching team",
+          "source_url": null,
+          "rights_version": 1
+        }
+      },
+      "allowed_actions": [
+        "revise",
+        "withdraw",
+        "export"
+      ]
+    },
+    "valid": true,
+    "semantic_valid": false
+  },
+  {
+    "name": "patch-cannot-clear-entry-year",
+    "definition": "PatchClassGroup",
+    "value": {
+      "enrollment_year": null
+    },
+    "valid": false,
+    "semantic_valid": true
+  },
+  {
+    "name": "teacher-cannot-have-college-scope",
+    "definition": "CreateRoleBinding",
+    "value": {
+      "role_code": "teacher",
+      "scope_org_id": "00000000-0000-4000-8000-000000000010"
+    },
+    "valid": false,
+    "semantic_valid": true
+  },
+  {
+    "name": "prepare-cannot-take-revision",
+    "definition": "CreateRun",
+    "value": {
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "mode": "media_prepare",
+      "input_transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+      "config_profile": "p0-v1"
+    },
+    "valid": false,
+    "semantic_valid": true
+  },
+  {
+    "name": "pending-cannot-grant-analysis",
+    "definition": "Source",
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": null,
+      "source_type": "self_recorded",
+      "title": "synthetic",
+      "attribution": "synthetic",
+      "source_url": null,
+      "authorization_note": "",
+      "requested_uses": [
+        "playback"
+      ],
+      "external_processing_requested": false,
+      "rights_status": "pending",
+      "allowed_uses": [
+        "analysis"
+      ],
+      "external_processing_allowed": false,
+      "rights_version": 1,
+      "verified_by": null,
+      "verified_at": null,
+      "allowed_actions": []
+    },
+    "valid": true,
+    "semantic_valid": false
+  },
+  {
+    "name": "audio-matches-pinned-claim",
+    "definition": "StageResult",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "schema_version": "1.1",
+      "job_id": "00000000-0000-4000-8000-000000000004",
+      "run_id": "00000000-0000-4000-8000-000000000003",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "stage": "audio_analysis",
+      "segments": [
+        {
+          "segment_no": 0,
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "这节课介绍矩阵的基本运算。",
+          "speaker_label": "unknown"
+        }
+      ],
+      "audio_asset_id": null,
+      "model": {
+        "name": "synthetic-fixture-asr",
+        "revision": "fixture-v1"
+      },
+      "coverage": [
+        {
+          "start_ms": 0,
+          "end_ms": 600000
+        }
+      ],
+      "limitations": [
+        "合成协议样例，非实际模型结果"
+      ],
+      "execution": {
+        "processor_version": "synthetic-worker-1",
+        "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "asr_model": {
+          "name": "synthetic-fixture-asr",
+          "revision": "fixture-v1"
+        },
+        "parameters_sha256": "fc41a2843acef1d611b1f8f0ea4870b7f74b6f8acdb96ef578fd0066ade6ed52"
+      }
+    },
+    "context": {
+      "claim": {
+        "schema_version": "1.1",
+        "job_id": "00000000-0000-4000-8000-000000000004",
+        "run_id": "00000000-0000-4000-8000-000000000003",
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "media_asset_id": "00000000-0000-4000-8000-000000000002",
+        "stage": "audio_analysis",
+        "lease_token": "00000000-0000-4000-8000-000000000009",
+        "lease_expires_at": "2026-10-02T09:02:00+08:00",
+        "input_url": "/internal/v1/jobs/00000000-0000-4000-8000-000000000004/input",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "duration_ms": 600000,
+        "parameters": {
+          "config_profile": "p0-v1",
+          "keyframe_interval_ms": 30000,
+          "max_keyframes": 240,
+          "asr_device": "cpu"
+        },
+        "execution": {
+          "processor_version": "synthetic-worker-1",
+          "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "asr_model": {
+            "name": "synthetic-fixture-asr",
+            "revision": "fixture-v1"
+          },
+          "parameters_sha256": "fc41a2843acef1d611b1f8f0ea4870b7f74b6f8acdb96ef578fd0066ade6ed52"
+        },
+        "execution_deadline_at": "2026-10-02T13:00:00+08:00",
+        "rights_version": 1,
+        "storage_generation": 0
+      },
+      "duration_ms": 600000
+    }
+  }
+]
