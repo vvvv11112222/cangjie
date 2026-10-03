@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "job_id": "00000000-0000-4000-8000-000000000016",
   "run_id": "00000000-0000-4000-8000-000000000003",
   "session_id": "00000000-0000-4000-8000-000000000001",
@@ -25,5 +25,14 @@
   ],
   "limitations": [
     "P0未启用行为识别"
-  ]
+  ],
+  "execution": {
+    "processor_version": "synthetic-worker-1",
+    "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "asr_model": {
+      "name": "synthetic-fixture-asr",
+      "revision": "fixture-v1"
+    },
+    "parameters_sha256": "fc41a2843acef1d611b1f8f0ea4870b7f74b6f8acdb96ef578fd0066ade6ed52"
+  }
 }

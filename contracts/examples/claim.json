@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "job_id": "00000000-0000-4000-8000-000000000004",
   "run_id": "00000000-0000-4000-8000-000000000003",
   "session_id": "00000000-0000-4000-8000-000000000001",
@@ -13,6 +13,19 @@
   "parameters": {
     "config_profile": "p0-v1",
     "keyframe_interval_ms": 30000,
-    "max_keyframes": 240
-  }
+    "max_keyframes": 240,
+    "asr_device": "cpu"
+  },
+  "execution": {
+    "processor_version": "synthetic-worker-1",
+    "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "asr_model": {
+      "name": "synthetic-fixture-asr",
+      "revision": "fixture-v1"
+    },
+    "parameters_sha256": "fc41a2843acef1d611b1f8f0ea4870b7f74b6f8acdb96ef578fd0066ade6ed52"
+  },
+  "execution_deadline_at": "2026-10-02T13:00:00+08:00",
+  "rights_version": 1,
+  "storage_generation": 0
 }

@@ -17,6 +17,9 @@
           "start_ms": 1000,
           "end_ms": 5000
         }
+      ],
+      "summary_evidence_ids": [
+        "00000000-0000-4000-8000-000000000005"
       ]
     },
     {
@@ -24,35 +27,40 @@
       "coverage_status": "insufficient",
       "summary": "",
       "limitation": "样例证据不足",
-      "coverage": []
+      "coverage": [],
+      "summary_evidence_ids": []
     },
     {
       "dimension_code": "thinking",
       "coverage_status": "insufficient",
       "summary": "",
       "limitation": "样例证据不足",
-      "coverage": []
+      "coverage": [],
+      "summary_evidence_ids": []
     },
     {
       "dimension_code": "expression",
       "coverage_status": "insufficient",
       "summary": "",
       "limitation": "样例证据不足",
-      "coverage": []
+      "coverage": [],
+      "summary_evidence_ids": []
     },
     {
       "dimension_code": "management",
       "coverage_status": "insufficient",
       "summary": "",
       "limitation": "样例证据不足",
-      "coverage": []
+      "coverage": [],
+      "summary_evidence_ids": []
     },
     {
       "dimension_code": "technology",
       "coverage_status": "insufficient",
       "summary": "",
       "limitation": "样例证据不足",
-      "coverage": []
+      "coverage": [],
+      "summary_evidence_ids": []
     }
   ],
   "observations": [
@@ -67,5 +75,44 @@
         "00000000-0000-4000-8000-000000000005"
       ]
     }
+  ],
+  "summary_evidence_ids": [
+    "00000000-0000-4000-8000-000000000005"
+  ],
+  "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+  "reviewed_content_sha256": null,
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "provenance": {
+    "media_asset_id": "00000000-0000-4000-8000-000000000002",
+    "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "transcript_revision_id": "00000000-0000-4000-8000-000000000020",
+    "model": {
+      "name": "synthetic-report",
+      "revision": "fixture-1"
+    },
+    "prompt_version": "p0-v1",
+    "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "coverage": [
+      {
+        "start_ms": 1000,
+        "end_ms": 5000
+      }
+    ],
+    "limitations": [
+      "Synthetic text evidence only"
+    ],
+    "source": {
+      "id": "00000000-0000-4000-8000-000000000008",
+      "title": "Synthetic classroom recording",
+      "attribution": "Synthetic teaching team",
+      "source_url": null,
+      "rights_version": 1
+    }
+  },
+  "allowed_actions": [
+    "edit",
+    "submit"
   ]
 }

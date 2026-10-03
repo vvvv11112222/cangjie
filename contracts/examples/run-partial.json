@@ -12,7 +12,59 @@
       "status": "failed",
       "progress": 0,
       "error_code": "MODEL_RESULT_UNKNOWN",
-      "attempts": 1
+      "attempts": 1,
+      "max_attempts": 1,
+      "execution_deadline_at": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000030",
+      "stage": "probe",
+      "status": "succeeded",
+      "progress": 100,
+      "error_code": null,
+      "attempts": 1,
+      "max_attempts": 3,
+      "execution_deadline_at": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000031",
+      "stage": "audio_analysis",
+      "status": "succeeded",
+      "progress": 100,
+      "error_code": null,
+      "attempts": 1,
+      "max_attempts": 3,
+      "execution_deadline_at": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000032",
+      "stage": "video_analysis",
+      "status": "succeeded",
+      "progress": 100,
+      "error_code": null,
+      "attempts": 1,
+      "max_attempts": 3,
+      "execution_deadline_at": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000033",
+      "stage": "evidence",
+      "status": "succeeded",
+      "progress": 100,
+      "error_code": null,
+      "attempts": 1,
+      "max_attempts": 3,
+      "execution_deadline_at": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000035",
+      "stage": "validate",
+      "status": "skipped",
+      "progress": 0,
+      "error_code": "UPSTREAM_FAILED",
+      "attempts": 0,
+      "max_attempts": 3,
+      "execution_deadline_at": null
     }
   ],
   "stage_plan": [

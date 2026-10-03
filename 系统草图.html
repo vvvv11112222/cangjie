@@ -40,6 +40,7 @@
         <button class="avatar top-avatar" data-action="switch-role" aria-label="切换演示角色">陈</button>
       </div>
     </header>
+    <div class="callout" style="margin:16px 34px 0">布局演示 · 本页使用浏览器内的简化数据，未接入服务。正式字段和操作以 contracts/v1.schema.json 与开发协议为准；入学年份是班级字段。</div>
     <main id="main" tabindex="-1"></main>
     <footer class="workspace-footer"><span>观课 GUANKE <i>·</i> 让教学观察有据可循</span><button class="text-button" data-action="about">关于此原型</button></footer>
   </div>
@@ -92,7 +93,7 @@
   };
   const icon = name => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">' + (icons[name] || icons.book) + '</svg>';
   const dims = [{id:'content',name:'教学内容'},{id:'pace',name:'教学节奏'},{id:'thinking',name:'思维启发'},{id:'expression',name:'教学表达'},{id:'management',name:'课堂管理'},{id:'technology',name:'教学技术'}];
-  const statuses = {recorded:['已登记','green'],review:['待复核','amber'],published:['已发布','green'],processing:['分析中','blue'],queued:['排队中','gray'],failed:['分析受限','red'],empty:['待上传','gray'],cancelled:['已取消','gray']};
+  const statuses = {partial:['部分完成','amber'],recorded:['已登记','green'],review:['待复核','amber'],published:['已发布','green'],processing:['分析中','blue'],queued:['排队中','gray'],failed:['分析受限','red'],empty:['待上传','gray'],cancelled:['已取消','gray']};
   const initialOfferings = [
     {id:'o1',name:'数据结构与算法',teacher:'陈知远',className:'软件工程 2301',room:'明理楼 A302',color:'green'},
     {id:'o2',name:'操作系统',teacher:'周明',className:'计算机科学 2302',room:'明理楼 B205',color:'blue'},
@@ -136,7 +137,8 @@
   }
   function currentAccount(){return state.accounts.find(a=>a.id===state.accountId&&a.role===state.role)||state.accounts.find(a=>a.role===state.role&&a.enabled);}
   function inScope(item){const a=currentAccount();return !!a&&a.enabled&&(state.role==='admin'||item.collegeId===a.collegeId);}
-  function hasPermission(key){const a=currentAccount();return !!a&&a.enabled&&(state.role==='admin'||(a.permissions||[]).includes(key));}
+  function rolePermissions(role){return ({admin:['view','upload','analyze','edit','review','publish'],academic:[],supervisor:['view','edit','review','publish'],teacher:['view','upload','analyze','edit']})[role]||[];}
+  function hasPermission(key){const a=currentAccount();return !!a&&a.enabled&&rolePermissions(a.role).includes(key);}
   function canManageAcademic(){return ['admin','academic'].includes(state.role)&&!!currentAccount()?.enabled;}
   function collegeName(id){return state.colleges.find(c=>c.id===id)?.name||'全校（不隶属学院）';}
   function gradeName(id){return state.grades.find(g=>g.id===id)?.name||'未分配';}
@@ -152,14 +154,14 @@
   function table(headers,rows){return '<div class="card table-wrap"><table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table>'+(rows.length?'':empty('暂无记录','请调整筛选条件或新增记录。'))+'</div>';}
   function managementPage(){
     return pageHeading('SCHOOL ADMINISTRATION','全校管理工作台','系统管理员独立于各学院，统一管理全校组织、账号权限与课堂录像。')+
-      '<div class="context-strip"><span>'+icon('shield')+'最高权限 · 全校范围</span><span>学院 → 年级 → 班级 → 课堂录像</span></div>'+
+      '<div class="context-strip"><span>'+icon('shield')+'最高权限 · 全校范围</span><span>学院 → 班级 → 课堂录像（按入学年份筛选）</span></div>'+
       '<div class="stat-grid">'+statsCard('学院',state.colleges.length,'个','统一组织管理','book','','')+statsCard('年级 / 班级',state.grades.length+' / '+state.classes.length,'','按学院维护层级','grid','blue','')+statsCard('系统账号',state.accounts.length,'个','角色、学院归属与功能权限','person','amber','')+statsCard('课堂录像',state.sessions.length,'条','检索、登记与链接维护','video','','')+'</div>'+
       '<div class="management-grid">'+[['organizations','grid','学院、年级与班级','维护全校组织层级，查看归属并新增、编辑或删除。'],['accounts','shield','账号与权限','管理全校账号，分配学院及角色，启用、停用和调整权限。'],['recordings','video','课堂录像管理','按学院、年级、班级查找录像，维护记录及对应链接。']].map(x=>'<button class="card management-entry" data-nav="'+x[0]+'">'+icon(x[1])+'<h2>'+x[2]+'</h2><p>'+x[3]+'</p><span>进入管理 '+icon('arrow')+'</span></button>').join('')+'</div>';
   }
   function organizationPage(){
-    const kind=ui.orgTab||'colleges',labels={colleges:'学院',grades:'年级',classes:'班级'};
+    const kind=ui.orgTab||'colleges',labels={colleges:'学院',classes:'班级'};
     let rows=state[kind].filter(r=>(!ui.orgCollege||kind==='colleges'||r.collegeId===ui.orgCollege)&&(!ui.orgSearch||r.name.includes(ui.orgSearch)));
-    return pageHeading('ORGANIZATION','学院、年级与班级','按学院维护组织层级；存在关联数据时会提示先处理关联。',button(icon('plus')+'新增'+labels[kind],'org-new',kind,'btn-primary'))+
+    return pageHeading('ORGANIZATION','学院、年级与班级','班级按入学年份筛选；入学年份不是组织层级。有引用的资料保留历史。',button(icon('plus')+'新增'+labels[kind],'org-new',kind,'btn-primary'))+
       '<div class="toolbar"><div class="tabs">'+Object.entries(labels).map(([k,v])=>'<button class="tab '+(k===kind?'active':'')+'" data-action="org-tab" data-id="'+k+'">'+v+'管理</button>').join('')+'</div><div class="filters"><select class="select" data-management-filter="orgCollege" aria-label="组织所属学院">'+options(state.colleges,ui.orgCollege,'全部学院')+'</select><input class="input" data-management-search="orgSearch" aria-label="搜索组织" placeholder="搜索名称" value="'+esc(ui.orgSearch||'')+'"></div></div>'+
       table(['名称','所属学院','年级 / 规模','操作'],rows.map(r=>'<tr><td><strong>'+esc(r.name)+'</strong></td><td>'+esc(kind==='colleges'?'全校组织':collegeName(r.collegeId))+'</td><td>'+esc(kind==='classes'?gradeName(r.gradeId):kind==='grades'?state.classes.filter(c=>c.gradeId===r.id).length+' 个班级':state.classes.filter(c=>c.collegeId===r.id).length+' 个班级')+'</td><td>'+button('编辑','org-edit',kind+':'+r.id,'btn-small')+' '+button('删除','org-delete',kind+':'+r.id,'btn-small btn-danger')+'</td></tr>'));
   }
@@ -171,12 +173,12 @@
       (kind==='classes'?selectField('所属年级','gradeId',options(state.grades.filter(g=>g.collegeId===college),r.gradeId,'请选择年级')):'')+formEnd());
   }
   function manageableAccounts(){return state.accounts.filter(a=>state.role==='admin'||(state.role==='academic'&&inScope(a)&&['teacher','supervisor'].includes(a.role)));}
-  const permissionLabels={view:'查看录像与报告',upload:'上传课堂录像',analyze:'发起分析任务',review:'复核教学观察',publish:'发布教学报告'};
+  const permissionLabels={edit:'编辑草稿',view:'查看录像与报告',upload:'上传课堂录像',analyze:'发起分析任务',review:'复核教学观察',publish:'发布教学报告'};
   function accountsPage(){
     const rows=manageableAccounts().filter(a=>(!ui.accountSearch||[a.name,a.username].join(' ').includes(ui.accountSearch))&&(!ui.accountRole||a.role===ui.accountRole)&&(!ui.accountCollege||a.collegeId===ui.accountCollege));
     return pageHeading('ACCOUNTS & PERMISSIONS',state.role==='admin'?'全校账号与权限':'学院人员与权限',state.role==='admin'?'系统管理员不隶属任何学院；其他角色按所属学院管理。':scopeCaption()+' · 管理本学院教学督导与教师的账号及功能权限。',button(icon('plus')+'新增账号','account-edit',null,'btn-primary'))+
       '<div class="toolbar"><div class="filters">'+(state.role==='admin'?'<select class="select" data-management-filter="accountCollege" aria-label="账号所属学院">'+options(state.colleges,ui.accountCollege,'全部学院')+'</select>':'')+'<select class="select" data-management-filter="accountRole" aria-label="账号角色">'+options(Object.entries(roles).filter(([k])=>state.role==='admin'||['supervisor','teacher'].includes(k)).map(([id,r])=>({id,name:r.name})),ui.accountRole,'全部角色')+'</select><input class="input" data-management-search="accountSearch" aria-label="搜索账号" placeholder="搜索姓名、账号" value="'+esc(ui.accountSearch||'')+'"></div><span class="small muted">'+rows.length+' 个账号</span></div>'+
-      table(['姓名 / 账号','角色','所属学院','功能权限','状态','操作'],rows.map(a=>'<tr><td><strong>'+esc(a.name)+'</strong><br><span class="small muted">'+esc(a.username)+'</span></td><td>'+roles[a.role].name+'</td><td>'+esc(collegeName(a.collegeId))+'</td><td class="permission-cell">'+(a.role==='admin'?'全校最高权限':a.role==='academic'?'本学院课表、督导与教师权限管理':a.permissions.map(p=>permissionLabels[p]).join('、')||'未授予业务权限')+'</td><td><span class="badge '+(a.enabled?'green':'gray')+'">'+(a.enabled?'已启用':'已停用')+'</span></td><td>'+button('编辑权限','account-edit',a.id,'btn-small')+(a.id==='a1'?'':' '+button(a.enabled?'停用':'启用','account-toggle',a.id,'btn-small')+' '+button('删除','account-delete',a.id,'btn-small btn-danger'))+'</td></tr>'));
+      table(['姓名 / 账号','角色','所属学院','功能权限','状态','操作'],rows.map(a=>'<tr><td><strong>'+esc(a.name)+'</strong><br><span class="small muted">'+esc(a.username)+'</span></td><td>'+roles[a.role].name+'</td><td>'+esc(collegeName(a.collegeId))+'</td><td class="permission-cell">'+(a.role==='admin'?'全校最高权限':a.role==='academic'?'本学院课表、督导与教师权限管理':rolePermissions(a.role).map(p=>permissionLabels[p]).join('、')||'未授予业务权限')+'</td><td><span class="badge '+(a.enabled?'green':'gray')+'">'+(a.enabled?'已启用':'已停用')+'</span></td><td>'+button('编辑权限','account-edit',a.id,'btn-small')+(a.id==='a1'?'':' '+button(a.enabled?'停用':'启用','account-toggle',a.id,'btn-small')+' '+button('删除','account-delete',a.id,'btn-small btn-danger'))+'</td></tr>'));
   }
   function accountModal(id){
     if(!canManageAcademic())return;
@@ -185,26 +187,26 @@
     const allowed=Object.entries(roles).filter(([k])=>state.role==='admin'||['supervisor','teacher'].includes(k));
     openModal(id?'编辑账号与权限':'新增账号','<p class="modal-subtitle">'+(state.role==='admin'?'可设置全校账号与学院归属。':'权限仅作用于本学院；教师的数据范围始终限于本人授课。')+'</p><form id="account-form"><input type="hidden" name="id" value="'+esc(id||'')+'"><div class="form-grid">'+field('姓名','name',r.name)+field('登录账号','username',r.username)+selectField('角色','role',options(allowed.map(([id,r])=>({id,name:r.name})),r.role))+
       (state.role==='admin'?selectField('所属学院','collegeId',options(state.colleges,r.collegeId,'全校（系统管理员）')):'<div class="field">所属学院<strong>'+esc(scopeCaption())+'</strong></div>')+
-      '<div class="field full permission-editor"><span>业务权限（督导 / 教师）</span>'+Object.entries(permissionLabels).map(([k,v])=>'<label class="check-row"><input type="checkbox" name="permissions" value="'+k+'" '+(r.permissions.includes(k)?'checked':'')+'>'+v+'</label>').join('')+'<small>发布权限仅适用于教学督导；教师可完成本人观察复核。</small></div><label class="check-row"><input type="checkbox" name="enabled" '+(r.enabled?'checked':'')+'>启用账号</label>'+formEnd());
+      '<div class="field full permission-editor"><span>业务权限（督导 / 教师）</span>'+Object.entries(permissionLabels).map(([k,v])=>'<label class="check-row"><input type="checkbox" name="permissions" value="'+k+'" '+(r.permissions.includes(k)?'checked':'')+'>'+v+'</label>').join('')+'<small>权限由固定角色决定；教师可编辑本人草稿，复核和发布由督导或系统管理员执行。</small></div><label class="check-row"><input type="checkbox" name="enabled" '+(r.enabled?'checked':'')+'>启用账号</label>'+formEnd());
     updateAccountFields();
   }
-  function updateAccountFields(){const f=$('#account-form');if(!f)return;const r=f.elements.role.value,c=f.elements.collegeId;if(c){c.disabled=r==='admin';c.required=r!=='admin';if(r==='admin')c.value='';}f.querySelectorAll('[name="permissions"]').forEach(el=>{el.disabled=!['teacher','supervisor'].includes(r)||(el.value==='publish'&&r!=='supervisor');});}
+  function updateAccountFields(){const f=$('#account-form');if(!f)return;const r=f.elements.role.value,c=f.elements.collegeId;if(c){c.disabled=r==='admin';c.required=r!=='admin';if(r==='admin')c.value='';}f.querySelectorAll('[name="permissions"]').forEach(el=>{el.disabled=true;el.checked=rolePermissions(r).includes(el.value);});}
   function recordingFilters(){
     return '<div class="toolbar"><div class="filters management-filters"><select class="select" aria-label="录像所属学院" data-management-filter="recordCollege">'+options(state.colleges,ui.recordCollege,'全部学院')+'</select><select class="select" aria-label="录像所属年级" data-management-filter="recordGrade">'+options(state.grades.filter(g=>!ui.recordCollege||g.collegeId===ui.recordCollege).map(g=>({...g,name:collegeName(g.collegeId)+' · '+g.name})),ui.recordGrade,'全部年级')+'</select><select class="select" aria-label="录像所属班级" data-management-filter="recordClass">'+options(state.classes.filter(c=>(!ui.recordCollege||c.collegeId===ui.recordCollege)&&(!ui.recordGrade||c.gradeId===ui.recordGrade)),ui.recordClass,'全部班级')+'</select><input class="input" data-management-search="recordSearch" aria-label="搜索录像" placeholder="主题、课程、教师或链接" value="'+esc(ui.recordSearch||'')+'">'+button('重置筛选','record-reset',null,'btn-small')+'</div></div>';
   }
   function recordingsPage(){
     const rows=state.sessions.filter(s=>{const c=classInfo(s.classId);return (!ui.recordCollege||s.collegeId===ui.recordCollege)&&(!ui.recordGrade||c?.gradeId===ui.recordGrade)&&(!ui.recordClass||s.classId===ui.recordClass)&&(!ui.recordSearch||[s.title,s.course,s.teacher,s.recordingUrl].join(' ').toLowerCase().includes(ui.recordSearch.toLowerCase()));});
     return pageHeading('RECORDING MANAGEMENT','课堂录像管理','按学院、年级、班级定位录像，维护课堂信息与对应访问链接。',button(icon('plus')+'登记录像','record-edit',null,'btn-primary'))+recordingFilters()+
-      table(['课堂 / 课程','学院 / 年级 / 班级','教师 / 日期','录像链接','操作'],rows.map(s=>'<tr><td>'+courseCell(s)+'</td><td>'+esc(collegeName(s.collegeId))+'<br><span class="small muted">'+esc(gradeName(classInfo(s.classId)?.gradeId)+' · '+s.className)+'</span></td><td>'+esc(s.teacher)+'<br><span class="small muted">'+esc(s.date)+' '+esc(s.time)+'</span></td><td class="recording-link">'+(safeRecordingUrl(s.recordingUrl)?'<a href="'+esc(s.recordingUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(s.recordingUrl)+'</a><small>'+(s.exampleLink?'示例链接 · 无真实录像':'已登记访问链接')+'</small>':'<span class="muted">尚未登记链接</span>')+'</td><td><div class="row-actions">'+button('详情','record-detail',s.id,'btn-small')+button('编辑','record-edit',s.id,'btn-small')+button('删除','record-delete',s.id,'btn-small btn-danger')+'</div></td></tr>'))+'<p class="small muted management-note">共 '+rows.length+' 条记录 · 链接仅用于定位录像；示例链接不代表已上传真实文件。</p>';
+      table(['课堂 / 课程','学院 / 年级 / 班级','教师 / 日期','来源网页','操作'],rows.map(s=>'<tr><td>'+courseCell(s)+'</td><td>'+esc(collegeName(s.collegeId))+'<br><span class="small muted">'+esc(gradeName(classInfo(s.classId)?.gradeId)+' · '+s.className)+'</span></td><td>'+esc(s.teacher)+'<br><span class="small muted">'+esc(s.date)+' '+esc(s.time)+'</span></td><td class="recording-link">'+(safeRecordingUrl(s.recordingUrl)?'<a href="'+esc(s.recordingUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(s.recordingUrl)+'</a><small>'+(s.exampleLink?'示例链接 · 无真实录像':'外部溯源链接，不授予系统播放或分析权限')+'</small>':'<span class="muted">尚未登记链接</span>')+'</td><td><div class="row-actions">'+button('详情','record-detail',s.id,'btn-small')+button('编辑','record-edit',s.id,'btn-small')+button('删除','record-delete',s.id,'btn-small btn-danger')+'</div></td></tr>'))+'<p class="small muted management-note">共 '+rows.length+' 条记录 · 链接仅用于定位录像；示例链接不代表已上传真实文件。</p>';
   }
   function safeRecordingUrl(value){try {const u=new URL(value);return ['http:','https:'].includes(u.protocol);}catch(_){return false;}}
   function recordModal(id){
     if(state.role!=='admin')return;const s=id?getSession(id):{};if(!s)return;
-    openModal(id?'编辑录像记录':'登记课堂录像','<p class="modal-subtitle">登记已有录像的 HTTP / HTTPS 访问链接，可留空后续补充。</p><form id="record-form"><input type="hidden" name="id" value="'+esc(id||'')+'"><div class="form-grid">'+field('课堂主题','title',s.title)+field('课程','course',s.course)+selectField('所属班级（学院 / 年级 / 班级）','classId',options(state.classes.map(c=>({...c,name:collegeName(c.collegeId)+' / '+gradeName(c.gradeId)+' / '+c.name})),s.classId,'请选择班级'))+field('授课教师','teacher',s.teacher)+field('上课日期','date',s.date||'2026-09-30','date')+field('开始时间','time',s.time||'08:30','time')+field('教室','room',s.room)+field('录像链接','recordingUrl',s.recordingUrl,'url',false)+formEnd());
+    openModal(id?'编辑录像记录':'登记课堂录像','<p class="modal-subtitle">登记来源网页用于溯源；系统播放与分析必须通过上传、来源核验及媒体检查。</p><form id="record-form"><input type="hidden" name="id" value="'+esc(id||'')+'"><div class="form-grid">'+field('课堂主题','title',s.title)+field('课程','course',s.course)+selectField('所属班级（学院 / 年级 / 班级）','classId',options(state.classes.map(c=>({...c,name:collegeName(c.collegeId)+' / '+gradeName(c.gradeId)+' / '+c.name})),s.classId,'请选择班级'))+field('授课教师','teacher',s.teacher)+field('上课日期','date',s.date||'2026-09-30','date')+field('开始时间','time',s.time||'08:30','time')+field('教室','room',s.room)+field('来源网页','recordingUrl',s.recordingUrl,'url',false)+formEnd());
   }
   function recordDetail(s){
     if(state.role!=='admin'||!s)return;
-    openModal('录像记录详情','<div class="notice-list"><div class="notice"><strong>'+esc(s.title)+'</strong><p>'+esc(s.course)+' · '+esc(s.teacher)+'</p></div><div class="notice">'+esc(collegeName(s.collegeId)+' / '+gradeName(classInfo(s.classId)?.gradeId)+' / '+s.className)+'<p>'+esc(s.date+' '+s.time+' · '+s.room)+'</p></div><div class="notice recording-link">'+(safeRecordingUrl(s.recordingUrl)?'<a href="'+esc(s.recordingUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(s.recordingUrl)+'</a><p>'+(s.exampleLink?'此地址为示例链接，无真实视频。':'点击链接可打开对应录像地址。')+'</p>':'尚未登记录像链接')+'</div></div><div class="form-actions">'+(safeRecordingUrl(s.recordingUrl)?button('复制链接','record-copy',s.id):'')+button('编辑记录','record-edit',s.id,'btn-primary')+'</div>');
+    openModal('录像记录详情','<div class="notice-list"><div class="notice"><strong>'+esc(s.title)+'</strong><p>'+esc(s.course)+' · '+esc(s.teacher)+'</p></div><div class="notice">'+esc(collegeName(s.collegeId)+' / '+gradeName(classInfo(s.classId)?.gradeId)+' / '+s.className)+'<p>'+esc(s.date+' '+s.time+' · '+s.room)+'</p></div><div class="notice recording-link">'+(safeRecordingUrl(s.recordingUrl)?'<a href="'+esc(s.recordingUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(s.recordingUrl)+'</a><p>'+(s.exampleLink?'此地址为示例链接，无真实视频。':'仅打开外部来源网页，不作为分析输入。')+'</p>':'尚未登记来源网页')+'</div></div><div class="form-actions">'+(safeRecordingUrl(s.recordingUrl)?button('复制链接','record-copy',s.id):'')+button('编辑记录','record-edit',s.id,'btn-primary')+'</div>');
   }
   function managementAction(name,id){
     if(name.startsWith('org-')){
@@ -227,7 +229,7 @@
       if(name==='record-edit')recordModal(id);
       if(name==='record-detail')recordDetail(getSession(id));
       if(name==='record-delete')confirmManagementDelete('record',id);
-      if(name==='record-copy'){const s=getSession(id);if(s&&safeRecordingUrl(s.recordingUrl)){if(navigator.clipboard?.writeText)navigator.clipboard.writeText(s.recordingUrl).then(()=>toast('录像链接已复制。')).catch(()=>showCopyLink(s));else showCopyLink(s);}}
+      if(name==='record-copy'){const s=getSession(id);if(s&&safeRecordingUrl(s.recordingUrl)){if(navigator.clipboard?.writeText)navigator.clipboard.writeText(s.recordingUrl).then(()=>toast('来源网页已复制。')).catch(()=>showCopyLink(s));else showCopyLink(s);}}
       return true;
     }
     if(name==='management-delete'){deleteManagementRecord(id);return true;}
@@ -235,7 +237,7 @@
     if(name==='schedule-delete'){if(canManageAcademic()&&scopedSchedule().some(w=>w.id===id))confirmManagementDelete('schedule',id);return true;}
     return false;
   }
-  function showCopyLink(s){openModal('复制录像链接','<label class="field">请选中并复制链接<input class="input" readonly value="'+esc(s.recordingUrl)+'"></label><div class="form-actions">'+button('关闭','close-modal')+'</div>');$('#modal input').select();}
+  function showCopyLink(s){openModal('复制来源网页','<label class="field">请选中并复制链接<input class="input" readonly value="'+esc(s.recordingUrl)+'"></label><div class="form-actions">'+button('关闭','close-modal')+'</div>');$('#modal input').select();}
   function confirmManagementDelete(type,id){openModal('确认删除','<p class="modal-subtitle">将删除选中的'+({org:'组织记录',account:'账号',record:'录像记录及其示例报告',schedule:'排课条目'}[type])+'。录像源文件不会被删除。</p><div class="form-actions">'+button('取消','close-modal')+button('确认删除','management-delete',type+':'+id,'btn-danger')+'</div>');}
   function deleteManagementRecord(value){
     const [type,...parts]=value.split(':'),id=parts.join(':');
@@ -249,7 +251,7 @@
     }else if(type==='record'&&state.role==='admin'){
       if(activeSessionId===id){clearInterval(activeTimer);activeTimer=null;activeSessionId=null;}
       if(media.has(id)){URL.revokeObjectURL(media.get(id));media.delete(id);}state.sessions=state.sessions.filter(s=>s.id!==id);
-    }else if(type==='schedule'&&canManageAcademic()&&scopedSchedule().some(w=>w.id===id)){state.schedule=state.schedule.filter(w=>w.id!==id);}else return;
+    }else if(type==='schedule'&&canManageAcademic()&&scopedSchedule().some(w=>w.id===id)){const w=state.schedule.find(w=>w.id===id);if(state.sessions.some(s=>s.offeringId===w.offeringId)){toast('已有课堂的安排须保留历史。',true);return;}state.schedule=state.schedule.filter(w=>w.id!==id);}else return;
     log('删除管理记录',id,type);closeModal();render();toast('已删除。');
   }
   function managementSubmit(form,data){
@@ -279,7 +281,7 @@
       if(r!=='admin'&&!state.colleges.some(c=>c.id===collegeId))return !failManagement('请选择所属学院。');
       if(state.accounts.some(a=>a.id!==id&&a.username===username))return !failManagement('登录账号已存在。');
       if(id==='a1'&&(r!=='admin'||!data.has('enabled')))return !failManagement('内置系统管理员必须保持启用与最高权限。');
-      const permissions=['supervisor','teacher'].includes(r)?data.getAll('permissions').filter(p=>permissionLabels[p]&&(p!=='publish'||r==='supervisor')):[];
+      const permissions=rolePermissions(r);
       if(permissions.some(p=>p!=='view')&&!permissions.includes('view'))return !failManagement('使用上传、分析或复核等功能前，请先授予查看权限。');
       if(permissions.includes('publish')&&!permissions.includes('review'))return !failManagement('发布报告需要同时授予复核权限。');
       const row={id:id||'a'+Date.now().toString(36),name,username,role:r,collegeId,enabled:data.has('enabled'),permissions};
@@ -287,7 +289,7 @@
     }
     if(form.getAttribute('id')==='record-form'){
       if(state.role!=='admin')return true;const old=id?getSession(id):null,c=classInfo(data.get('classId'));if(id&&!old)return true;
-      const recordingUrl=String(data.get('recordingUrl')||'').trim();if(recordingUrl&&!safeRecordingUrl(recordingUrl))return !failManagement('录像链接仅支持 HTTP 或 HTTPS 地址。');
+      const recordingUrl=String(data.get('recordingUrl')||'').trim();if(recordingUrl&&!safeRecordingUrl(recordingUrl))return !failManagement('来源网页仅支持 HTTP 或 HTTPS 地址。');
       if(!c)return !failManagement('请选择有效班级。');
       const row={classId:c.id,collegeId:c.collegeId,className:c.name,recordingUrl,exampleLink:old?.recordingUrl===recordingUrl?!!old.exampleLink:false};
       for(const key of ['title','course','teacher','room','date','time']){row[key]=String(data.get(key)||'').trim();if(!row[key])return !failManagement('请填写完整的课堂信息。');}
@@ -320,7 +322,7 @@
     ];
     const sessions = rows.map(row=>{const o=initialOfferings.find(o=>o.id===row[1]);return {id:row[0],offeringId:o.id,course:o.name,teacher:o.teacher,className:o.className,room:o.room,color:o.color,title:row[2],date:row[3],time:row[4],duration:row[5],status:row[6],fixture:true,progress:row[6]==='processing'?42:row[6]==='failed'?20:100,source:'团队自录 · 教学示例',size:280};});
     sessions.forEach(s=>{if(['review','published'].includes(s.status))s.report=reportFor(s,false);});
-    return {schema:1,role:'supervisor',sessions,settings:{budget:50,spent:8.6,videoDays:14,reportDays:30,auditDays:90,backupDays:7},logs:[
+    return {schema:1,role:'supervisor',sessions,settings:{budget:50,spent:8.6,videoDays:14,reportDays:180,auditDays:180,backupDays:7},logs:[
       {time:'2026-09-30 10:42',actor:'陈知远',action:'查看报告',target:'二分查找与复杂度分析',detail:'打开示例报告 v1'},
       {time:'2026-09-30 10:20',actor:'李静',action:'提交分析',target:'事务与隔离级别',detail:'离线分析流程示例'},
       {time:'2026-09-29 17:06',actor:'陈知远',action:'发布报告',target:'进程调度与时间片',detail:'发布示例报告 v1'}
@@ -337,6 +339,7 @@
   const media = new Map();
   let pickedFile=null, activeTimer=null, activeSessionId=null, lastFocus=null;
   initializeManagement();
+  state.accounts.forEach(a=>a.permissions=rolePermissions(a.role));
   let offerings=state.offerings;
   const role=()=>{const base=roles[state.role]||roles.supervisor,a=currentAccount();return {...base,person:a?a.name:base.person,short:a?a.name.slice(0,1):base.short};};
   const canRead=s=>!!s&&inScope(s)&&hasPermission('view')&&(state.role==='admin'||state.role==='supervisor'||(state.role==='teacher'&&s.teacher===role().person));
@@ -346,7 +349,7 @@
   const getSession=id=>state.sessions.find(s=>s.id===id);
   const badge=status=>'<span class="badge '+(statuses[status]||statuses.empty)[1]+'">'+(statuses[status]||statuses.empty)[0]+'</span>';
   const timeText=seconds=>String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(Math.floor(seconds%60)).padStart(2,'0');
-  const button=(label,action,id,style='')=>{const permission=({upload:'upload',simulate:'analyze','cancel-task':'analyze',accept:'review','edit-observation':'review','reject-observation':'review',revision:'review'})[action];if(permission&&!hasPermission(permission))return '';return '<button type="button" class="btn '+style+'" data-action="'+action+'"'+(id?' data-id="'+esc(id)+'"':'')+'>'+label+'</button>';};
+  const button=(label,action,id,style='')=>{const permission=({upload:'upload',simulate:'analyze','cancel-task':'analyze',accept:'review','edit-observation':'edit','reject-observation':'review',revision:'edit'})[action];if(permission&&!hasPermission(permission))return '';return '<button type="button" class="btn '+style+'" data-action="'+action+'"'+(id?' data-id="'+esc(id)+'"':'')+'>'+label+'</button>';};
   function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(_){toast('当前浏览器未允许本地保存，操作将在本次打开期间保留。',true);}}
   function log(action,target,detail){state.logs.unshift({collegeId:currentAccount()?.collegeId||'',time:new Date().toLocaleString('sv-SE').slice(0,16),actor:role().person,action,target,detail});state.logs=state.logs.slice(0,150);persist();}
   function toast(text,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.innerHTML=icon(error?'info':'check')+'<span>'+esc(text)+'</span>';$('#toasts').append(el);setTimeout(()=>el.remove(),4500);}
@@ -412,7 +415,7 @@
   function detailPage(s){
     if(!canRead(s)||!s.report)return '<div class="card">'+empty('当前角色无法查看这份报告','请切换到拥有该课堂权限的演示角色。',button('返回工作台','go-home',null,'btn-soft'))+'</div>';
     const raw=s.report, r=raw.status==='published'?{...raw,observations:publicObservations(raw)}:raw, obs=r.observations.find(o=>o.dimension===ui.dimension), pending=r.observations.filter(o=>o.status==='unreviewed').length, published=r.status==='published';
-    const headerActions=button(icon('download')+'导出 JSON','export',s.id)+button(icon('printer')+'打印','print',s.id)+(hasPermission('review')?(published?button(icon('edit')+'新建修订','revision',s.id,'btn-primary'):(state.role==='teacher'||hasPermission('publish')?button(icon('check')+(state.role==='teacher'?'完成复核':'发布报告'),'publish',s.id,'btn-primary'):'')):'');
+    const headerActions=button(icon('download')+'导出当前发布版','export',s.id)+(published?button(icon('printer')+'打印','print',s.id)+button(icon('edit')+'新建修订','revision',s.id,'btn-primary'):(r.status==='draft'&&hasPermission('edit')?button('提交复核','submit-report',s.id,'btn-primary'):hasPermission('review')?button('确认整篇内容','confirm-report',s.id)+button('发布报告','publish',s.id,'btn-primary'):''));
     const d=dims.find(d=>d.id===ui.dimension);
     return '<button class="text-button back-link" data-nav="reports">'+icon('back')+'返回教学报告</button>'+
       pageHeading('CLASSROOM REVIEW',s.title,'',headerActions)+
@@ -424,7 +427,7 @@
       '<div class="card review-history"><h3>复核记录</h3>'+r.history.slice(-4).reverse().map(h=>'<div class="history-row"><time>'+esc(h.time)+'</time><span>'+esc(h.text)+'</span></div>').join('')+'</div></div>'+
       '<div><div class="card observation-panel"><div class="ai-label">'+icon('spark')+'六维教学观察</div><h2>一份可以回到课堂的报告</h2><p class="report-summary">'+esc(r.summary)+'</p><div class="dimension-tabs" aria-label="教学观察维度">'+dims.map(d=>'<button class="dimension-tab '+(d.id===ui.dimension?'active':'')+'" data-dimension="'+d.id+'">'+d.name+'<small>'+ (r.observations.some(o=>o.dimension===d.id)?'有证据观察':'证据不足')+'</small></button>').join('')+'</div>'+
       (obs?'<div class="observation-heading"><h3>'+d.name+'</h3><span class="badge '+(obs.status==='unreviewed'?'amber':obs.status==='rejected'?'red':'green')+'">'+({unreviewed:'待复核',accepted:'已确认',revised:'已修正',rejected:'已驳回'}[obs.status])+'</span></div><h3 style="font-size:13px;margin-bottom:10px">'+esc(obs.title)+'</h3><p class="observation-copy">'+esc(obs.text)+'</p><button class="evidence-link" data-action="seek" data-id="'+s.id+'" data-time="'+obs.time+'">'+icon('video')+'<span><strong>查看对应课堂片段 · '+timeText(obs.time)+'—'+timeText(obs.time+24)+'</strong><small>示例证据 '+esc(obs.id.toUpperCase())+' · 与当前报告关联</small></span>'+icon('chevron')+'</button><div class="suggestion"><strong>改进建议</strong>'+esc(obs.suggestion)+'</div>'+
-      (!published&&hasPermission('review')?'<div class="review-actions">'+button(icon('check')+'确认观察','accept',s.id,'btn-soft')+button(icon('edit')+'修改','edit-observation',s.id)+button('驳回','reject-observation',s.id)+'</div>':'<div class="coverage-note">当前内容只读；复核与修订需要对应权限。</div>'):
+      (!published&&r.status==='in_review'&&hasPermission('review')?'<div class="review-actions">'+button(icon('check')+'确认观察','accept',s.id,'btn-soft')+button(icon('edit')+'修改','edit-observation',s.id)+button('驳回','reject-observation',s.id)+'</div>':(!published&&hasPermission('edit')?button('编辑观察','edit-observation',s.id):'<div class="coverage-note">当前内容只读；复核与修订需要对应权限。</div>')):
       '<div class="limitations">'+icon('info')+'<h3>'+d.name+' · 证据不足</h3><p style="margin-top:8px">'+(r.blank?'本次只演示操作流程，未运行真实分析。请在后续接入分析服务后生成证据。':'当前示例没有足够的'+(ui.dimension==='management'?'学生全景与互动记录':'可核验语音质量信息')+'支持此维度的结论。保留限制说明，等待补充证据。')+'</p></div>')+
       '<p class="coverage-note">本页全部观察为交互示例。六维用于组织课堂事实，证据不足不表示低分。教学结论需结合课堂情境人工判断。</p></div></div></div>';
   }
@@ -437,14 +440,14 @@
   function academicPage(){
     const rows=scopedSchedule(),courses=scopedOfferings().filter(o=>!ui.scheduleClass||o.classId===ui.scheduleClass);
     const days=['周一 09/28','周二 09/29','周三 09/30','周四 10/01','周五 10/02'];
-    const body=ui.academicTab==='week'?'<div class="week-header"><h2>第 5 教学周</h2><span class="small muted">'+rows.length+' 条排课 · 同一时段可安排多条课程</span></div><div class="table-wrap"><table class="week-table"><thead><tr><th>时间</th>'+days.map(d=>'<th>'+d+'</th>').join('')+'</tr></thead><tbody>'+['08:30<br>10:00','10:20<br>11:50','14:00<br>15:30'].map((time,slot)=>'<tr><td>'+time+'</td>'+days.map((_,day)=>'<td>'+rows.filter(w=>w.day===day&&w.slot===slot).map(w=>{const o=offerings.find(o=>o.id===w.offeringId);return '<button class="schedule-block '+o.color+'" data-action="schedule-detail" data-id="'+w.id+'"><strong>'+esc(o.name)+'</strong><span>'+esc(o.teacher+' · '+o.room)+'</span><span>'+esc(o.className)+'</span></button>';}).join('')+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':table(['课程名称','任课教师','授课班级','教室'],courses.map(o=>'<tr><td>'+esc(o.name)+'</td><td>'+esc(o.teacher)+'</td><td>'+esc(o.className)+'</td><td>'+esc(o.room)+'</td></tr>'));
-    return pageHeading('ACADEMIC AFFAIRS','教务与课表',scopeCaption()+' · 管理各班课表，允许排课时间重合。',button(icon('download')+'导出课表 CSV','schedule-csv')+button(icon('plus')+'新增排课','new-schedule',null,'btn-primary'))+'<div class="toolbar"><div class="tabs">'+[['week','本周课表'],['courses','开课实例']].map(t=>'<button class="tab '+(ui.academicTab===t[0]?'active':'')+'" data-academic-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div><select class="select" data-management-filter="scheduleClass" aria-label="课表班级">'+options(state.classes.filter(inScope).map(c=>({...c,name:(state.role==='admin'?collegeName(c.collegeId)+' · ':'')+c.name})),ui.scheduleClass,'全部班级')+'</select></div><div class="callout">'+icon('info')+'按班级分别排布；同一时段的课程并列展示，可新增、编辑和删除排课。</div><div class="card">'+body+'</div>';
+    const body=ui.academicTab==='week'?'<div class="week-header"><h2>第 5 教学周</h2><span class="small muted">'+rows.length+' 条排课 · 同一时段须使用不同教师、班级及教室</span></div><div class="table-wrap"><table class="week-table"><thead><tr><th>时间</th>'+days.map(d=>'<th>'+d+'</th>').join('')+'</tr></thead><tbody>'+['08:30<br>10:00','10:20<br>11:50','14:00<br>15:30'].map((time,slot)=>'<tr><td>'+time+'</td>'+days.map((_,day)=>'<td>'+rows.filter(w=>w.day===day&&w.slot===slot).map(w=>{const o=offerings.find(o=>o.id===w.offeringId);return '<button class="schedule-block '+o.color+'" data-action="schedule-detail" data-id="'+w.id+'"><strong>'+esc(o.name)+'</strong><span>'+esc(o.teacher+' · '+o.room)+'</span><span>'+esc(o.className)+'</span></button>';}).join('')+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>':table(['课程名称','任课教师','授课班级','教室'],courses.map(o=>'<tr><td>'+esc(o.name)+'</td><td>'+esc(o.teacher)+'</td><td>'+esc(o.className)+'</td><td>'+esc(o.room)+'</td></tr>'));
+    return pageHeading('ACADEMIC AFFAIRS','教务与课表',scopeCaption()+' · 管理各班课表，同一资源禁止时间重叠。',button(icon('download')+'导出课表 CSV','schedule-csv')+button(icon('plus')+'新增排课','new-schedule',null,'btn-primary'))+'<div class="toolbar"><div class="tabs">'+[['week','本周课表'],['courses','开课实例']].map(t=>'<button class="tab '+(ui.academicTab===t[0]?'active':'')+'" data-academic-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div><select class="select" data-management-filter="scheduleClass" aria-label="课表班级">'+options(state.classes.filter(inScope).map(c=>({...c,name:(state.role==='admin'?collegeName(c.collegeId)+' · ':'')+c.name})),ui.scheduleClass,'全部班级')+'</select></div><div class="callout">'+icon('info')+'同一教师、班级或教室不能同时排课；历史课堂关联的安排保留。</div><div class="card">'+body+'</div>';
   }
   function sourcesPage(){
     const mine=visibleSessions().filter(s=>s.status!=='empty');
     return pageHeading('MEDIA & SOURCES','素材与来源','为课堂素材保留来处、用途与使用限制。',state.role==='academic'?'':button(icon('upload')+'登记新素材','upload',null,'btn-primary'))+
       '<div class="callout">'+icon('shield')+'以下均为原型中的来源登记示例。真实项目需要核验具体素材的使用许可，来源核验与允许发送外部模型分别管理。</div>'+
-      '<div class="card"><div class="card-heading"><h2>课堂素材登记</h2><span class="small muted">'+mine.length+' 条记录</span></div><div class="table-wrap"><table><thead><tr><th>素材 / 课堂</th><th>来源类型</th><th>用途</th><th>来源核验</th><th>外部处理</th><th>保存期限</th></tr></thead><tbody>'+mine.map(s=>'<tr><td>'+courseCell(s)+'</td><td>'+esc(s.fixture?'团队自录示例':s.source)+'</td><td>课堂复盘</td><td><span class="badge green">演示已登记</span></td><td><span class="badge gray">未启用</span></td><td>'+state.settings.videoDays+' 天</td></tr>').join('')+'</tbody></table></div></div>'+
+      '<div class="card"><div class="card-heading"><h2>课堂素材登记</h2><span class="small muted">'+mine.length+' 条记录</span></div><div class="table-wrap"><table><thead><tr><th>素材 / 课堂</th><th>来源类型</th><th>用途</th><th>来源核验</th><th>外部处理</th><th>保存期限</th></tr></thead><tbody>'+mine.map(s=>'<tr><td>'+courseCell(s)+'</td><td>'+esc(s.fixture?'团队自录示例':s.source)+'</td><td>课堂复盘</td><td><span class="badge '+(s.fixture||s.sourceVerified?'green':'amber')+'">'+(s.fixture||s.sourceVerified?'已核验（模拟）':'待核验')+'</span>'+(canManageAcademic()&&!s.fixture&&!s.sourceVerified?button('核验（模拟）','verify-source',s.id,'btn-small'):'')+'</td><td><span class="badge gray">未启用</span></td><td>'+state.settings.videoDays+' 天</td></tr>').join('')+'</tbody></table></div></div>'+
       '<div class="callout amber" style="margin-top:20px">'+icon('info')+'公开课适合验证内容分析与证据回放；中文语音及学生行为观察需要对应样本。本原型不自动上传本地素材，也不向外部模型发送内容。</div>';
   }
   function settingsPage(){
@@ -476,7 +479,7 @@
       $('.dashboard-upper>.card:last-child').innerHTML='<div class="card-heading"><h2>本周教学安排</h2><span class="badge green">教务视角</span></div><div class="card-body"><p class="report-summary">当前示例课表已登记 '+scopedSchedule().length+' 条排课。可以管理本学院所有班级的课表，同一时段允许多条排课。</p><div class="form-actions"><button class="btn btn-soft" data-nav="academic">查看完整课表 '+icon('arrow')+'</button></div></div>';
     }
     if(page==='tasks')document.querySelectorAll('.task-card').forEach((card,index)=>{const s=visibleSessions().filter(s=>canRead(s)&&['processing','queued','failed','cancelled'].includes(s.status))[index];if(s&&s.error)card.querySelector('.task-progress-line .muted').textContent=s.error;});
-    if(page==='report'&&$('#local-video'))$('#local-video').addEventListener('error',()=>toast('浏览器无法播放这个文件，请选择可播放的 MP4 或 WebM。',true),{once:true});
+    if(page==='report'&&$('#local-video'))$('#local-video').addEventListener('error',()=>toast('浏览器无法播放这个文件，请选择可播放的 MP4、MOV 或 MKV。',true),{once:true});
   }
 
   function printReport(s){
@@ -492,10 +495,10 @@
     if(existing&&!canRead(existing)){toast('无权访问这节课堂。',true);return;}
     pickedFile=null;
     openModal(existing?'为课堂上传录像':'上传课堂录像',
-      '<p class="modal-subtitle">关联课程与离线录像，开始一次有证据的教学复盘。</p><form id="upload-form"><input type="hidden" name="existingId" value="'+esc(existingId||'')+'"><input class="hidden" id="upload-file" type="file" accept="video/mp4,video/webm,.mp4,.webm" aria-label="选择课堂录像">'+
-      '<div class="upload-zone" id="drop-zone" role="button" tabindex="0" data-action="choose-upload" aria-label="选择或拖入课堂录像">'+icon('upload')+'<h3>点击选择，或将录像拖到这里</h3><p>MP4 / WebM · 单文件不超过 1 GiB · 文件只在本地预览</p></div><div id="file-picked" class="hidden"></div>'+
+      '<p class="modal-subtitle">关联课程与离线录像，开始一次有证据的教学复盘。</p><form id="upload-form"><input type="hidden" name="existingId" value="'+esc(existingId||'')+'"><input class="hidden" id="upload-file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv" aria-label="选择课堂录像">'+
+      '<div class="upload-zone" id="drop-zone" role="button" tabindex="0" data-action="choose-upload" aria-label="选择或拖入课堂录像">'+icon('upload')+'<h3>点击选择，或将录像拖到这里</h3><p>MP4 / MOV / MKV · 单文件不超过 4 GiB · 文件只在本地预览</p></div><div id="file-picked" class="hidden"></div>'+
       '<div style="text-align:center;margin:-6px 0 20px"><button type="button" class="text-button" data-action="use-sample">没有录像？使用内置示例走一遍流程 '+icon('arrow')+'</button></div>'+
-      '<div class="form-grid"><div class="field full"><label for="upload-offering">关联开课实例</label><select class="select" id="upload-offering" name="offering" required'+(existing?' disabled':'')+'>'+offerOptions(existing&&existing.offeringId)+'</select></div><div class="field full"><label for="upload-title">课堂主题</label><input class="input" id="upload-title" name="title" maxlength="80" required placeholder="例如：二分查找与复杂度分析" value="'+esc(existing?existing.title:'')+'"></div><div class="field"><label for="upload-date">课堂日期</label><input class="input" type="date" id="upload-date" name="date" required value="'+(existing?existing.date:'2026-09-30')+'"></div><div class="field"><label for="upload-time">开始时间</label><input class="input" type="time" id="upload-time" name="time" required value="'+(existing?existing.time:'08:30')+'"></div><div class="field full"><label for="upload-source">素材来源</label><select class="select" name="source" id="upload-source"><option>团队自录教学片段</option><option>已获授权的公开课</option><option>学校授权的课堂录像</option></select></div><label class="check-row"><input type="checkbox" name="rights" required><span>我已确认素材用于本次演示的使用范围。内置示例仅演示交互，不进行真实分析。</span></label></div><p class="form-error" id="upload-error" role="alert"></p><div class="form-actions">'+button('取消','close-modal')+'<button class="btn btn-primary" type="submit">'+icon('upload')+(hasPermission('analyze')?'提交并演示分析':'保存课堂素材')+'</button></div></form>');
+      '<div class="form-grid"><div class="field full"><label for="upload-offering">关联开课实例</label><select class="select" id="upload-offering" name="offering" required'+(existing?' disabled':'')+'>'+offerOptions(existing&&existing.offeringId)+'</select></div><div class="field full"><label for="upload-title">课堂主题</label><input class="input" id="upload-title" name="title" maxlength="80" required placeholder="例如：二分查找与复杂度分析" value="'+esc(existing?existing.title:'')+'"></div><div class="field"><label for="upload-date">课堂日期</label><input class="input" type="date" id="upload-date" name="date" required value="'+(existing?existing.date:'2026-09-30')+'"></div><div class="field"><label for="upload-time">开始时间</label><input class="input" type="time" id="upload-time" name="time" required value="'+(existing?existing.time:'08:30')+'"></div><div class="field full"><label for="upload-source">素材来源</label><select class="select" name="source" id="upload-source"><option>团队自录教学片段</option><option>已获授权的公开课</option><option>学校授权的课堂录像</option></select></div><label class="check-row"><input type="checkbox" name="rights" required><span>我已确认素材用于本次演示的使用范围。内置示例仅演示交互，不进行真实分析。</span></label></div><p class="form-error" id="upload-error" role="alert"></p><div class="form-actions">'+button('取消','close-modal')+'<button class="btn btn-primary" type="submit">'+icon('upload')+'登记素材，等待核验'+'</button></div></form>');
     const drop=$('#drop-zone');
     drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('dragging');});
     drop.addEventListener('dragleave',()=>drop.classList.remove('dragging'));
@@ -503,7 +506,7 @@
     drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('#upload-file').click();}});
   }
   function selectFile(file) {
-    if(!file||!file.size||file.size>1073741824||!/\.(mp4|webm)$/i.test(file.name)){toast('请选择非空 MP4 或 WebM 文件，大小不超过 1 GiB。',true);return;}
+    if(!file||!file.size||file.size>4294967296||!/\.(mp4|mov|mkv)$/i.test(file.name)){toast('请选择非空 MP4、MOV 或 MKV 文件，大小不超过 4 GiB。',true);return;}
     pickedFile=file;
     $('#file-picked').className='file-picked';
     $('#file-picked').textContent=file.name+' · '+(file.size/1048576).toFixed(1)+' MB · 本地文件，不会上传';
@@ -521,16 +524,16 @@
   function startSimulation(id) {
     const s=getSession(id);
     if(!canRead(s)||!hasPermission('analyze')){toast('当前角色无法操作这个分析任务。',true);return;}
+    if(!s.fixture&&!s.sourceVerified){toast('来源尚未核验，不能开始处理。',true);return;}
     if(activeSessionId===id)return;
     if(activeTimer){s.status='queued';persist();render();toast('任务已加入演示队列，将顺序处理。');return;}
-    if(state.settings.spent>=state.settings.budget){s.status='failed';s.error='模拟模型预算已用完，请由系统管理员调整预算。';persist();render();toast(s.error,true);return;}
     state.sessions.forEach(other=>{if(other.id!==id&&other.status==='processing')other.status='queued';});
     s.status='processing';s.error='';s.progress=Math.min(s.progress||0,80);activeSessionId=id;persist();render();
     activeTimer=setInterval(()=>{
       s.progress=Math.min(100,s.progress+10);
       if(s.progress===100){
-        clearInterval(activeTimer);activeTimer=null;activeSessionId=null;s.status='review';s.report=reportFor(s,!s.fixture);
-        log('模拟分析完成',s.title,'仅推进原型流程，未运行 ASR 或外部模型');toast('流程演示已完成，可打开报告查看。');
+        clearInterval(activeTimer);activeTimer=null;activeSessionId=null;s.status=s.fixture?'review':'partial';s.report=s.fixture?reportFor(s,false):null;s.error=s.fixture?'':'仅演示本地处理阶段；未连接报告模型。';
+        log('模拟分析完成',s.title,'仅推进原型流程，未运行 ASR 或外部模型');toast(s.fixture?'内置报告流程演示已完成。':'本地阶段演示完成，未生成报告。');
         const next=state.sessions.find(item=>item.status==='queued'&&canRead(item));
         if(next)setTimeout(()=>startSimulation(next.id),400);
       }
@@ -548,7 +551,7 @@
     log('复核报告',s.title,message);render();
   }
   function editObservation(s,reject) {
-    if(!canRead(s)||!hasPermission('review')||!s.report||s.report.status==='published')return;
+    if(!canRead(s)||!hasPermission(reject?'review':'edit')||!s.report||s.report.status==='published'||(reject&&s.report.status!=='in_review'))return;
     const obs=s.report.observations.find(o=>o.dimension===ui.dimension);
     if(!obs)return;
     openModal(reject?'驳回这条观察':'修正课堂观察','<p class="modal-subtitle">复核内容将保留在当前报告的操作记录中。</p><form id="review-form"><input type="hidden" name="sessionId" value="'+s.id+'"><input type="hidden" name="observationId" value="'+obs.id+'"><input type="hidden" name="reject" value="'+(reject?'yes':'no')+'"><div class="form-grid">'+(!reject?'<div class="field full"><label for="review-text">观察内容</label><textarea id="review-text" name="text" maxlength="1500" required>'+esc(obs.text)+'</textarea></div>':'')+'<div class="field full"><label for="review-reason">'+(reject?'驳回理由':'修改说明')+'</label><textarea id="review-reason" name="reason" maxlength="500" required placeholder="说明与课堂证据不一致的地方，或补充必要的情境"></textarea></div></div><div class="form-actions">'+button('取消','close-modal')+'<button class="btn '+(reject?'btn-danger':'btn-primary')+'" type="submit">'+(reject?'确认驳回':'保存修正')+'</button></div></form>');
@@ -558,15 +561,15 @@
     const r=s.report,unreviewed=r.observations.filter(o=>o.status==='unreviewed');
     if(unreviewed.length){toast('还有 '+unreviewed.length+' 条观察待复核，请逐项确认、修正或驳回。',true);return;}
     if(!r.observations.some(o=>['accepted','revised'].includes(o.status))){toast('至少需要一条有证据且已确认的观察，当前报告不能发布。',true);return;}
-    if(state.role==='teacher'){r.reviewComplete=true;recordReview(s,'完成本人复核，等待督导发布');toast('已完成本人复核，请由督导发布。');return;}
+    if(r.status!=='in_review'||!r.reviewComplete){toast('请先提交复核并确认整篇摘要、证据和限制。',true);return;}
     if(!hasPermission('publish')){toast('当前账号未获报告发布权限。',true);return;}
     r.archives.forEach(a=>{if(a.status==='published')a.status='superseded';});
     r.status='published';s.status='published';recordReview(s,'发布报告 v'+r.version);toast('报告 v'+r.version+' 已发布，当前版本进入只读状态。');
   }
   function revise(s) {
-    if(!canRead(s)||!hasPermission('review')||!s.report||s.report.status!=='published')return;
+    if(!canRead(s)||!hasPermission('edit')||!s.report||s.report.status!=='published')return;
     const r=s.report,{archives,...snapshot}=r;
-    r.archives.push(JSON.parse(JSON.stringify(snapshot)));r.version++;r.status='draft';r.observations.forEach(o=>{if(o.status!=='rejected')o.status='unreviewed';});s.status='review';
+    r.archives.push(JSON.parse(JSON.stringify(snapshot)));r.version++;r.status='draft';r.reviewComplete=false;r.observations.forEach(o=>{if(o.status!=='rejected')o.status='unreviewed';});s.status='review';
     recordReview(s,'创建修订 v'+r.version+'，原发布版已保存在版本记录中');toast('已创建新修订，请重新复核后发布。');
   }
   function download(name,content,type) {
@@ -574,22 +577,25 @@
   }
   function exportReport(s) {
     if(!canRead(s)||!s.report){toast('当前角色无权导出这份报告。',true);return;}
-    const {archives,...current}=s.report;
-    const payload={prototype:true,notice:'交互示例数据，非真实 AI 分析结果',course:s.course,title:s.title,teacher:s.teacher,date:s.date,report:{...current,observations:publicObservations(s.report)}};
-    download('观课-'+s.title.replace(/[<>:"/\\|?*]/g,'_')+'-v'+s.report.version+'.json',JSON.stringify(payload,null,2),'application/json;charset=utf-8');
-    log('导出示例报告',s.title,'导出 JSON v'+s.report.version);toast('示例报告已导出为 JSON。');
+    const selected=s.report.status==='published'?s.report:s.report.archives.find(r=>r.status==='published');
+    if(!selected){toast('仅当前发布版可以导出。',true);return;}
+    const {archives,...current}=selected;
+    const payload={prototype:true,notice:'交互示例数据，非真实 AI 分析结果',course:s.course,title:s.title,teacher:s.teacher,date:s.date,report:{...current,observations:publicObservations(selected)}};
+    download('观课-'+s.title.replace(/[<>:"/\\|?*]/g,'_')+'-v'+selected.version+'.json',JSON.stringify(payload,null,2),'application/json;charset=utf-8');
+    log('导出示例报告',s.title,'导出 JSON v'+selected.version);toast('示例报告已导出为 JSON。');
   }
+  function scheduleConflict(row){return state.schedule.some(w=>{if(w.id===row.id||w.day!==row.day||w.slot!==row.slot)return false;const o=offerings.find(o=>o.id===w.offeringId);return o&&(o.teacher===row.teacher||o.classId===row.classId||o.room===row.room);});}
   function scheduleModal(id) {
     if(!canManageAcademic())return;
     const w=id?scopedSchedule().find(w=>w.id===id):null;if(id&&!w)return;
     const o=w?offerings.find(o=>o.id===w.offeringId):{},classId=o.classId||ui.scheduleClass||state.classes.filter(inScope)[0]?.id;
-    openModal(id?'编辑本周排课':'新增本周排课','<p class="modal-subtitle">'+esc(scopeCaption())+'。同一时段允许多条排课，可为本学院任意班级安排课程。</p><form id="schedule-form"><input type="hidden" name="id" value="'+esc(id||'')+'"><div class="form-grid">'+selectField('授课班级','classId',options(state.classes.filter(inScope).map(c=>({...c,name:collegeName(c.collegeId)+' · '+c.name})),classId,'请选择班级'))+field('课程名称','course',o.name)+field('任课教师','teacher',o.teacher)+field('教室','room',o.room)+selectField('上课日期','day',options(['周一 09/28','周二 09/29','周三 09/30','周四 10/01','周五 10/02'].map((name,i)=>({id:String(i),name})),String(w?.day??0)))+selectField('上课时段','slot',options(['08:30–10:00','10:20–11:50','14:00–15:30'].map((name,i)=>({id:String(i),name})),String(w?.slot??0)))+'</div><p class="form-error" id="schedule-error" role="alert"></p><div class="form-actions">'+button('取消','close-modal')+'<button class="btn btn-primary" type="submit">保存排课</button></div></form>');
+    openModal(id?'编辑本周排课':'新增本周排课','<p class="modal-subtitle">'+esc(scopeCaption())+'。仅不同教师、班级和教室可以并行排课。</p><form id="schedule-form"><input type="hidden" name="id" value="'+esc(id||'')+'"><div class="form-grid">'+selectField('授课班级','classId',options(state.classes.filter(inScope).map(c=>({...c,name:collegeName(c.collegeId)+' · '+c.name})),classId,'请选择班级'))+field('课程名称','course',o.name)+field('任课教师','teacher',o.teacher)+field('教室','room',o.room)+selectField('上课日期','day',options(['周一 09/28','周二 09/29','周三 09/30','周四 10/01','周五 10/02'].map((name,i)=>({id:String(i),name})),String(w?.day??0)))+selectField('上课时段','slot',options(['08:30–10:00','10:20–11:50','14:00–15:30'].map((name,i)=>({id:String(i),name})),String(w?.slot??0)))+'</div><p class="form-error" id="schedule-error" role="alert"></p><div class="form-actions">'+button('取消','close-modal')+'<button class="btn btn-primary" type="submit">保存排课</button></div></form>');
   }
   function showSession(s) {
     if(!s||!visibleSessions().includes(s)){toast('该课堂不在当前演示角色范围内。',true);return;}
     if(s.report&&canRead(s)){ui.dimension='content';ui.evidenceTime=38;navigate('report/'+s.id);return;}
     if(s.status==='empty'&&state.role!=='academic'){uploadModal(s.id);return;}
-    openModal('课堂详情','<div class="notice-list"><div class="notice"><strong>'+esc(s.title)+'</strong><p>'+esc(s.course)+' · '+esc(s.teacher)+' · '+esc(s.className)+'</p></div><div class="notice">'+s.date+' '+s.time+'<p>'+esc(s.room)+' · '+esc(s.duration)+'</p></div><div class="notice">当前状态：'+badge(s.status)+'<p>'+(s.error?esc(s.error):'当前内容为本地交互演示数据。')+'</p></div></div><div class="form-actions">'+(canRead(s)?button('删除此演示档案','delete-session',s.id,'btn-danger'):'')+button('关闭','close-modal')+(canRead(s)&&['processing','queued','failed','cancelled'].includes(s.status)?button('前往分析任务','open-tasks',null,'btn-primary'):'')+'</div>');
+    openModal('课堂详情','<div class="notice-list"><div class="notice"><strong>'+esc(s.title)+'</strong><p>'+esc(s.course)+' · '+esc(s.teacher)+' · '+esc(s.className)+'</p></div><div class="notice">'+s.date+' '+s.time+'<p>'+esc(s.room)+' · '+esc(s.duration)+'</p></div><div class="notice">当前状态：'+badge(s.status)+'<p>'+(s.error?esc(s.error):'当前内容为本地交互演示数据。')+'</p></div></div><div class="form-actions">'+(canRead(s)&&state.role==='admin'?button('删除此演示档案','delete-session',s.id,'btn-danger'):'')+button('关闭','close-modal')+(canRead(s)&&['processing','queued','failed','cancelled'].includes(s.status)?button('前往分析任务','open-tasks',null,'btn-primary'):'')+'</div>');
   }
   function changeRole(value) {
     if(!roles[value])return;
@@ -620,6 +626,7 @@
     if(name==='go-home'){navigate(state.role==='admin'?'management':'dashboard');return;}
     if(name==='go-reports'){navigate('reports');return;}
     if(name==='open-tasks'){closeModal();navigate('tasks');return;}
+    if(name==='verify-source'){if(s&&canManageAcademic()&&inScope(s)){s.sourceVerified=true;log('来源核验（模拟）',s.title,'允许本地检查与分析；外部处理未启用');render();}return;}
     if(name==='simulate'){startSimulation(id);return;}
     if(name==='cancel-task'){if(s)cancelTask(s);return;}
     if(name==='seek'){
@@ -630,13 +637,15 @@
     }
     if(name==='preview-video'){
       if(!canRead(s))return;
-      openModal('本地视频预览','<p class="modal-subtitle">视频只在当前浏览器中播放。它与页面中的示例证据没有真实分析关联，刷新后需要重新选择。</p><label class="field">选择 MP4 / WebM 视频<input class="input" type="file" id="preview-file" data-session-id="'+s.id+'" accept="video/mp4,video/webm,.mp4,.webm"></label><div class="form-actions">'+button('关闭','close-modal')+'</div>');return;
+      openModal('本地视频预览','<p class="modal-subtitle">视频只在当前浏览器中播放。它与页面中的示例证据没有真实分析关联，刷新后需要重新选择。</p><label class="field">选择 MP4 / MOV / MKV 视频<input class="input" type="file" id="preview-file" data-session-id="'+s.id+'" accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv"></label><div class="form-actions">'+button('关闭','close-modal')+'</div>');return;
     }
     if(name==='accept'){
-      if(!canRead(s)||!hasPermission('review')||!s.report||s.report.status==='published')return;
-      const obs=s.report.observations.find(o=>o.dimension===ui.dimension);if(!obs)return;obs.status='accepted';recordReview(s,'确认「'+dims.find(d=>d.id===ui.dimension).name+'」观察');toast('已确认这条课堂观察。');return;
+      if(!canRead(s)||!hasPermission('review')||!s.report||s.report.status!=='in_review')return;
+      const obs=s.report.observations.find(o=>o.dimension===ui.dimension);if(!obs)return;obs.status='accepted';s.report.reviewComplete=false;recordReview(s,'确认「'+dims.find(d=>d.id===ui.dimension).name+'」观察');toast('已确认这条课堂观察。');return;
     }
     if(name==='edit-observation'||name==='reject-observation'){editObservation(s,name==='reject-observation');return;}
+    if(name==='submit-report'){if(canRead(s)&&hasPermission('edit')&&s.report?.status==='draft'){s.report.status='in_review';s.report.reviewComplete=false;recordReview(s,'提交整篇复核');}return;}
+    if(name==='confirm-report'){if(canRead(s)&&hasPermission('review')&&s.report?.status==='in_review'){if(s.report.observations.some(o=>o.status==='unreviewed')){toast('请先逐条复核。',true);return;}s.report.reviewComplete=true;recordReview(s,'确认整篇摘要、六维、证据及限制');}return;}
     if(name==='publish'){publish(s);return;}
     if(name==='revision'){revise(s);return;}
     if(name==='version-history'){
@@ -644,7 +653,7 @@
       openModal('报告历史版本','<p class="modal-subtitle">历史发布内容保留原有观察；当前修订 v'+s.report.version+' 独立编辑。</p><div class="notice-list">'+s.report.archives.slice().reverse().map(r=>'<div class="notice"><strong>v'+r.version+' · '+(r.status==='published'?'当前发布版':'历史发布版')+'</strong><p>'+esc(r.summary)+'</p>'+publicObservations(r).map(o=>'<p>• '+esc(dims.find(d=>d.id===o.dimension).name)+'：'+esc(o.text)+'</p>').join('')+'</div>').join('')+'</div><div class="form-actions">'+button('关闭','close-modal')+'</div>');return;
     }
     if(name==='export'){exportReport(s);return;}
-    if(name==='print'){if(canRead(s)){window.print();log('打印示例报告',s.title,'打印完整六维示例报告，可通过浏览器保存为 PDF');}return;}
+    if(name==='print'){if(canRead(s)&&s.report?.status==='published'){window.print();log('打印示例报告',s.title,'打印完整六维示例报告，可通过浏览器保存为 PDF');}return;}
     if(name==='new-schedule'){scheduleModal();return;}
     if(name==='schedule-detail'){
       const w=scopedSchedule().find(w=>w.id===id);if(!w||!canManageAcademic())return;const o=offerings.find(o=>o.id===w.offeringId);
@@ -664,11 +673,11 @@
       openModal('工作提醒','<div class="notice-list"><div class="notice"><strong>'+n+' 份示例报告待复核</strong><p>逐项查看课堂证据，并确认、修正或驳回观察。</p></div><div class="notice"><strong>课堂资料保留策略</strong><p>示例配置：录像 '+state.settings.videoDays+' 天，报告 '+state.settings.reportDays+' 天。</p></div></div><div class="form-actions">'+button('知道了','close-modal',null,'btn-primary')+'</div>');return;
     }
     if(name==='delete-session'){
-      if(!canRead(s))return;
+      if(!canRead(s)||state.role!=='admin')return;
       openModal('删除演示档案','<p class="modal-subtitle">将从当前浏览器的原型数据中移除「'+esc(s.title)+'」及其示例报告。你电脑上的原始录像文件不受影响。</p><div class="form-actions">'+button('取消','close-modal')+button('确认删除','confirm-delete',id,'btn-danger')+'</div>');return;
     }
     if(name==='confirm-delete'){
-      if(!canRead(s))return;
+      if(!canRead(s)||state.role!=='admin')return;
       if(activeSessionId===id){clearInterval(activeTimer);activeTimer=null;activeSessionId=null;}
       if(media.has(id)){URL.revokeObjectURL(media.get(id));media.delete(id);}
       state.sessions=state.sessions.filter(x=>x.id!==id);log('删除演示档案',s.title,'仅移除浏览器内演示数据');closeModal();navigate('sessions');render();toast('演示档案已删除。');return;
@@ -709,16 +718,16 @@
       if(!data.get('rights')){$('#upload-error').textContent='请确认本次使用范围。';return;}
       const existing=data.get('existingId'),s=existing?getSession(existing):newSession(data);
       if(!s||!String(data.get('title')||'').trim()||(existing&&!canRead(s))){$('#upload-error').textContent='请填写完整信息，并检查课堂访问范围。';return;}
-      s.title=String(data.get('title')).trim();s.date=data.get('date');s.time=data.get('time');s.source=data.get('source');s.status=hasPermission('analyze')?'queued':'recorded';s.progress=0;s.fixture=false;s.duration=pickedFile.sample?'10:00':'本地预览';s.filename=pickedFile.name;s.size=Number((pickedFile.size/1048576).toFixed(1));
+      s.title=String(data.get('title')).trim();s.date=data.get('date');s.time=data.get('time');s.source=data.get('source');s.status='recorded';s.sourceVerified=false;s.progress=0;s.fixture=false;s.duration=pickedFile.sample?'10:00':'本地预览';s.filename=pickedFile.name;s.size=Number((pickedFile.size/1048576).toFixed(1));
       if(!pickedFile.sample){if(media.has(s.id))URL.revokeObjectURL(media.get(s.id));media.set(s.id,URL.createObjectURL(pickedFile));}
-      if(!existing)state.sessions.unshift(s);log('提交演示分析',s.title,pickedFile.sample?'内置流程示例，未读取真实视频':'本地视频仅预览，不上传或分析');closeModal();if(hasPermission('analyze')){navigate('tasks');startSimulation(s.id);}else{navigate('sessions');render();toast('课堂素材已登记，当前账号未获发起分析权限。');}return;
+      if(!existing)state.sessions.unshift(s);log('登记待核验素材',s.title,'来源声明不等于获准处理');closeModal();navigate('sources');render();toast('素材已登记，请由本学院教务或系统管理员核验。');return;
     }
     if(form.getAttribute('id')==='review-form'){
-      const s=getSession(data.get('sessionId'));if(!canRead(s)||!hasPermission('review')||!s.report||s.report.status==='published')return;
+      const s=getSession(data.get('sessionId'));if(!canRead(s)||!hasPermission(data.get('reject')==='yes'?'review':'edit')||!s.report||s.report.status==='published')return;
       const obs=s.report.observations.find(o=>o.id===data.get('observationId')),reason=String(data.get('reason')||'').trim();if(!obs||!reason){toast('请填写复核说明。',true);return;}
       const reject=data.get('reject')==='yes';
       if(!reject){const text=String(data.get('text')||'').trim();if(!text){toast('观察内容不能为空。',true);return;}obs.text=text;}
-      obs.status=reject?'rejected':'revised';closeModal();recordReview(s,(reject?'驳回':'修正')+'「'+dims.find(d=>d.id===obs.dimension).name+'」：'+reason);toast(reject?'已驳回该观察，发布时将排除。':'观察已修正，并保留修改说明。');return;
+      obs.status=reject?'rejected':'unreviewed';s.report.reviewComplete=false;if(!reject)s.report.status='draft';closeModal();recordReview(s,(reject?'驳回':'修正')+'「'+dims.find(d=>d.id===obs.dimension).name+'」：'+reason);toast(reject?'已驳回该观察，发布时将排除。':'修改已保存，请提交复核后由复核者确认。');return;
     }
     if(form.getAttribute('id')==='schedule-form'){
       if(!canManageAcademic())return;
@@ -726,11 +735,13 @@
       if(id&&!w||!c||!inScope(c)||!Number.isInteger(day)||day<0||day>4||!Number.isInteger(slot)||slot<0||slot>2)return;
       const name=String(data.get('course')||'').trim(),teacher=String(data.get('teacher')||'').trim(),room=String(data.get('room')||'').trim();
       if(!name||!teacher||!room){$('#schedule-error').textContent='请填写完整的课程、教师和教室信息。';return;}
+      if(w&&state.sessions.some(s=>s.offeringId===w.offeringId)){ $('#schedule-error').textContent='已有课堂的演示安排不可修改，请新建安排保留历史。';return;}
+      if(scheduleConflict({id,day,slot,teacher,classId:c.id,room})){ $('#schedule-error').textContent='教师、班级或教室在该时段已被占用。';return;}
       let o=offerings.find(o=>o.classId===c.id&&o.name===name&&o.teacher===teacher&&o.room===room);
       if(!o){o={id:'o'+Date.now().toString(36),name,teacher,room,collegeId:c.collegeId,classId:c.id,className:c.name,color:'green'};offerings.push(o);}
       const row={id:id||'w'+Date.now().toString(36),offeringId:o.id,day,slot,time:['08:30–10:00','10:20–11:50','14:00–15:30'][slot]};
       if(w)Object.assign(w,row);else state.schedule.push(row);
-      log(id?'编辑排课':'新增排课',o.name,c.name+' · 第 5 周');closeModal();ui.academicTab='week';ui.scheduleClass='';render();toast('排课已保存，同一时段可继续安排课程。');return;
+      log(id?'编辑排课':'新增排课',o.name,c.name+' · 第 5 周');closeModal();ui.academicTab='week';ui.scheduleClass='';render();toast('排课已保存，已检查教师、班级和教室冲突。');return;
     }
     if(form.getAttribute('id')==='settings-form'){
       if(state.role!=='admin')return;
@@ -756,7 +767,7 @@
     if(event.target.id==='preview-file'){
       const file=event.target.files[0],id=event.target.dataset.sessionId;
       if(!file)return;
-      if(!/\.(mp4|webm)$/i.test(file.name)||!file.size||file.size>1073741824){toast('请选择不超过 1 GiB 的非空 MP4 / WebM。',true);return;}
+      if(!/\.(mp4|mov|mkv)$/i.test(file.name)||!file.size||file.size>4294967296){toast('请选择不超过 4 GiB 的非空 MP4 / MOV / MKV。',true);return;}
       if(!canRead(getSession(id)))return;
       if(media.has(id))URL.revokeObjectURL(media.get(id));media.set(id,URL.createObjectURL(file));closeModal();render();toast('已加载本地视频，仅用于播放预览。');
     }

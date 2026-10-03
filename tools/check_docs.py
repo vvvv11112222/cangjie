@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from jsonschema import Draft202012Validator, FormatChecker
+from contract_rules import check_semantics
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -13,15 +14,48 @@ def main():
     schema = json.loads((ROOT / "contracts/v1.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     manifest = json.loads((ROOT / "contracts/examples/manifest.json").read_text(encoding="utf-8"))
+    entries = []
     for entry in manifest["examples"]:
-        value = json.loads((ROOT / "contracts/examples" / entry["file"]).read_text(encoding="utf-8"))
+        entries.append({**entry, "value": json.loads((ROOT / "contracts/examples" / entry["file"]).read_text(encoding="utf-8"))})
+    for case_file in manifest.get("case_sets", []):
+        entries.extend(json.loads((ROOT / "contracts/examples" / case_file).read_text(encoding="utf-8")))
+    for entry in entries:
+        value = entry["value"]
         selected = {**schema, "$ref": f"#/$defs/{entry['definition']}"}
         errors = list(Draft202012Validator(selected, format_checker=FormatChecker()).iter_errors(value))
         if (not errors) != entry["valid"]:
-            raise AssertionError(f"{entry['file']}: unexpected validity; {errors[:1]}")
+            raise AssertionError(f"{entry.get('file', entry.get('name'))}: unexpected validity; {errors[:1]}")
         if entry["valid"]:
-            check_semantics(value)
+            try:
+                check_semantics(value, entry["definition"], entry.get("context"))
+                semantic_valid = True
+            except ValueError as error:
+                semantic_valid = False
+                if entry.get("semantic_valid", True):
+                    raise AssertionError(f"{entry.get('file', entry.get('name'))}: {error}") from error
+            if semantic_valid != entry.get("semantic_valid", True):
+                raise AssertionError(f"{entry.get('name')}: semantic failure was not detected")
+    catalogue = json.loads((ROOT / "contracts/endpoints.json").read_text(encoding="utf-8"))
+    if catalogue["schema_version"] != manifest["schema_version"]:
+        raise AssertionError("Endpoint/fixture contract versions differ")
+    for name in ("Claim", "ProbeResult", "AudioResult", "VideoResult", "ModelInput"):
+        if schema["$defs"][name]["properties"]["schema_version"]["const"] != manifest["schema_version"]:
+            raise AssertionError(f"{name}: contract version differs")
+    routes = set()
+    covered = {e["definition"] for e in entries if e["valid"] and e.get("semantic_valid", True)}
+    for endpoint in catalogue["endpoints"]:
+        route = (endpoint["method"], endpoint["path"])
+        if route in routes:
+            raise AssertionError(f"Duplicate route: {route}")
+        routes.add(route)
+        for field in ("request", "response", "query"):
+            name = endpoint[field]
+            if name is not None and (name not in schema["$defs"] or name not in covered):
+                raise AssertionError(f"{route}: {field} {name} has no definition or positive fixture")
     docs = [ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "项目文档.md", *sorted((ROOT / "docs").glob("*.md"))]
+    remediation = ROOT / "reviews/整改报告.md"
+    if remediation.exists():
+        docs.append(remediation)
     for file in docs:
         body = file.read_text(encoding="utf-8")
         in_code = False
@@ -55,24 +89,7 @@ def main():
                         raise AssertionError(f"{file.name}:{number}: missing heading {target}")
         if in_code:
             raise AssertionError(f"{file.name}: unclosed code fence")
-    print(f"PASS: {len(manifest['examples'])} positive/negative contract fixtures, {len(docs)} documents, local links and table structure")
-
-
-def check_semantics(value):
-    if isinstance(value, list):
-        for item in value:
-            check_semantics(item)
-    elif isinstance(value, dict):
-        if "start_ms" in value and "end_ms" in value:
-            assert value["end_ms"] > value["start_ms"], "invalid interval"
-        if "dimensions" in value:
-            codes = [d["dimension_code"] for d in value["dimensions"]]
-            assert len(set(codes)) == 6, "duplicate/missing report dimension"
-        if "segments" in value:
-            numbers = [s["segment_no"] for s in value["segments"]]
-            assert numbers == list(range(len(numbers))), "non-contiguous segment numbers"
-        for item in value.values():
-            check_semantics(item)
+    print(f"PASS: {len(entries)} contract fixtures, {len(routes)} endpoint mappings, {len(docs)} documents, links and tables")
 
 
 if __name__ == "__main__":
