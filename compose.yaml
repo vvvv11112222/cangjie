@@ -11,7 +11,7 @@ services:
       timeout: 3s
       retries: 20
     ports:
-      - "${COMPOSE_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${COMPOSE_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
@@ -38,11 +38,26 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "${COMPOSE_API_PORT:-8080}:8080"
+      - "127.0.0.1:${COMPOSE_API_PORT:-8080}:8080"
     volumes:
       - app-data:/data
 
   bootstrap-admin:
+    profiles: ["bootstrap"]
+    build: .
+    command: ["/app/bin/bootstrap-admin"]
+    environment:
+      <<: *api-environment
+      BOOTSTRAP_SCHOOL_CODE: SCHOOL
+      BOOTSTRAP_SCHOOL_NAME: 示例学校
+      BOOTSTRAP_ADMIN_USERNAME: admin
+      BOOTSTRAP_ADMIN_DISPLAY_NAME: 系统管理员
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  seed-dev:
     profiles: ["bootstrap"]
     build: .
     command: ["/app/bin/seed-dev"]

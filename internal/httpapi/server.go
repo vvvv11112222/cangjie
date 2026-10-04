@@ -76,6 +76,7 @@ func (s *server) ready(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			checks[name] = "unavailable"
 			s.logger.Warn("readiness check failed", "request_id", requestID(r.Context()), "check", name, "error", err)
+			w.Header().Set("Retry-After", "5")
 			writeError(w, r, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "service is not ready", map[string]any{"checks": checks})
 			return
 		}

@@ -32,7 +32,7 @@ func TestReadinessFailure(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "SERVICE_UNAVAILABLE") {
+	if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "5" || !strings.Contains(response.Body.String(), "SERVICE_UNAVAILABLE") {
 		t.Fatalf("unexpected response: status=%d body=%s", response.Code, response.Body.String())
 	}
 }

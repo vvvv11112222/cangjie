@@ -85,14 +85,14 @@ Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 已安装 Docker Compose 时可运行：
 
 ```powershell
-docker compose up --build postgres migrate api
+docker compose up --build -d postgres api
 $env:BOOTSTRAP_TEST_PASSWORD = '<至少12位的本地测试密码>'
-docker compose --profile bootstrap run --rm bootstrap-admin
+docker compose --profile bootstrap run --rm seed-dev
 Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 ```
 
 Compose 使用固定 PostgreSQL 17.6 和 Go 1.26.0 镜像，仅含开发用数据库凭据；生产环境必须使用独立密钥和部署配置。
-若本机已有 PostgreSQL 或其他服务占用端口，可在启动前设置 `$env:COMPOSE_POSTGRES_PORT` 或 `$env:COMPOSE_API_PORT`，无需停止本机服务。
+数据库和 API 默认只绑定本机回环地址。若本机已有 PostgreSQL 或其他服务占用端口，可在启动前设置 `$env:COMPOSE_POSTGRES_PORT` 或 `$env:COMPOSE_API_PORT`，无需停止本机服务。若只需创建系统管理员，可设置 `BOOTSTRAP_ADMIN_PASSWORD` 后运行 `docker compose --profile bootstrap run --rm bootstrap-admin`。
 
 ### 后端检查
 
@@ -114,7 +114,7 @@ node tools/check_prototype.mjs
 
 数据库验证命令见[数据库设计第6节](docs/数据库设计.md#6-执行与验证)。
 
-真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本或可启动的 Go/React/Worker 服务；检查通过仅说明相应契约、SQL、草图行为或度量工具通过，不能代替业务及模型验收。
+真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无可启动的 React 或 Worker 服务；当前 Go 运行骨架不包含业务接口。检查通过仅说明相应契约、SQL、草图行为、运行骨架或度量工具通过，不能代替业务及模型验收。
 
 ## 使用 Codex
 
