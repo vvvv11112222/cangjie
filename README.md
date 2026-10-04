@@ -92,6 +92,7 @@ Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 ```
 
 Compose 使用固定 PostgreSQL 17.6 和 Go 1.26.0 镜像，仅含开发用数据库凭据；生产环境必须使用独立密钥和部署配置。
+若本机已有 PostgreSQL 或其他服务占用端口，可在启动前设置 `$env:COMPOSE_POSTGRES_PORT` 或 `$env:COMPOSE_API_PORT`，无需停止本机服务。
 
 ### 后端检查
 
