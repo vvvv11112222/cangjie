@@ -1,6 +1,6 @@
 # 教学质量管理系统
 
-文档 v0.6，2026-10-03。当前仓库包含开发文档、接口样例和数据库脚本，业务服务待实现。成员直接在本仓库维护文件。
+文档 v0.6，2026-10-03。当前仓库包含开发文档、接口样例、数据库脚本和 Go 后端运行骨架。身份、教务、媒体、分析与报告等业务接口仍按里程碑逐步实现。
 
 ## 从这里开始
 
@@ -25,6 +25,85 @@
 - `tools/`：文档/协议检查、隔离数据库检查。
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
 
+## Go 后端运行骨架
+
+后端使用 Go 1.26 系列和 PostgreSQL 17。当前已提供：
+
+- `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
+- `cmd/migrate`：按文件名顺序执行 `database/001`～`003`，记录并校验迁移摘要；
+- `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
+- `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
+- 本地媒体目录和独立删除日志的 readiness 检查；
+- `Dockerfile` 与 `compose.yaml` 共同开发入口。
+
+### 本机启动
+
+1. 安装 Go 1.26 系列和 PostgreSQL 17，创建空数据库。
+2. 复制配置模板，不要提交本地配置：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. 在 `.env` 中至少填写 `DATABASE_URL`，例如：
+
+```text
+DATABASE_URL=postgres://teaching:本地密码@127.0.0.1:5432/teaching?sslmode=disable
+```
+
+4. 依次迁移、初始化管理员并启动 API：
+
+```powershell
+go run ./cmd/migrate
+$env:BOOTSTRAP_ADMIN_PASSWORD = '<至少12位的本地密码>'
+go run ./cmd/bootstrap-admin
+Remove-Item Env:BOOTSTRAP_ADMIN_PASSWORD
+go run ./cmd/api
+```
+
+管理员初始化命令可以重复执行；已有同名管理员时不会覆盖密码。启动后检查：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health/live
+Invoke-RestMethod http://127.0.0.1:8080/health/ready
+```
+
+`live` 只检查进程，`ready` 会检查 PostgreSQL、媒体目录和独立删除日志。数据库不可用或删除日志损坏时返回 503。
+
+需要四种角色的本地联调账号时，在 development/test 环境运行：
+
+```powershell
+$env:BOOTSTRAP_TEST_PASSWORD = '<至少12位的本地测试密码>'
+go run ./cmd/seed-dev
+Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
+```
+
+默认创建 `admin`、`academic_demo`、`supervisor_demo` 和 `teacher_demo`；密码只从本地环境读取，不写入仓库。命令在 production 环境会拒绝执行。
+
+### 容器启动
+
+已安装 Docker Compose 时可运行：
+
+```powershell
+docker compose up --build -d postgres api
+$env:BOOTSTRAP_TEST_PASSWORD = '<至少12位的本地测试密码>'
+docker compose --profile bootstrap run --rm seed-dev
+Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
+```
+
+Compose 使用固定 PostgreSQL 17.6 和 Go 1.26.0 镜像，仅含开发用数据库凭据；生产环境必须使用独立密钥和部署配置。
+数据库和 API 默认只绑定本机回环地址。若本机已有 PostgreSQL 或其他服务占用端口，可在启动前设置 `$env:COMPOSE_POSTGRES_PORT` 或 `$env:COMPOSE_API_PORT`，无需停止本机服务。若只需创建系统管理员，可设置 `BOOTSTRAP_ADMIN_PASSWORD` 后运行 `docker compose --profile bootstrap run --rm bootstrap-admin`。
+
+### 后端检查
+
+```powershell
+go test ./...
+go vet ./...
+go build ./cmd/...
+```
+
+数据库结构仍可按[数据库设计第6节](docs/数据库设计.md#6-执行与验证)运行原生 SQL 检查。`cmd/migrate` 面向由本工具初始化的新库；若发现已有 `teaching` schema 却没有迁移历史，会拒绝猜测旧库版本，须先由数据库负责人确认基线。
+
 在仓库根目录运行（需安装 Python jsonschema）：
 
 ```powershell
@@ -35,7 +114,7 @@ node tools/check_prototype.mjs
 
 数据库验证命令见[数据库设计第6节](docs/数据库设计.md#6-执行与验证)。
 
-真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本或可启动的 Go/React/Worker 服务；检查通过仅说明相应契约、SQL、草图行为或度量工具通过，不能代替业务及模型验收。
+真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无可启动的 React 或 Worker 服务；当前 Go 运行骨架不包含业务接口。检查通过仅说明相应契约、SQL、草图行为、运行骨架或度量工具通过，不能代替业务及模型验收。
 
 ## 使用 Codex
 
