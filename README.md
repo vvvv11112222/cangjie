@@ -37,6 +37,19 @@ node tools/check_prototype.mjs
 
 真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本或可启动的 Go/React/Worker 服务；检查通过仅说明相应契约、SQL、草图行为或度量工具通过，不能代替业务及模型验收。
 
+## 前端（M0 骨架）
+
+`frontend/` 为 React 19 + Vite + TypeScript 工程，M0 只读取 `contracts/examples` 的固定样例，不连后端。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`）；样例引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）会在页面“样例数据核对”中显式列出，不拼成虚假链路。
+
+```powershell
+cd frontend
+npm install        # Node.js 24 LTS；依赖锁在 frontend/package-lock.json
+npm run dev        # 开发服务器，默认 http://localhost:5173
+npm run check      # tsc --noEmit + vitest + vite build
+```
+
+`vite.config.ts` 已把 `/api` 代理到 `http://127.0.0.1:8080` 作为 M1 接入点，构建产物 `frontend/dist` 由 Go 同源提供。M0 尚未实现登录、鉴权、真实 API 调用与活动批次轮询。
+
 ## 使用 Codex
 
 在 Codex 中打开克隆后的 Git 仓库根目录并新建任务，确认已读取 `AGENTS.md`；已有会话可直接要求重新读取。仓库级指令的加载方式见 [OpenAI 官方说明](https://learn.chatgpt.com/docs/agent-configuration/agents-md)。
