@@ -13,19 +13,32 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/identity"
 )
 
 type CheckFunc func(context.Context) error
 type ReadinessChecks map[string]CheckFunc
 
 type Options struct {
-	Logger    *slog.Logger
-	Readiness ReadinessChecks
+	Logger       *slog.Logger
+	Readiness    ReadinessChecks
+	Identity     *identity.Service
+	Academic     *academic.Service
+	PublicOrigin string
+	SecureCookie bool
+	SessionTTL   time.Duration
 }
 
 type server struct {
-	logger    *slog.Logger
-	readiness ReadinessChecks
+	logger       *slog.Logger
+	readiness    ReadinessChecks
+	identity     *identity.Service
+	academic     *academic.Service
+	origin       string
+	secureCookie bool
+	sessionTTL   time.Duration
 }
 
 type contextKey string
@@ -39,10 +52,21 @@ func New(options Options) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	s := &server{logger: logger, readiness: options.Readiness}
+	s := &server{
+		logger: logger, readiness: options.Readiness,
+		identity: options.Identity, academic: options.Academic,
+		origin:       strings.TrimRight(options.PublicOrigin, "/"),
+		secureCookie: options.SecureCookie, sessionTTL: options.SessionTTL,
+	}
+	if s.sessionTTL <= 0 {
+		s.sessionTTL = 8 * time.Hour
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", requireGet(s.live))
 	mux.HandleFunc("/health/ready", requireGet(s.ready))
+	if s.identity != nil && s.academic != nil {
+		s.registerBusinessRoutes(mux)
+	}
 	mux.HandleFunc("/", s.notFound)
 	return s.requestID(s.recoverPanic(s.accessLog(mux)))
 }

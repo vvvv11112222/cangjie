@@ -22,6 +22,7 @@ services:
       APP_ENV: development
       API_LISTEN_ADDR: 0.0.0.0:8080
       PUBLIC_ORIGIN: http://localhost:8080
+      SESSION_TTL_SECONDS: "28800"
       DATABASE_URL: postgres://teaching:teaching_dev@postgres:5432/teaching?sslmode=disable
       MEDIA_ROOT: /data/media
       WORKER_TEMP_ROOT: /data/worker-tmp

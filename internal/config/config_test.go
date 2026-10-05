@@ -43,6 +43,26 @@ func TestFromLookupRequiresPinnedReportConfiguration(t *testing.T) {
 	}
 }
 
+func TestFromLookupRejectsOriginWithPath(t *testing.T) {
+	_, err := FromLookup(mapLookup(map[string]string{
+		"DATABASE_URL":  "postgres://localhost/teaching",
+		"PUBLIC_ORIGIN": "https://example.test/application",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "PUBLIC_ORIGIN") {
+		t.Fatalf("expected PUBLIC_ORIGIN error, got %v", err)
+	}
+}
+
+func TestFromLookupRejectsInvalidSessionTTL(t *testing.T) {
+	_, err := FromLookup(mapLookup(map[string]string{
+		"DATABASE_URL":        "postgres://localhost/teaching",
+		"SESSION_TTL_SECONDS": "0",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "SESSION_TTL_SECONDS") {
+		t.Fatalf("expected session TTL error, got %v", err)
+	}
+}
+
 func mapLookup(values map[string]string) func(string) (string, bool) {
 	return func(key string) (string, bool) {
 		value, ok := values[key]
