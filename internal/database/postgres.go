@@ -14,7 +14,7 @@ type Pool struct {
 func Open(ctx context.Context, databaseURL string) (*Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse DATABASE_URL: %w", err)
+		return nil, fmt.Errorf("parse DATABASE_URL: invalid connection string")
 	}
 	cfg.MaxConns = 10
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)

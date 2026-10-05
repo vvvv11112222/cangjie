@@ -115,6 +115,14 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 		t.Fatalf("teacher course scope = %#v", items)
 	}
 	requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/courses/"+otherCourse["id"].(string), nil, "", http.StatusNotFound)
+	teacherRoleID := queryID(t, pool, `SELECT id::text FROM teaching.role_bindings WHERE user_id='`+teacherID+`' AND role_code='teacher'`)
+	requestJSON(t, admin, http.MethodDelete, server.URL+"/api/v1/users/"+teacherID+"/role-bindings/"+teacherRoleID, nil, adminCSRF, http.StatusNoContent)
+	for _, resource := range []string{"courses", "class-groups", "offerings"} {
+		page := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/"+resource, nil, "", http.StatusOK)
+		if got := page["items"].([]any); len(got) != 0 {
+			t.Fatalf("revoked teacher %s scope = %#v", resource, got)
+		}
+	}
 
 	bad := newTestClient(t)
 	csrf := getCSRF(t, bad, server.URL)

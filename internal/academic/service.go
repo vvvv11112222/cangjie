@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -165,6 +166,21 @@ func invalid(message string) error {
 	return apperror.New(http.StatusBadRequest, "INVALID_ARGUMENT", message)
 }
 
+type rowGetter interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func canManageOrg(ctx context.Context, q rowGetter, p identity.Principal, orgID string) (bool, error) {
+	if p.Has("sys_admin") {
+		return true, nil
+	}
+	var college *string
+	if err := q.QueryRow(ctx, `SELECT teaching.college_of($1)`, orgID).Scan(&college); err != nil {
+		return false, err
+	}
+	return college != nil && p.Scoped("academic_admin", *college), nil
+}
+
 func (s *Service) canReadCollege(ctx context.Context, p identity.Principal, orgID string, teacherResource, resourceID string) (bool, error) {
 	if p.Has("sys_admin") {
 		return true, nil
@@ -194,14 +210,7 @@ func (s *Service) canReadCollege(ctx context.Context, p identity.Principal, orgI
 	return false, nil
 }
 func (s *Service) canManageOrg(ctx context.Context, p identity.Principal, orgID string) (bool, error) {
-	if p.Has("sys_admin") {
-		return true, nil
-	}
-	var college *string
-	if err := s.pool.QueryRow(ctx, `SELECT teaching.college_of($1)`, orgID).Scan(&college); err != nil {
-		return false, err
-	}
-	return college != nil && p.Scoped("academic_admin", *college), nil
+	return canManageOrg(ctx, s.pool, p, orgID)
 }
 
 func (s *Service) ListOrgUnits(ctx context.Context, p identity.Principal, after string, limit int) ([]OrgUnit, string, error) {
@@ -266,9 +275,26 @@ func (s *Service) PatchOrgUnit(ctx context.Context, p identity.Principal, id str
 	if err := requireSystem(p); err != nil {
 		return OrgUnit{}, err
 	}
-	v, err := s.GetOrgUnit(ctx, p, id)
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return OrgUnit{}, err
+		return OrgUnit{}, fmt.Errorf("begin organization update: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `LOCK TABLE teaching.org_units IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return OrgUnit{}, fmt.Errorf("lock organization hierarchy: %w", err)
+	}
+	if in.ParentID.Set || in.Kind != nil {
+		if _, err := tx.Exec(ctx, `LOCK TABLE teaching.user_accounts, teaching.role_bindings, teaching.courses, teaching.class_groups, teaching.course_offerings IN SHARE MODE`); err != nil {
+			return OrgUnit{}, fmt.Errorf("lock organization references: %w", err)
+		}
+	}
+	var v OrgUnit
+	err = tx.QueryRow(ctx, `SELECT id::text,parent_id::text,code,name,kind FROM teaching.org_units WHERE id=$1 FOR UPDATE`, id).Scan(&v.ID, &v.ParentID, &v.Code, &v.Name, &v.Kind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OrgUnit{}, notFound("organization")
+	}
+	if err != nil {
+		return OrgUnit{}, dbError(err)
 	}
 	parent := v.ParentID
 	if in.ParentID.Set {
@@ -278,8 +304,9 @@ func (s *Service) PatchOrgUnit(ctx context.Context, p identity.Principal, id str
 	if in.Kind != nil {
 		kind = *in.Kind
 	}
-	if in.ParentID.Set || in.Kind != nil {
-		referenced, err := s.orgReferenced(ctx, id)
+	ownershipChanged := !sameStringPointer(parent, v.ParentID) || kind != v.Kind
+	if ownershipChanged {
+		referenced, err := orgSubtreeReferenced(ctx, tx, id)
 		if err != nil {
 			return OrgUnit{}, err
 		}
@@ -287,8 +314,22 @@ func (s *Service) PatchOrgUnit(ctx context.Context, p identity.Principal, id str
 			return OrgUnit{}, apperror.New(http.StatusConflict, "INVALID_STATE", "referenced organization ownership cannot change")
 		}
 	}
-	if err := s.validateOrg(ctx, id, parent, kind); err != nil {
+	if err := validateOrg(ctx, tx, id, parent, kind); err != nil {
 		return OrgUnit{}, err
+	}
+	if ownershipChanged {
+		var invalidChild bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM teaching.org_units child WHERE child.parent_id=$1 AND NOT (
+				($2='school' AND child.kind='college') OR ($2='college' AND child.kind='department')
+			)
+		)`, id, kind).Scan(&invalidChild)
+		if err != nil {
+			return OrgUnit{}, dbError(err)
+		}
+		if invalidChild {
+			return OrgUnit{}, apperror.New(http.StatusConflict, "INVALID_STATE", "organization descendants would have an invalid hierarchy")
+		}
 	}
 	code := v.Code
 	if in.Code != nil {
@@ -301,10 +342,22 @@ func (s *Service) PatchOrgUnit(ctx context.Context, p identity.Principal, id str
 	if code == "" || name == "" {
 		return OrgUnit{}, invalid("organization code and name are required")
 	}
-	err = s.pool.QueryRow(ctx, `UPDATE teaching.org_units SET parent_id=$2,code=$3,name=$4,kind=$5 WHERE id=$1 RETURNING id::text,parent_id::text,code,name,kind`, id, parent, code, name, kind).Scan(&v.ID, &v.ParentID, &v.Code, &v.Name, &v.Kind)
-	return v, dbError(err)
+	err = tx.QueryRow(ctx, `UPDATE teaching.org_units SET parent_id=$2,code=$3,name=$4,kind=$5 WHERE id=$1 RETURNING id::text,parent_id::text,code,name,kind`, id, parent, code, name, kind).Scan(&v.ID, &v.ParentID, &v.Code, &v.Name, &v.Kind)
+	if err != nil {
+		return OrgUnit{}, dbError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return OrgUnit{}, dbError(err)
+	}
+	return v, nil
+}
+func sameStringPointer(left, right *string) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 func (s *Service) validateOrg(ctx context.Context, id string, parent *string, kind string) error {
+	return validateOrg(ctx, s.pool, id, parent, kind)
+}
+func validateOrg(ctx context.Context, q rowGetter, id string, parent *string, kind string) error {
 	if kind != "school" && kind != "college" && kind != "department" {
 		return invalid("invalid organization kind")
 	}
@@ -318,7 +371,7 @@ func (s *Service) validateOrg(ctx context.Context, id string, parent *string, ki
 		return invalid("college and department require a parent")
 	}
 	var parentKind string
-	err := s.pool.QueryRow(ctx, `SELECT kind FROM teaching.org_units WHERE id=$1`, *parent).Scan(&parentKind)
+	err := q.QueryRow(ctx, `SELECT kind FROM teaching.org_units WHERE id=$1`, *parent).Scan(&parentKind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return invalid("parent organization does not exist")
 	}
@@ -330,7 +383,7 @@ func (s *Service) validateOrg(ctx context.Context, id string, parent *string, ki
 	}
 	if id != "" {
 		var cycle bool
-		err = s.pool.QueryRow(ctx, `WITH RECURSIVE descendants AS(SELECT id FROM teaching.org_units WHERE id=$1 UNION ALL SELECT o.id FROM teaching.org_units o JOIN descendants d ON o.parent_id=d.id) SELECT $2::uuid IN(SELECT id FROM descendants)`, id, *parent).Scan(&cycle)
+		err = q.QueryRow(ctx, `WITH RECURSIVE descendants AS(SELECT id FROM teaching.org_units WHERE id=$1 UNION ALL SELECT o.id FROM teaching.org_units o JOIN descendants d ON o.parent_id=d.id) SELECT $2::uuid IN(SELECT id FROM descendants)`, id, *parent).Scan(&cycle)
 		if err != nil {
 			return dbError(err)
 		}
@@ -340,9 +393,18 @@ func (s *Service) validateOrg(ctx context.Context, id string, parent *string, ki
 	}
 	return nil
 }
-func (s *Service) orgReferenced(ctx context.Context, id string) (bool, error) {
+func orgSubtreeReferenced(ctx context.Context, q rowGetter, id string) (bool, error) {
 	var yes bool
-	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.user_accounts WHERE org_unit_id=$1 UNION ALL SELECT 1 FROM teaching.courses WHERE org_unit_id=$1 UNION ALL SELECT 1 FROM teaching.class_groups WHERE org_unit_id=$1 UNION ALL SELECT 1 FROM teaching.course_offerings WHERE org_unit_id=$1)`, id).Scan(&yes)
+	err := q.QueryRow(ctx, `WITH RECURSIVE subtree AS (
+		SELECT id FROM teaching.org_units WHERE id=$1
+		UNION ALL SELECT o.id FROM teaching.org_units o JOIN subtree s ON o.parent_id=s.id
+	) SELECT EXISTS(
+		SELECT 1 FROM teaching.user_accounts WHERE org_unit_id IN (SELECT id FROM subtree)
+		UNION ALL SELECT 1 FROM teaching.role_bindings WHERE scope_org_id IN (SELECT id FROM subtree)
+		UNION ALL SELECT 1 FROM teaching.courses WHERE org_unit_id IN (SELECT id FROM subtree)
+		UNION ALL SELECT 1 FROM teaching.class_groups WHERE org_unit_id IN (SELECT id FROM subtree)
+		UNION ALL SELECT 1 FROM teaching.course_offerings WHERE org_unit_id IN (SELECT id FROM subtree)
+	)`, id).Scan(&yes)
 	return yes, err
 }
 
@@ -429,7 +491,7 @@ func dates(a, b string) (time.Time, time.Time, error) {
 }
 
 func (s *Service) ListCourses(ctx context.Context, p identity.Principal, after string, limit int) ([]Course, string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text,org_unit_id::text,code,name,description FROM teaching.courses c WHERE ($1='' OR id>$1::uuid) AND ($3 OR teaching.college_of(c.org_unit_id)=ANY($4::uuid[]) OR EXISTS(SELECT 1 FROM teaching.course_offerings o WHERE o.course_id=c.id AND o.teacher_id=$5)) ORDER BY id LIMIT $2`, after, limit+1, p.Has("sys_admin"), p.CollegeScopes(), p.UserID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,org_unit_id::text,code,name,description FROM teaching.courses c WHERE ($1='' OR id>$1::uuid) AND ($3 OR teaching.college_of(c.org_unit_id)=ANY($4::uuid[]) OR ($6 AND EXISTS(SELECT 1 FROM teaching.course_offerings o WHERE o.course_id=c.id AND o.teacher_id=$5))) ORDER BY id LIMIT $2`, after, limit+1, p.Has("sys_admin"), p.CollegeScopes(), p.UserID, p.Has("teacher"))
 	if err != nil {
 		return nil, "", err
 	}
@@ -479,29 +541,40 @@ func (s *Service) CreateCourse(ctx context.Context, p identity.Principal, in Cre
 	return v, dbError(err)
 }
 func (s *Service) PatchCourse(ctx context.Context, p identity.Principal, id string, in PatchCourse) (Course, error) {
-	v, err := s.GetCourse(ctx, p, id)
+	if _, err := s.GetCourse(ctx, p, id); err != nil {
+		return Course{}, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
+		return Course{}, fmt.Errorf("begin course update: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockAcademicResources(ctx, tx, "course:"+id); err != nil {
+		return Course{}, err
+	}
+	var v Course
+	err = tx.QueryRow(ctx, `SELECT id::text,org_unit_id::text,code,name,description FROM teaching.courses WHERE id=$1 FOR UPDATE`, id).Scan(&v.ID, &v.OrgUnitID, &v.Code, &v.Name, &v.Description)
+	if err != nil {
+		return Course{}, dbError(err)
+	}
+	if err := requireManageOrg(ctx, tx, p, v.OrgUnitID); err != nil {
 		return Course{}, err
 	}
 	org := v.OrgUnitID
 	if in.OrgUnitID != nil {
 		org = *in.OrgUnitID
 		if org != v.OrgUnitID {
+			if err := requireManageOrg(ctx, tx, p, org); err != nil {
+				return Course{}, err
+			}
 			var used bool
-			if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.course_offerings WHERE course_id=$1)`, id).Scan(&used); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.course_offerings WHERE course_id=$1)`, id).Scan(&used); err != nil {
 				return Course{}, err
 			}
 			if used {
 				return Course{}, apperror.New(http.StatusConflict, "INVALID_STATE", "referenced course ownership cannot change")
 			}
 		}
-	}
-	ok, err := s.canManageOrg(ctx, p, org)
-	if err != nil || !ok {
-		if err != nil {
-			return Course{}, err
-		}
-		return Course{}, apperror.New(http.StatusForbidden, "FORBIDDEN", "organization is outside your scope")
 	}
 	code, name, description := v.Code, v.Name, v.Description
 	if in.Code != nil {
@@ -516,12 +589,18 @@ func (s *Service) PatchCourse(ctx context.Context, p identity.Principal, id stri
 	if code == "" || name == "" {
 		return Course{}, invalid("course code and name are required")
 	}
-	err = s.pool.QueryRow(ctx, `UPDATE teaching.courses SET org_unit_id=$2,code=$3,name=$4,description=$5 WHERE id=$1 RETURNING id::text,org_unit_id::text,code,name,description`, id, org, code, name, description).Scan(&v.ID, &v.OrgUnitID, &v.Code, &v.Name, &v.Description)
-	return v, dbError(err)
+	err = tx.QueryRow(ctx, `UPDATE teaching.courses SET org_unit_id=$2,code=$3,name=$4,description=$5 WHERE id=$1 RETURNING id::text,org_unit_id::text,code,name,description`, id, org, code, name, description).Scan(&v.ID, &v.OrgUnitID, &v.Code, &v.Name, &v.Description)
+	if err != nil {
+		return Course{}, dbError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Course{}, dbError(err)
+	}
+	return v, nil
 }
 
 func (s *Service) ListClassGroups(ctx context.Context, p identity.Principal, after string, limit int) ([]ClassGroup, string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text,org_unit_id::text,code,name,enrollment_year,expected_size FROM teaching.class_groups g WHERE ($1='' OR id>$1::uuid) AND ($3 OR teaching.college_of(g.org_unit_id)=ANY($4::uuid[]) OR EXISTS(SELECT 1 FROM teaching.course_offerings o WHERE o.class_group_id=g.id AND o.teacher_id=$5)) ORDER BY id LIMIT $2`, after, limit+1, p.Has("sys_admin"), p.CollegeScopes(), p.UserID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,org_unit_id::text,code,name,enrollment_year,expected_size FROM teaching.class_groups g WHERE ($1='' OR id>$1::uuid) AND ($3 OR teaching.college_of(g.org_unit_id)=ANY($4::uuid[]) OR ($6 AND EXISTS(SELECT 1 FROM teaching.course_offerings o WHERE o.class_group_id=g.id AND o.teacher_id=$5))) ORDER BY id LIMIT $2`, after, limit+1, p.Has("sys_admin"), p.CollegeScopes(), p.UserID, p.Has("teacher"))
 	if err != nil {
 		return nil, "", err
 	}
@@ -577,29 +656,40 @@ func (s *Service) CreateClassGroup(ctx context.Context, p identity.Principal, in
 	return v, dbError(err)
 }
 func (s *Service) PatchClassGroup(ctx context.Context, p identity.Principal, id string, in PatchClassGroup) (ClassGroup, error) {
-	v, err := s.GetClassGroup(ctx, p, id)
+	if _, err := s.GetClassGroup(ctx, p, id); err != nil {
+		return ClassGroup{}, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
+		return ClassGroup{}, fmt.Errorf("begin class group update: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockAcademicResources(ctx, tx, "class:"+id); err != nil {
+		return ClassGroup{}, err
+	}
+	var v ClassGroup
+	err = tx.QueryRow(ctx, `SELECT id::text,org_unit_id::text,code,name,enrollment_year,expected_size FROM teaching.class_groups WHERE id=$1 FOR UPDATE`, id).Scan(&v.ID, &v.OrgUnitID, &v.Code, &v.Name, &v.EnrollmentYear, &v.ExpectedSize)
+	if err != nil {
+		return ClassGroup{}, dbError(err)
+	}
+	if err := requireManageOrg(ctx, tx, p, v.OrgUnitID); err != nil {
 		return ClassGroup{}, err
 	}
 	org := v.OrgUnitID
 	if in.OrgUnitID != nil {
 		org = *in.OrgUnitID
 		if org != v.OrgUnitID {
+			if err := requireManageOrg(ctx, tx, p, org); err != nil {
+				return ClassGroup{}, err
+			}
 			var used bool
-			if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.course_offerings WHERE class_group_id=$1)`, id).Scan(&used); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.course_offerings WHERE class_group_id=$1)`, id).Scan(&used); err != nil {
 				return ClassGroup{}, err
 			}
 			if used {
 				return ClassGroup{}, apperror.New(http.StatusConflict, "INVALID_STATE", "referenced class ownership cannot change")
 			}
 		}
-	}
-	ok, err := s.canManageOrg(ctx, p, org)
-	if err != nil || !ok {
-		if err != nil {
-			return ClassGroup{}, err
-		}
-		return ClassGroup{}, apperror.New(http.StatusForbidden, "FORBIDDEN", "organization is outside your scope")
 	}
 	code, name := v.Code, v.Name
 	year, size := v.EnrollmentYear, v.ExpectedSize
@@ -621,8 +711,14 @@ func (s *Service) PatchClassGroup(ctx context.Context, p identity.Principal, id 
 	if year == nil || *year < 1900 || *year > 2200 {
 		return ClassGroup{}, invalid("enrollment year is invalid")
 	}
-	err = s.pool.QueryRow(ctx, `UPDATE teaching.class_groups SET org_unit_id=$2,code=$3,name=$4,enrollment_year=$5,expected_size=$6 WHERE id=$1 RETURNING id::text,org_unit_id::text,code,name,enrollment_year,expected_size`, id, org, code, name, year, size).Scan(&v.ID, &v.OrgUnitID, &v.Code, &v.Name, &v.EnrollmentYear, &v.ExpectedSize)
-	return v, dbError(err)
+	err = tx.QueryRow(ctx, `UPDATE teaching.class_groups SET org_unit_id=$2,code=$3,name=$4,enrollment_year=$5,expected_size=$6 WHERE id=$1 RETURNING id::text,org_unit_id::text,code,name,enrollment_year,expected_size`, id, org, code, name, year, size).Scan(&v.ID, &v.OrgUnitID, &v.Code, &v.Name, &v.EnrollmentYear, &v.ExpectedSize)
+	if err != nil {
+		return ClassGroup{}, dbError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ClassGroup{}, dbError(err)
+	}
+	return v, nil
 }
 
 func (s *Service) ListClassrooms(ctx context.Context, _ identity.Principal, after string, limit int) ([]Classroom, string, error) {
@@ -696,7 +792,7 @@ func (s *Service) PatchClassroom(ctx context.Context, p identity.Principal, id s
 }
 
 func (s *Service) ListOfferings(ctx context.Context, p identity.Principal, after string, limit int) ([]Offering, string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status FROM teaching.course_offerings o WHERE ($1='' OR id>$1::uuid) AND ($3 OR teaching.college_of(o.org_unit_id)=ANY($4::uuid[]) OR o.teacher_id=$5) ORDER BY id LIMIT $2`, after, limit+1, p.Has("sys_admin"), p.CollegeScopes(), p.UserID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status FROM teaching.course_offerings o WHERE ($1='' OR id>$1::uuid) AND ($3 OR teaching.college_of(o.org_unit_id)=ANY($4::uuid[]) OR ($6 AND o.teacher_id=$5)) ORDER BY id LIMIT $2`, after, limit+1, p.Has("sys_admin"), p.CollegeScopes(), p.UserID, p.Has("teacher"))
 	if err != nil {
 		return nil, "", err
 	}
@@ -731,23 +827,46 @@ func (s *Service) GetOffering(ctx context.Context, p identity.Principal, id stri
 	return v, nil
 }
 func (s *Service) CreateOffering(ctx context.Context, p identity.Principal, in CreateOffering) (Offering, error) {
-	if err := s.authorizeOffering(ctx, p, in.OrgUnitID, in.TeacherID); err != nil {
-		return Offering{}, err
-	}
 	if in.Status != "active" && in.Status != "archived" {
 		return Offering{}, invalid("invalid offering status")
 	}
 	if clean(in.Code) == "" {
 		return Offering{}, invalid("offering code is required")
 	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Offering{}, fmt.Errorf("begin offering creation: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockAcademicResources(ctx, tx, "course:"+in.CourseID, "class:"+in.ClassGroupID); err != nil {
+		return Offering{}, err
+	}
+	if err := authorizeOffering(ctx, tx, p, in.OrgUnitID, in.TeacherID); err != nil {
+		return Offering{}, err
+	}
 	var v Offering
-	err := s.pool.QueryRow(ctx, `INSERT INTO teaching.course_offerings(org_unit_id,term_id,course_id,teacher_id,class_group_id,code,status) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status`, in.OrgUnitID, in.TermID, in.CourseID, in.TeacherID, in.ClassGroupID, clean(in.Code), in.Status).Scan(&v.ID, &v.OrgUnitID, &v.TermID, &v.CourseID, &v.TeacherID, &v.ClassGroupID, &v.Code, &v.Status)
-	return v, dbError(err)
+	err = tx.QueryRow(ctx, `INSERT INTO teaching.course_offerings(org_unit_id,term_id,course_id,teacher_id,class_group_id,code,status) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status`, in.OrgUnitID, in.TermID, in.CourseID, in.TeacherID, in.ClassGroupID, clean(in.Code), in.Status).Scan(&v.ID, &v.OrgUnitID, &v.TermID, &v.CourseID, &v.TeacherID, &v.ClassGroupID, &v.Code, &v.Status)
+	if err != nil {
+		return Offering{}, dbError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Offering{}, dbError(err)
+	}
+	return v, nil
 }
 func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id string, in PatchOffering) (Offering, error) {
-	v, err := s.GetOffering(ctx, p, id)
-	if err != nil {
+	if _, err := s.GetOffering(ctx, p, id); err != nil {
 		return Offering{}, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Offering{}, fmt.Errorf("begin offering update: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var v Offering
+	err = tx.QueryRow(ctx, `SELECT id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status FROM teaching.course_offerings WHERE id=$1 FOR UPDATE`, id).Scan(&v.ID, &v.OrgUnitID, &v.TermID, &v.CourseID, &v.TeacherID, &v.ClassGroupID, &v.Code, &v.Status)
+	if err != nil {
+		return Offering{}, dbError(err)
 	}
 	org, term, course, teacher, group, code, status := v.OrgUnitID, v.TermID, v.CourseID, v.TeacherID, v.ClassGroupID, v.Code, v.Status
 	if in.OrgUnitID != nil {
@@ -771,7 +890,13 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 	if in.Status != nil {
 		status = *in.Status
 	}
-	if err := s.authorizeOffering(ctx, p, org, teacher); err != nil {
+	if err := lockAcademicResources(ctx, tx, "course:"+v.CourseID, "course:"+course, "class:"+v.ClassGroupID, "class:"+group); err != nil {
+		return Offering{}, err
+	}
+	if err := authorizeOffering(ctx, tx, p, v.OrgUnitID, v.TeacherID); err != nil {
+		return Offering{}, err
+	}
+	if err := authorizeOffering(ctx, tx, p, org, teacher); err != nil {
 		return Offering{}, err
 	}
 	if status != "active" && status != "archived" {
@@ -780,11 +905,99 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 	if code == "" {
 		return Offering{}, invalid("offering code is required")
 	}
-	err = s.pool.QueryRow(ctx, `UPDATE teaching.course_offerings SET org_unit_id=$2,term_id=$3,course_id=$4,teacher_id=$5,class_group_id=$6,code=$7,status=$8 WHERE id=$1 RETURNING id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status`, id, org, term, course, teacher, group, code, status).Scan(&v.ID, &v.OrgUnitID, &v.TermID, &v.CourseID, &v.TeacherID, &v.ClassGroupID, &v.Code, &v.Status)
-	return v, dbError(err)
+	ownershipChanged := org != v.OrgUnitID || term != v.TermID || course != v.CourseID || teacher != v.TeacherID || group != v.ClassGroupID
+	if ownershipChanged {
+		var frozen bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.lesson_sessions WHERE offering_id=$1)`, id).Scan(&frozen); err != nil {
+			return Offering{}, dbError(err)
+		}
+		if frozen {
+			return Offering{}, apperror.New(http.StatusConflict, "INVALID_STATE", "offering ownership cannot change after a lesson exists")
+		}
+	}
+	teacherChanged, groupChanged := teacher != v.TeacherID, group != v.ClassGroupID
+	if teacherChanged || groupChanged {
+		rows, err := tx.Query(ctx, `SELECT id FROM teaching.schedule_entries WHERE offering_id=$1 FOR UPDATE`, id)
+		if err != nil {
+			return Offering{}, dbError(err)
+		}
+		for rows.Next() {
+			var scheduleID string
+			if err := rows.Scan(&scheduleID); err != nil {
+				rows.Close()
+				return Offering{}, dbError(err)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return Offering{}, dbError(err)
+		}
+		rows.Close()
+		if _, err := tx.Exec(ctx, `SET CONSTRAINTS fk_schedule_offering_resources DEFERRED`); err != nil {
+			return Offering{}, dbError(err)
+		}
+	}
+	sets := []string{}
+	args := []any{id}
+	add := func(column string, value any) {
+		args = append(args, value)
+		sets = append(sets, fmt.Sprintf("%s=$%d", column, len(args)))
+	}
+	if org != v.OrgUnitID {
+		add("org_unit_id", org)
+	}
+	if term != v.TermID {
+		add("term_id", term)
+	}
+	if course != v.CourseID {
+		add("course_id", course)
+	}
+	if teacherChanged {
+		add("teacher_id", teacher)
+	}
+	if groupChanged {
+		add("class_group_id", group)
+	}
+	if code != v.Code {
+		add("code", code)
+	}
+	if status != v.Status {
+		add("status", status)
+	}
+	if len(sets) > 0 {
+		query := `UPDATE teaching.course_offerings SET ` + strings.Join(sets, ",") + ` WHERE id=$1 RETURNING id::text,org_unit_id::text,term_id::text,course_id::text,teacher_id::text,class_group_id::text,code,status`
+		if err := tx.QueryRow(ctx, query, args...).Scan(&v.ID, &v.OrgUnitID, &v.TermID, &v.CourseID, &v.TeacherID, &v.ClassGroupID, &v.Code, &v.Status); err != nil {
+			return Offering{}, dbError(err)
+		}
+	}
+	if teacherChanged || groupChanged {
+		scheduleSets := []string{}
+		scheduleArgs := []any{id}
+		if teacherChanged {
+			scheduleArgs = append(scheduleArgs, teacher)
+			scheduleSets = append(scheduleSets, fmt.Sprintf("teacher_id=$%d", len(scheduleArgs)))
+		}
+		if groupChanged {
+			scheduleArgs = append(scheduleArgs, group)
+			scheduleSets = append(scheduleSets, fmt.Sprintf("class_group_id=$%d", len(scheduleArgs)))
+		}
+		if _, err := tx.Exec(ctx, `UPDATE teaching.schedule_entries SET `+strings.Join(scheduleSets, ",")+` WHERE offering_id=$1`, scheduleArgs...); err != nil {
+			return Offering{}, dbError(err)
+		}
+		if _, err := tx.Exec(ctx, `SET CONSTRAINTS fk_schedule_offering_resources IMMEDIATE`); err != nil {
+			return Offering{}, dbError(err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Offering{}, dbError(err)
+	}
+	return v, nil
 }
 func (s *Service) authorizeOffering(ctx context.Context, p identity.Principal, org, teacher string) error {
-	ok, err := s.canManageOrg(ctx, p, org)
+	return authorizeOffering(ctx, s.pool, p, org, teacher)
+}
+func authorizeOffering(ctx context.Context, q rowGetter, p identity.Principal, org, teacher string) error {
+	ok, err := canManageOrg(ctx, q, p, org)
 	if err != nil {
 		return err
 	}
@@ -795,11 +1008,40 @@ func (s *Service) authorizeOffering(ctx context.Context, p identity.Principal, o
 		return nil
 	}
 	var same bool
-	err = s.pool.QueryRow(ctx, `SELECT teaching.college_of(u.org_unit_id)=teaching.college_of($1) FROM teaching.user_accounts u WHERE u.id=$2`, org, teacher).Scan(&same)
+	err = q.QueryRow(ctx, `SELECT teaching.college_of(u.org_unit_id)=teaching.college_of($1) FROM teaching.user_accounts u WHERE u.id=$2`, org, teacher).Scan(&same)
 	if errors.Is(err, pgx.ErrNoRows) || !same {
 		return apperror.New(http.StatusForbidden, "FORBIDDEN", "academic administrators cannot assign a cross-college teacher")
 	}
 	return err
+}
+
+func requireManageOrg(ctx context.Context, q rowGetter, p identity.Principal, orgID string) error {
+	ok, err := canManageOrg(ctx, q, p, orgID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return apperror.New(http.StatusForbidden, "FORBIDDEN", "organization is outside your scope")
+	}
+	return nil
+}
+
+func lockAcademicResources(ctx context.Context, tx pgx.Tx, keys ...string) error {
+	unique := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		unique[key] = struct{}{}
+	}
+	ordered := make([]string, 0, len(unique))
+	for key := range unique {
+		ordered = append(ordered, key)
+	}
+	sort.Strings(ordered)
+	for _, key := range ordered {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "academic-resource:"+key); err != nil {
+			return fmt.Errorf("lock academic resource: %w", err)
+		}
+	}
+	return nil
 }
 
 func dbError(err error) error {
@@ -811,6 +1053,8 @@ func dbError(err error) error {
 		switch pgErr.Code {
 		case "23505":
 			return apperror.WithDetails(http.StatusBadRequest, "INVALID_ARGUMENT", "a unique field already exists", map[string]any{"constraint": pgErr.ConstraintName})
+		case "23P01":
+			return apperror.New(http.StatusConflict, "SCHEDULE_CONFLICT", "schedule conflicts with an existing resource booking")
 		case "23503", "23514", "22P02":
 			return invalid("related resource or field is invalid")
 		}
