@@ -5,15 +5,18 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/config"
 	"github.com/vvvv11112222/cangjie/internal/database"
 	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/httpapi"
+	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/storage"
 )
 
@@ -57,7 +60,16 @@ func run() error {
 			return ledger.Check(ctx)
 		},
 	}
-	handler := httpapi.New(httpapi.Options{Logger: logger, Readiness: checks})
+	origin, _ := url.Parse(cfg.PublicOrigin)
+	handler := httpapi.New(httpapi.Options{
+		Logger:       logger,
+		Readiness:    checks,
+		Identity:     identity.NewService(pool.Pool, cfg.SessionTTL),
+		Academic:     academic.NewService(pool.Pool),
+		PublicOrigin: cfg.PublicOrigin,
+		SecureCookie: origin.Scheme == "https",
+		SessionTTL:   cfg.SessionTTL,
+	})
 	server := &http.Server{
 		Addr:              cfg.APIListenAddr,
 		Handler:           handler,

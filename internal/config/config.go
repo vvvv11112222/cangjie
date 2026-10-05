@@ -30,6 +30,7 @@ type Config struct {
 	VideoTimeout       time.Duration
 	GoStageTimeout     time.Duration
 	ReportEnabled      bool
+	SessionTTL         time.Duration
 }
 
 func Load() (Config, error) {
@@ -75,6 +76,10 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	sessionTTL, err := seconds(value("SESSION_TTL_SECONDS", "28800"), "SESSION_TTL_SECONDS")
+	if err != nil {
+		return Config{}, err
+	}
 
 	budget, err := nonNegativeFloat(value("MODEL_MONTHLY_BUDGET", "0"), "MODEL_MONTHLY_BUDGET")
 	if err != nil {
@@ -96,6 +101,7 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		VideoTimeout:       video,
 		GoStageTimeout:     goStage,
 		ReportEnabled:      budget > 0,
+		SessionTTL:         sessionTTL,
 	}
 	if err := validate(cfg, value, budget); err != nil {
 		return Config{}, err
@@ -113,7 +119,7 @@ func validate(cfg Config, value func(string, string) string, budget float64) err
 		return fmt.Errorf("API_LISTEN_ADDR must be host:port: %w", err)
 	}
 	origin, err := url.ParseRequestURI(cfg.PublicOrigin)
-	if err != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") {
+	if err != nil || origin.Host == "" || (origin.Scheme != "http" && origin.Scheme != "https") || (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.Fragment != "" {
 		return fmt.Errorf("PUBLIC_ORIGIN must be an absolute http(s) URL")
 	}
 	if cfg.AppEnv == "production" && origin.Scheme != "https" {
