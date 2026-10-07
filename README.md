@@ -139,7 +139,8 @@ node tools/check_prototype.mjs
 - **默认读取 `contracts/examples` 固定样例**，不依赖后端，克隆仓库即可离线打开；
 - 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getRevision`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/transcript-revisions/{id}`、`/reports/{id}`；
 - 统一按协议处理 `{data,request_id}`、`{error:{code,message,details}}` 与列表 `{items,next_cursor}`，错误码映射为页面中文提示；
-- 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`，并按 `allowed_actions` 控制操作展示。
+- 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`；页面展示的操作以各资源返回的 `allowed_actions` 为准（服务端逐次授权），账号级能力只在账号区展示。
+- 接口模式下未登录不发请求（页面提示先登录）；退出或换账号会立即清空上一个账号的数据并重新取数，迟到的旧响应会被丢弃。
 
 样例或接口数据之间的引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）仍在页面“样例数据核对”中显式列出，不拼成虚假链路。`/sessions`、`/analysis-runs`、`/results`、`/transcript-revisions`、`/reports` 后端尚未实现，接口模式下页面显示可读的 NOT_FOUND 提示，不回落到假数据。
 
@@ -172,7 +173,7 @@ $env:VITE_DATA_SOURCE = 'api'
 npm run dev
 ```
 
-尚未实现：从课堂列表进入详情的真实导航（接口模式暂时自动选取当前账号可见的第一条课堂/批次）、上传与分析等动作按钮、活动批次每 2 秒轮询。
+尚未实现：从课堂列表进入详情的真实导航（接口模式暂时自动选取当前账号可见的第一条课堂/批次，会按 `next_cursor` 继续翻页查找，最多 10 页）、上传与分析等动作按钮、活动批次每 2 秒轮询。
 
 ## 使用 Codex
 

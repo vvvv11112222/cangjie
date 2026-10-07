@@ -1,8 +1,6 @@
 import type { ReactElement } from 'react';
-import type { Disclosure, SessionTaskView } from '../data/viewModel';
+import type { SessionTaskView } from '../data/viewModel';
 import { useSessionTasks } from '../data/hooks';
-import { filterSessionActions, filterRunActions } from '../data/authorization';
-import { useAuth } from '../auth';
 import {
   formatDateTime,
   jobStageLabel,
@@ -27,19 +25,11 @@ function Reference({ label, id }: { label: string; id: string | null }): ReactEl
 
 export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskView[] } = {}): ReactElement {
   const loaded = useSessionTasks(injectedTasks === undefined);
-  const { capabilities } = useAuth();
-  const tasks = injectedTasks ?? loaded.data;
+  const tasks = injectedTasks ?? loaded.data.tasks;
   const origin = loaded.origin;
-  // 接口模式下按钮按账号 allowed_actions 过滤；对应关系是前端展示约定，这里如实标注。
-  const permissionNotes: Disclosure[] =
-    origin.kind === 'api' && capabilities !== null
-      ? [
-          {
-            tone: 'info',
-            text: '操作按 /auth/me 的 allowed_actions 过滤。该对应关系是前端展示约定，协议未定义，需团队确认；服务端仍会逐次授权。',
-          },
-        ]
-      : [];
+  // 操作展示以各资源返回的 allowed_actions 为准（协议第 1.1 节：前端按 allowed_actions 展示，
+  // 后端逐次授权）。账号级能力只在账号区展示，不用来删减服务端已授予的操作。
+  const truncated = loaded.data.nextCursor !== null;
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空数组假装"没有课堂"。
   const ready = injectedTasks !== undefined || loaded.status === 'ready';
   const head = (
@@ -75,7 +65,14 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {head}
       {notes}
 
-      <Card title="课堂列表" subtitle={`共 ${tasks.length} 个课堂，next_cursor 为 null 表示没有更多分页`}>
+      <Card
+        title="课堂列表"
+        subtitle={
+          truncated
+            ? `共 ${tasks.length} 个课堂，next_cursor 非空：后面还有课堂，分页浏览待后续实现`
+            : `共 ${tasks.length} 个课堂，next_cursor 为 null，已到最后一页`
+        }
+      >
         {tasks.length === 0 ? (
           <p className="empty">
             {origin.kind === 'api' ? '当前账号没有可见的课堂。' : '固定样例中没有课堂。'}
@@ -124,18 +121,15 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                       </div>
                     </td>
                     <td>
-                      {(() => {
-                        const visible = filterSessionActions(session.allowed_actions, capabilities);
-                        return visible.length === 0 ? (
-                          <span className="muted">无</span>
-                        ) : (
-                          <div className="pill-row">
-                            {visible.map((action) => (
-                              <Pill key={action} label={sessionActionLabel(action)} />
-                            ))}
-                          </div>
-                        );
-                      })()}
+                      {session.allowed_actions.length === 0 ? (
+                        <span className="muted">无</span>
+                      ) : (
+                        <div className="pill-row">
+                          {session.allowed_actions.map((action) => (
+                            <Pill key={action} label={sessionActionLabel(action)} />
+                          ))}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -198,10 +192,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                 <span className="muted">{run.report_id ?? 'null'}</span>
               </Field>
               <Field label="run.allowed_actions">
-                {(() => {
-                  const visible = filterRunActions(run.allowed_actions, capabilities);
-                  return visible.length === 0 ? '无' : visible.map(runActionLabel).join('、');
-                })()}
+                {run.allowed_actions.length === 0
+                  ? '无'
+                  : run.allowed_actions.map(runActionLabel).join('、')}
               </Field>
             </div>
 
@@ -212,18 +205,17 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
         ),
       )}
 
-      {tasks.map(({ session, disclosures }) => {
-        const items = [...disclosures, ...permissionNotes];
-        return items.length === 0 ? null : (
+      {tasks.map(({ session, disclosures }) =>
+        disclosures.length === 0 ? null : (
           <Card
             key={`notes-${session.id}`}
             title="样例数据核对"
             subtitle={`${session.title}：这些提示来自数据本身，接入后端后应由服务端状态替代。`}
           >
-            <DisclosureList items={items} />
+            <DisclosureList items={disclosures} />
           </Card>
-        );
-      })}
+        ),
+      )}
     </div>
   );
 }

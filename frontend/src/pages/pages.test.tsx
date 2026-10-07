@@ -4,6 +4,8 @@ import { SessionListPage } from './SessionListPage';
 import { TranscriptPage } from './TranscriptPage';
 import { ReportPage } from './ReportPage';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from '../data/viewModel';
+import type { ReportView, SessionTaskView } from '../data/viewModel';
+import type { ReportAction, SessionAction } from '../types';
 
 describe('三个页面的固定样例渲染', () => {
   it('课堂任务列表显示课堂、批次阶段和允许操作', () => {
@@ -57,5 +59,37 @@ describe('页面默认路径（数据访问层 · 固定样例模式）', () => 
     const html = renderToStaticMarkup(<ReportPage />);
     expect(html).toContain('synthetic-report');
     expect(html).not.toContain('正在读取数据');
+  });
+});
+
+/**
+ * 评审意见 P2：页面必须保留服务端已经授予的资源操作。
+ * 项目文档第 2 节允许教师"修改转写、编辑报告草稿""导出当前发布版报告"，
+ * 后端角色能力里却没有对应的 review/publish，所以前端不能再用账号能力去删减资源操作。
+ */
+describe('资源 allowed_actions 原样展示', () => {
+  it('课堂：教师看到服务端授予的 edit_transcript / analyze', () => {
+    const [task] = buildSessionTasks();
+    const granted: SessionAction[] = ['edit_transcript', 'analyze'];
+    const teacherTask: SessionTaskView = {
+      ...task!,
+      session: { ...task!.session, allowed_actions: granted },
+    };
+
+    const html = renderToStaticMarkup(<SessionListPage tasks={[teacherTask]} />);
+
+    expect(html).toContain('修改转写');
+    expect(html).toContain('提交分析');
+  });
+
+  it('报告：草稿的编辑与导出不被删掉', () => {
+    const view = buildReportView();
+    const granted: ReportAction[] = ['edit', 'export', 'publish'];
+    const withGranted: ReportView = { ...view, report: { ...view.report, allowed_actions: granted } };
+
+    const html = renderToStaticMarkup(<ReportPage view={withGranted} />);
+
+    expect(html).toContain('编辑草稿');
+    expect(html).toContain('导出');
   });
 });

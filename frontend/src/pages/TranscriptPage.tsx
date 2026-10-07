@@ -23,7 +23,7 @@ function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] 
 
 export function TranscriptPage({ view: injectedView }: { view?: TranscriptView } = {}): ReactElement {
   const loaded = useTranscriptData(injectedView === undefined);
-  const view = injectedView ?? loaded.data;
+  const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
   const { results, revision, run, segments, evidence, disclosures } = view;
 
@@ -45,7 +45,7 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
-      {loaded.selection === null ? null : <p className="load-note">{loaded.selection}</p>}
+      {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
     </>
   );
 

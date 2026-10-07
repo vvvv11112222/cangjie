@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 import type { Badge, Tone } from '../format';
 import { shortId } from '../format';
 import type { Disclosure } from '../data/viewModel';
+import type { LoadStatus } from '../data/loadState';
 
 export function BadgeTag({ badge }: { badge: Badge }): ReactElement {
   return <span className={`badge badge-${badge.tone}`}>{badge.label}</span>;
@@ -114,7 +115,7 @@ export function LoadStateNote({
   status,
   error,
 }: {
-  status: 'ready' | 'loading' | 'error';
+  status: LoadStatus;
   error: string | null;
 }): ReactElement | null {
   if (status === 'ready') {
@@ -122,6 +123,9 @@ export function LoadStateNote({
   }
   if (status === 'loading') {
     return <p className="load-note">正在读取数据……</p>;
+  }
+  if (status === 'signed_out') {
+    return <p className="load-note">当前未登录，登录成功后会自动读取数据。</p>;
   }
   return <p className="load-note load-note-error">{error ?? '读取数据失败。'}</p>;
 }

@@ -12,22 +12,69 @@
 import type { Run } from '../types';
 import { ApiError, describeError } from './errors';
 import { dataSource } from './sources';
-import type { DataSource } from './sources';
+import type { DataSource, SessionQuery } from './sources';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
 import type { ReportView, SessionTaskView, TranscriptView } from './viewModel';
 
-/** 当前账号可见的第一个带批次的课堂；没有就返回 null。 */
-function firstSessionWithRun(sessionPage: Awaited<ReturnType<DataSource['getSessions']>>): { title: string; runId: string } | null {
-  const session = sessionPage.items.find((item) => item.latest_run_id !== null) ?? null;
-  if (session === null || session.latest_run_id === null) {
-    return null;
+/**
+ * 一次最多翻多少页课堂列表。协议默认每页 20 条，10 页约 200 条，
+ * 既能让自动选择找到后面的课堂，又不会退化成无界请求。
+ */
+export const MAX_SESSION_PAGES = 10;
+
+interface SessionWalk {
+  items: Awaited<ReturnType<DataSource['getSessions']>>['items'];
+  /** 还有没取到的页（达到上限或提前停下）时为非 null；为 null 表示已经取完。 */
+  nextCursor: string | null;
+}
+
+/**
+ * 逐页取课堂列表。
+ * match 命中时立即停止翻页（自动选择不需要为一条数据翻完整库）；
+ * 列表页不传 match，会一直取到没有下一页或达到页数上限。
+ */
+async function walkSessions(
+  source: DataSource,
+  query: SessionQuery = {},
+  match?: (session: SessionWalk['items'][number]) => boolean,
+): Promise<SessionWalk> {
+  const items: SessionWalk['items'] = [];
+  let cursor: string | undefined;
+
+  for (let page = 0; page < MAX_SESSION_PAGES; page += 1) {
+    const result = await source.getSessions({ ...query, cursor });
+    items.push(...result.items);
+    if (match !== undefined && result.items.some(match)) {
+      return { items, nextCursor: result.next_cursor };
+    }
+    if (result.next_cursor === null) {
+      return { items, nextCursor: null };
+    }
+    cursor = result.next_cursor;
   }
-  return { title: session.title, runId: session.latest_run_id };
+
+  // 到达页数上限：如实告诉调用方后面还有页没取。
+  return { items, nextCursor: cursor ?? null };
+}
+
+/** 只加载当前账号可见的第一页课堂列表，用于需要浏览整个列表的场景。 */
+async function collectSessionPages(
+  source: DataSource,
+  query: SessionQuery = {},
+): Promise<SessionWalk> {
+  return walkSessions(source, query);
+}
+
+export interface SessionTasksLoad {
+  tasks: SessionTaskView[];
+  /** 非 null 表示服务端还有下一页课堂。 */
+  nextCursor: string | null;
 }
 
 /** 课堂任务页：列表 + 每个课堂最新批次（批次读取失败不阻断整页）。 */
-export async function loadSessionTasks(source: DataSource = dataSource): Promise<SessionTaskView[]> {
-  const sessionPage = await source.getSessions();
+export async function loadSessionTasks(source: DataSource = dataSource): Promise<SessionTasksLoad> {
+  const walk = await collectSessionPages(source);
+  const sessionPage = { items: walk.items, next_cursor: walk.nextCursor };
   const runs = new Map<string, Run | null>();
   const runErrors = new Map<string, string>();
 
@@ -46,7 +93,10 @@ export async function loadSessionTasks(source: DataSource = dataSource): Promise
     }),
   );
 
-  return buildSessionTasks({ sessionPage, runs, kind: 'api', draftReport: null, runErrors });
+  return {
+    tasks: buildSessionTasks({ sessionPage, runs, kind: 'api', draftReport: null, runErrors }),
+    nextCursor: walk.nextCursor,
+  };
 }
 
 export interface TranscriptLoad {
@@ -56,18 +106,27 @@ export interface TranscriptLoad {
 }
 
 export async function loadTranscriptView(source: DataSource = dataSource): Promise<TranscriptLoad> {
-  const sessionPage = await source.getSessions();
-  const chosen = firstSessionWithRun(sessionPage);
+  // 逐页找第一个带批次的课堂：第一页没有时继续用 next_cursor 往后找。
+  const walk = await walkSessions(source, {}, (session) => session.latest_run_id !== null);
+  const chosen = walk.items.find((session) => session.latest_run_id !== null) ?? null;
   if (chosen === null) {
     throw new ApiError({
       code: 'NOT_FOUND',
       status: 0,
-      message: '当前账号没有可见的分析批次，暂时没有转写可展示。',
+      message:
+        walk.nextCursor === null
+          ? '当前账号没有可见的分析批次，暂时没有转写可展示。'
+          : `已翻查前 ${MAX_SESSION_PAGES} 页课堂，没有找到带批次的课堂，后面可能还有更多。`,
     });
   }
+  if (chosen.latest_run_id === null) {
+    // match 已保证非 null，这里只是为了类型收窄。
+    throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '该课堂没有最新批次。' });
+  }
+  const runId = chosen.latest_run_id;
 
-  const run = await source.getRun(chosen.runId);
-  const results = await source.getResults(chosen.runId);
+  const run = await source.getRun(runId);
+  const results = await source.getResults(runId);
 
   let revision = null;
   if (results.transcript_revision_id !== null) {
@@ -81,7 +140,7 @@ export async function loadTranscriptView(source: DataSource = dataSource): Promi
 
   return {
     view: buildTranscriptView({ results, revision, run, kind: 'api' }),
-    selection: `当前展示：课堂「${chosen.title}」的最新批次 ${chosen.runId}`,
+    selection: `当前展示：课堂「${chosen.title}」的最新批次 ${runId}`,
   };
 }
 
@@ -91,17 +150,43 @@ export interface ReportLoad {
 }
 
 export async function loadReportView(source: DataSource = dataSource): Promise<ReportLoad> {
-  const sessionPage = await source.getSessions();
-  const session = sessionPage.items.find((item) => item.current_report_id !== null) ?? null;
-  if (session === null || session.current_report_id === null) {
+  // 1) 优先当前发布版：Session.current_report_id 只有发布后才写入。
+  const walk = await walkSessions(source, {}, (session) => session.current_report_id !== null);
+  const sessionPage = { items: walk.items, next_cursor: walk.nextCursor };
+  const published = walk.items.find((item) => item.current_report_id !== null) ?? null;
+
+  // 2) 还没有发布版时，草稿的 id 在批次的 report_id 上（协议：Session.current_report_id 为 null）。
+  let reportId: string | null = null;
+  let selection = '';
+  if (published !== null && published.current_report_id !== null) {
+    reportId = published.current_report_id;
+    selection = `当前展示：课堂「${published.title}」的当前发布版报告`;
+  } else {
+    for (const session of walk.items) {
+      if (session.latest_run_id === null) {
+        continue;
+      }
+      const run = await source.getRun(session.latest_run_id).catch(() => null);
+      if (run !== null && run.report_id !== null) {
+        reportId = run.report_id;
+        selection = `当前展示：课堂「${session.title}」的最新报告草稿（尚未发布）`;
+        break;
+      }
+    }
+  }
+
+  if (reportId === null) {
     throw new ApiError({
       code: 'NOT_FOUND',
       status: 0,
-      message: '当前账号可见的课堂里没有已发布的当前版报告。',
+      message:
+        walk.nextCursor === null
+          ? '当前账号可见的课堂里没有报告，或报告还没有生成。'
+          : `已翻查前 ${MAX_SESSION_PAGES} 页课堂，没有找到报告，后面可能还有更多。`,
     });
   }
 
-  const report = await source.getReport(session.current_report_id);
+  const report = await source.getReport(reportId);
   const results = await source.getResults(report.run_id);
   const run = await source.getRun(report.run_id).catch(() => null);
   const revision =
@@ -111,6 +196,6 @@ export async function loadReportView(source: DataSource = dataSource): Promise<R
 
   return {
     view: buildReportView({ report, results, sessionPage, run, revision, kind: 'api' }),
-    selection: `当前展示：课堂「${session.title}」的当前发布版报告`,
+    selection,
   };
 }

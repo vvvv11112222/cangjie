@@ -1,9 +1,7 @@
 import type { ReactElement } from 'react';
 import type { Evidence } from '../types';
 import { useReportData } from '../data/hooks';
-import type { Disclosure, ReportView } from '../data/viewModel';
-import { filterReportActions } from '../data/authorization';
-import { useAuth } from '../auth';
+import type { ReportView } from '../data/viewModel';
 import {
   coverageStatusBadge,
   dimensionLabel,
@@ -48,23 +46,10 @@ function CitedEvidence({
 
 export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): ReactElement {
   const loaded = useReportData(injectedView === undefined);
-  const { capabilities } = useAuth();
-  const view = injectedView ?? loaded.data;
+  const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
   const { report, session, run, evidenceById, disclosures } = view;
   const published = session !== null && session.current_report_id === report.id;
-  const visibleActions = filterReportActions(report.allowed_actions, capabilities);
-  // 接口模式下按钮按账号 allowed_actions 过滤；对应关系是前端展示约定，这里如实标注。
-  const allDisclosures: Disclosure[] =
-    origin.kind === 'api' && capabilities !== null
-      ? [
-          ...disclosures,
-          {
-            tone: 'info',
-            text: '操作按 /auth/me 的 allowed_actions 过滤。该对应关系是前端展示约定，协议未定义，需团队确认；服务端仍会逐次授权。',
-          },
-        ]
-      : disclosures;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空报告假装"确实没有内容"。
   const ready = injectedView !== undefined || loaded.status === 'ready';
@@ -84,7 +69,7 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
-      {loaded.selection === null ? null : <p className="load-note">{loaded.selection}</p>}
+      {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
     </>
   );
 
@@ -139,9 +124,9 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
             <IdChip id={report.session_id} label="课堂" /> <IdChip id={report.run_id} label="批次" />
           </Field>
           <Field label="allowed_actions">
-            {visibleActions.length === 0
+            {report.allowed_actions.length === 0
               ? '无（只读）'
-              : visibleActions.map(reportActionLabel).join('、')}
+              : report.allowed_actions.map(reportActionLabel).join('、')}
           </Field>
         </div>
       </Card>
@@ -261,7 +246,7 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
       </Card>
 
       <Card title="样例数据核对" subtitle="引用不一致必须显示，不能拼成一条看似完整但实际不存在的链路。">
-        <DisclosureList items={allDisclosures} />
+        <DisclosureList items={disclosures} />
       </Card>
     </div>
   );
