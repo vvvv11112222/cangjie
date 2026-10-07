@@ -132,9 +132,18 @@ node tools/check_prototype.mjs
 
 真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无可启动的 React 或 Worker 服务；当前 Go 服务完成 M0 的后端环境与 M1 联调前置能力，尚未完成 M1 固定样例纵向联调。检查通过仅说明相应契约、SQL、草图行为、已实现接口或度量工具通过，不能代替后续音视频与模型验收。
 
-## 前端（M0 骨架）
+## 前端（M1 数据访问层）
 
-`frontend/` 为 React 19 + Vite + TypeScript 工程，M0 只读取 `contracts/examples` 的固定样例，不连后端。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`）；样例引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）会在页面“样例数据核对”中显式列出，不拼成虚假链路。
+`frontend/` 为 React 19 + Vite + TypeScript 工程。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`），三个页面统一经 `frontend/src/data/` 的数据访问层取数，不再各自读样例文件：
+
+- **默认读取 `contracts/examples` 固定样例**，不依赖后端，克隆仓库即可离线打开；
+- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getRevision`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/transcript-revisions/{id}`、`/reports/{id}`；
+- 统一按协议处理 `{data,request_id}`、`{error:{code,message,details}}` 与列表 `{items,next_cursor}`，错误码映射为页面中文提示；
+- 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`；页面展示的操作以各资源返回的 `allowed_actions` 为准（服务端逐次授权），账号级能力只在账号区展示。
+- 接口模式下未登录不发业务数据请求（页面提示先登录）；确认退出或换账号后清空上一个账号的数据及分页进度，迟到的旧响应会被丢弃。初始化、登录和退出完整流程串行执行；请求中同步拦截重复操作。退出失败保留账号并清除旧 CSRF，重试时重新获取；确认退出成功或会话失效后立即显示匿名，不等待令牌预取。
+- 课堂列表通过“加载更多”继续读取游标，空页仍可继续，失败保留已有课堂并提供重试。转写与报告每轮最多查找 10 页；草稿每轮最多检查 20 个批次，达到预算后显示“继续查找”，保留页内位置和后续游标。报告在当前页优先选择发布版，再查询最新批次的草稿；只有全部查完才提示无结果，循环游标与接口读取失败各自保留真实错误。
+
+样例或接口数据之间的引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）仍在页面“样例数据核对”中显式列出，不拼成虚假链路。`/sessions`、`/analysis-runs`、`/results`、`/transcript-revisions`、`/reports` 后端尚未实现，接口模式下页面显示可读的 NOT_FOUND 提示，不回落到假数据。
 
 ```powershell
 cd frontend
@@ -143,7 +152,53 @@ npm run dev        # 开发服务器，默认 http://localhost:5173
 npm run check      # tsc --noEmit + vitest + vite build
 ```
 
-`vite.config.ts` 已把 `/api` 代理到 `http://127.0.0.1:8080` 作为 M1 接入点，构建产物 `frontend/dist` 由 Go 同源提供。M0 尚未实现登录、鉴权、真实 API 调用与活动批次轮询。
+`vite.config.ts` 已把 `/api` 代理到 `http://127.0.0.1:8080`，构建产物 `frontend/dist` 由 Go 同源提供。
+
+### 接口模式联调
+
+写请求要求 `Origin` 与 `PUBLIC_ORIGIN` 完全一致，本地用 Vite 开发服务器联调时必须在 `.env` 里把 `PUBLIC_ORIGIN` 改成前端的访问地址，否则登录会被判为 403：
+
+```text
+# .env
+PUBLIC_ORIGIN=http://localhost:5173
+DATABASE_URL=postgres://teaching:本地密码@127.0.0.1:5432/teaching?sslmode=disable
+```
+
+```powershell
+$env:BOOTSTRAP_TEST_PASSWORD = '<至少12位的本地测试密码>'
+go run ./cmd/seed-dev     # 建 admin / academic_demo / supervisor_demo / teacher_demo
+go run ./cmd/api          # 新开一个终端保持运行
+
+cd frontend
+$env:VITE_DATA_SOURCE = 'api'
+npm run dev
+```
+
+尚未实现：从课堂列表进入指定详情的真实导航（接口模式暂时自动查找可见结果，可通过“继续查找”越过单轮预算）、上传与分析等动作按钮、活动批次每 2 秒轮询。
+
+### PR #7 浏览器回归
+
+[回归脚本](frontend/tools/browser-regression.mjs)用真实 React 页面和受控接口响应检查认证竞态、分页、续查、错误与窄屏导航；不向真实后端写入数据，不替代真实 Cookie、多标签页及 Go 服务联调。使用已安装的 Playwright 包和 Microsoft Edge，无需修改项目依赖锁文件。以下命令均在仓库根目录执行：
+
+```powershell
+$env:VITE_DATA_SOURCE = 'api'
+Push-Location frontend
+try {
+    npm run build -- --outDir ../var/frontend-api
+} finally {
+    Pop-Location
+    Remove-Item Env:VITE_DATA_SOURCE
+}
+python -m http.server 18767 --bind 127.0.0.1 --directory var/frontend-api
+```
+
+保持静态服务运行，在另一个终端执行（将参数替换为本机现有 Playwright 包的入口文件）：
+
+```powershell
+node frontend/tools/browser-regression.mjs '<已安装的playwright包目录>/index.mjs'
+```
+
+脚本失败时返回非零退出码；成功时在 `output/playwright/` 保存 JSON 结果和窄屏截图。静态服务仅用于受控回归，真实接口模式仍按上面的同源服务或 Vite 代理运行。
 
 ## 使用 Codex
 

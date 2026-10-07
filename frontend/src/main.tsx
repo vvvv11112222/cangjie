@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { AuthProvider } from './auth';
 import './styles.css';
 
 const container = document.getElementById('root');
@@ -10,6 +11,9 @@ if (container === null) {
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    {/* 登录状态在根部取一次，三个页面共用。 */}
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </StrictMode>,
 );

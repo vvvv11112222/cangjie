@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { Evidence, Segment } from '../types';
-import { buildTranscriptView, fixturePaths } from '../data/viewModel';
+import { useTranscriptData } from '../data/hooks';
 import type { TranscriptView } from '../data/viewModel';
 import {
   evidenceAvailabilityBadge,
@@ -14,34 +14,55 @@ import {
   speakerLabel,
   truncateHash,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote } from '../components/ui';
 
 /** 证据与片段的业务关联在后端建立；样例用 provenance.source_segment_no 表达。 */
 function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] {
   return evidence.filter((item) => item.provenance['source_segment_no'] === segment.segment_no);
 }
 
-export function TranscriptPage({
-  view = buildTranscriptView(),
-}: {
-  view?: TranscriptView;
-}): ReactElement {
+export function TranscriptPage({ view: injectedView }: { view?: TranscriptView } = {}): ReactElement {
+  const loaded = useTranscriptData(injectedView === undefined);
+  const view = injectedView ?? loaded.data.view;
+  const origin = loaded.origin;
   const { results, revision, run, segments, evidence, disclosures } = view;
+
+  // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免把空数组当成"确实没有转写"。
+  const ready = injectedView !== undefined || loaded.hasData;
+  const head = (
+    <header className="page-head">
+      <div>
+        <p className="eyebrow">转写与证据</p>
+        <h1>转写</h1>
+        <p className="muted">
+          片段起止时间为原录像起点的整数毫秒；speaker_label 为 unknown 表示未知说话人，不是空值。
+        </p>
+      </div>
+      {ready ? <BadgeTag badge={runStatusBadge(results.run_status)} /> : null}
+    </header>
+  );
+  const notes = (
+    <>
+      <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
+      <LoadStateNote status={loaded.status} error={loaded.error} />
+      <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
+      {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
+    </>
+  );
+
+  if (!ready) {
+    return (
+      <div className="page">
+        {head}
+        {notes}
+      </div>
+    );
+  }
 
   return (
     <div className="page">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">转写与证据</p>
-          <h1>转写</h1>
-          <p className="muted">
-            片段起止时间为原录像起点的整数毫秒；speaker_label 为 unknown 表示未知说话人，不是空值。
-          </p>
-        </div>
-        <BadgeTag badge={runStatusBadge(results.run_status)} />
-      </header>
-
-      <DataSourceNote sources={[fixturePaths.results, fixturePaths.revision]} />
+      {head}
+      {notes}
 
       <Card
         title="结果摘要"

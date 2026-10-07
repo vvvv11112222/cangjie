@@ -1,0 +1,161 @@
+/**
+ * 前端登录状态（React 侧）：真正的会话规则在 data/sessionFlow.ts，这里只做状态保存与分发。
+ *
+ * 为什么单独放一层：三个页面都需要知道"当前是哪个会话、账号有哪些 allowed_actions"，
+ * 如果各自去取，就会出现三次 /auth/me 请求和三种不一致的状态。这里在应用根部取一次，
+ * 页面通过 useAuth() 读：sessionKey 变化（登录、退出、换账号）时页面数据自动重新加载。
+ *
+ * 固定样例模式（VITE_DATA_SOURCE 未设为 api）没有后端，状态固定为 offline，
+ * 页面也不再请求接口，展示与 M0 一致。
+ */
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import type { AccountAction, AccountMe } from './data/authApi';
+import { isApiMode } from './data/sources';
+import { CHECKING, OFFLINE, bootstrapSession, capabilitiesOf, sessionKeyOf, signIn, signOut, serializeSessionOperation } from './data/sessionFlow';
+import type { AuthStatus, SessionState } from './data/sessionFlow';
+
+export type { AuthStatus };
+export { sessionKeyOf };
+
+export interface AuthContextValue {
+  status: AuthStatus;
+  me: AccountMe | null;
+  error: string | null;
+  /** 账号级能力，用于账号区展示；资源能否操作以各资源返回的 allowed_actions 为准。 */
+  capabilities: readonly AccountAction[] | null;
+  /**
+   * 会话标识：登录、退出、换账号都会变化，同一账号重新登录也会得到新值。
+   * 页面钩子用它做依赖，切换时立即清空旧数据并重新取数。
+   */
+  sessionKey: string;
+  busy: boolean;
+  login(username: string, password: string): Promise<boolean>;
+  logout(): Promise<void>;
+  clearError(): void;
+}
+
+const OFFLINE_VALUE: AuthContextValue = {
+  status: 'offline',
+  me: null,
+  error: null,
+  capabilities: null,
+  sessionKey: 'offline#0',
+  busy: false,
+  async login() {
+    return false;
+  },
+  async logout() {},
+  clearError() {},
+};
+
+const AuthContext = createContext<AuthContextValue>(OFFLINE_VALUE);
+
+export function AuthProvider({ children }: { children: ReactNode }): ReactElement {
+  const api = isApiMode();
+  const [session, setSession] = useState<SessionState>(() => (api ? CHECKING : OFFLINE));
+  /**
+   * 每次成功登录自增，拼进 sessionKey。
+   * 这样"同一个账号退出后再登录"也会被当成新会话：不会因为 key 与上一次相同，
+   * 而把上次加载好的数据先显示一帧。
+   */
+  const [generation, setGeneration] = useState(0);
+  // signOut 需要在失败时原样保留当前会话，用一个 ref 读到最新的 session。
+  const sessionRef = useRef(session);
+  const busyRef = useRef(api);
+  const [busy, setBusy] = useState(api);
+  const mounted = useRef(false);
+  const bootstrap = useRef<Promise<SessionState> | null>(null);
+  const publish = useCallback((next: SessionState) => {
+    sessionRef.current = next;
+    setSession(next);
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    if (!api) {
+      return () => { mounted.current = false; };
+    }
+    let cancelled = false;
+    void (async () => {
+      // StrictMode 的 effect 重放复用同一个初始化流程。
+      const next = await (bootstrap.current ??= serializeSessionOperation(bootstrapSession));
+      if (!cancelled) {
+        publish(next);
+        busyRef.current = false;
+        setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      mounted.current = false;
+    };
+  }, [api, publish]);
+
+  const login = useCallback(
+    async (username: string, password: string): Promise<boolean> => {
+      if (!api) {
+        setSession((current) => ({ ...current, error: '固定样例模式未接入后端，无法登录。' }));
+        return false;
+      }
+      // 同步锁先于 React 渲染生效，双击或程序调用也不能产生重叠认证请求。
+      if (busyRef.current || !mounted.current) return false;
+      busyRef.current = true;
+      setBusy(true);
+      publish(CHECKING);
+      // 登录成功后 me 变化会让 sessionKeyOf 改变，页面钩子据此重新取数。
+      try {
+        const next = await serializeSessionOperation(() => signIn(username, password));
+        if (!mounted.current) return false;
+        if (next.status === 'authenticated') setGeneration((value) => value + 1);
+        publish(next);
+        return next.status === 'authenticated';
+      } finally {
+        busyRef.current = false;
+        if (mounted.current) setBusy(false);
+      }
+    },
+    [api, publish],
+  );
+
+  const logout = useCallback(async (): Promise<void> => {
+    if (!api || busyRef.current || !mounted.current) {
+      return;
+    }
+    // 服务端撤销失败时 signOut 会保留当前会话，界面据此显示"退出失败、可重试"。
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const next = await serializeSessionOperation(() => signOut(sessionRef.current));
+      if (mounted.current) publish(next);
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }, [api, publish]);
+
+  const clearError = useCallback(() => setSession((current) => ({ ...current, error: null })), []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      status: session.status,
+      me: session.me,
+      error: session.error,
+      capabilities: capabilitiesOf(session),
+      sessionKey: `${sessionKeyOf(session)}#${generation}`,
+      busy,
+      login,
+      logout,
+      clearError,
+    }),
+    [session, generation, busy, login, logout, clearError],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/** 没有 Provider 时返回 offline 默认值，页面测试可以单独渲染而不必包一层。 */
+export function useAuth(): AuthContextValue {
+  return useContext(AuthContext);
+}

@@ -19,6 +19,7 @@ import type {
   SessionAction,
   SessionStatus,
 } from './types';
+import type { AccountAction, RoleCode } from './data/authApi';
 
 export type Tone = 'green' | 'blue' | 'amber' | 'red' | 'gray';
 
@@ -219,6 +220,28 @@ export const sourceTypeBadge = (value: RevisionSourceType): Badge => SOURCE_TYPE
 export const sessionActionLabel = (value: SessionAction): string => SESSION_ACTION[value];
 export const runActionLabel = (value: RunAction): string => RUN_ACTION[value];
 export const reportActionLabel = (value: ReportAction): string => REPORT_ACTION[value];
+
+/** 账号角色与账号级能力的中文文案，用于顶栏/侧栏的账号区。 */
+const ROLE: Record<RoleCode, string> = {
+  sys_admin: '系统管理员',
+  academic_admin: '学院教务',
+  supervisor: '教学督导',
+  teacher: '任课教师',
+};
+
+const ACCOUNT_ACTION: Record<AccountAction, string> = {
+  manage_academic: '维护基础资料',
+  manage_users: '维护账号',
+  upload: '上传录像',
+  analyze: '提交分析',
+  review: '复核',
+  publish: '发布',
+  operate: '运维',
+  delete: '删除',
+};
+
+export const roleLabel = (value: RoleCode): string => ROLE[value];
+export const accountActionLabel = (value: AccountAction): string => ACCOUNT_ACTION[value];
 
 /** unknown 表示未知说话人，不是空值；只有 null 才表示缺失。 */
 export function speakerLabel(value: string): string {

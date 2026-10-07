@@ -1,11 +1,11 @@
 /**
- * 读取固定 JSON 样例时的最小运行期守卫。
- * 目的是在样例与协议漂移时给出可定位的错误，而不是让页面静默渲染 undefined。
+ * 读取 JSON 数据（固定样例或接口响应）时的最小运行期守卫。
+ * 目的是在数据与协议漂移时给出可定位的错误，而不是让页面静默渲染 undefined。
  * 完整结构、字段全集和业务语义仍以 `python tools/check_docs.py` 为准。
  */
 
 export function guardFail(path: string, detail: string): never {
-  throw new Error(`固定样例不符合协议：${path} ${detail}`);
+  throw new Error(`数据不符合协议：${path} ${detail}`);
 }
 
 export function asRecord(value: unknown, path: string): Record<string, unknown> {

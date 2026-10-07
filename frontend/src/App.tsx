@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { AccountBar } from './components/AccountBar';
+import { DATA_SOURCE_KIND, DATA_SOURCE_LABEL } from './data/sources';
 import { ReportPage } from './pages/ReportPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
@@ -58,6 +60,10 @@ function useHashRoute(): string {
 export function App(): ReactElement {
   const hash = useHashRoute();
   const route = NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  const dataBadge =
+    DATA_SOURCE_KIND === 'api'
+      ? `${DATA_SOURCE_LABEL.api} · 走 /api/v1`
+      : `${DATA_SOURCE_LABEL.fixtures} · 未接入后端`;
 
   return (
     <div className="layout">
@@ -70,10 +76,11 @@ export function App(): ReactElement {
           </div>
         </div>
         <NavLinks current={route.path} />
+        <AccountBar />
         <div className="sidebar-note">
-          <p>M0 前端骨架</p>
+          <p>M1 数据访问层</p>
           <p className="tiny">
-            仅读取 contracts/examples 固定样例；登录、权限与真实数据在 M1 接入 Go。
+            默认读取 contracts/examples 固定样例；设 VITE_DATA_SOURCE=api 时改走 /api/v1。
           </p>
         </div>
       </aside>
@@ -85,7 +92,7 @@ export function App(): ReactElement {
             <span className="crumb-divider">/</span>
             <strong>{route.title}</strong>
           </div>
-          <span className="prototype-badge">固定样例 · 未接入后端</span>
+          <span className="prototype-badge">{dataBadge}</span>
         </header>
         <main id="main">{PAGES[route.path]()}</main>
         <footer className="workspace-footer">

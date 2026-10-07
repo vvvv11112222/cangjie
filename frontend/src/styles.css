@@ -155,6 +155,87 @@ code {
   margin-bottom: 4px;
 }
 
+/*
+ * 账号区：放在侧栏导航下方 —— 宽屏在左栏，窄屏随侧栏一起变成顶部栏的第二行。
+ * 未登录时只占一个按钮，点开才展开表单，避免长期挤占导航空间。
+ */
+.account-bar {
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #14383f;
+  color: #cfe2e2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-title {
+  font-size: 13px;
+  color: #eafaf5;
+}
+
+.account-sub {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #8fb0b5;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #8fb0b5;
+}
+
+.account-field input {
+  width: 100%;
+  border: 1px solid #2b5a60;
+  border-radius: 6px;
+  background: #0f2c32;
+  color: #eafaf5;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.account-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.account-button {
+  border: 1px solid #2f6b64;
+  border-radius: 6px;
+  background: #28534f;
+  color: #eafaf5;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.account-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.account-button-plain {
+  background: transparent;
+  color: #aac0c5;
+}
+
+.account-error {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #ffd3cd;
+}
+
 .workspace {
   flex: 1;
   min-width: 0;
@@ -263,6 +344,17 @@ code {
   background: #d8ebe1;
   color: #3f7360;
   font-size: 10px;
+}
+
+/* 数据访问层的加载/失败提示，放在来源说明下方。 */
+.load-note {
+  margin: -6px 0 14px;
+  font-size: 11px;
+  color: #6f7f85;
+}
+
+.load-note-error {
+  color: #a4442f;
 }
 
 .card {
@@ -718,6 +810,8 @@ code {
     z-index: 30;
     width: 100%;
     flex-direction: row;
+    /* 账号区（含展开的登录表单）换到第二行，不把导航项挤出可点区域。 */
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
     padding: 9px 16px;
@@ -752,6 +846,30 @@ code {
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .account-bar {
+    width: 100%;
+    margin-top: 2px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .account-sub {
+    display: none;
+  }
+
+  .account-form {
+    width: 100%;
+    flex-direction: row;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .account-field {
+    flex: 1 1 120px;
   }
 
   .nav-item {
