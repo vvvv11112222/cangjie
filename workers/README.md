@@ -71,7 +71,7 @@ docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.0 .
 docker run --rm cangjie-video-worker:1.0.0 python -m workers runtime-info
 ```
 
-运行时显式传入前述环境变量及可写临时目录。容器中的 `127.0.0.1` 指容器自身；后端地址使用共同网络中的 Go 服务名。当前机器未安装 Docker，容器构建及 Linux 集成仍需共同环境验收。
+运行时显式传入前述环境变量及可写临时目录。容器中的 `127.0.0.1` 指容器自身；后端地址使用共同网络中的 Go 服务名。[GitHub 检查](https://github.com/vvvv11112222/cangjie/actions/runs/37630242939)已通过 Linux/Windows 测试、CPU 容器构建、运行信息与容器内测试。共同环境中的真实 Go 和 GPU 样本联调仍待验收。
 
 ## 使用已有行为分析
 

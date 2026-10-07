@@ -6,11 +6,13 @@
 
 | Commit | 内容 | 对队伍的作用 |
 | --- | --- | --- |
-| `08bca80` | `feat(video): deliver P0 worker and reuse validated vision engine` | 加入正式媒体 Worker、公共任务通信、既有视觉算法、模型清单、测试与评测工具 |
-| `d4b74b2` | `docs(video): document setup handoff and measured acceptance` | 提供安装启动、队友接入说明、真实录像对照和速度验证记录 |
-| `498211b` | `ci(video): verify Windows Linux and CPU container` | 增加 Windows、Linux 自动测试及 CPU 容器构建与测试 |
+| [08bca80](https://github.com/vvvv11112222/cangjie/commit/08bca804c398948bc99c08c66b13e52446eafab5) | `feat(video): deliver P0 worker and reuse validated vision engine` | 加入正式媒体 Worker、公共任务通信、既有视觉算法、模型清单、测试与评测工具 |
+| [d4b74b2](https://github.com/vvvv11112222/cangjie/commit/d4b74b2e91ae8538d2f597dec3a69c7df0ba6832) | `docs(video): document setup handoff and measured acceptance` | 提供安装启动、队友接入说明、真实录像对照和速度验证记录 |
+| [498211b](https://github.com/vvvv11112222/cangjie/commit/498211ba21fea995fa906679fc36d8699a9e745a) | `ci(video): verify Windows Linux and CPU container` | 增加 Windows、Linux 自动测试及 CPU 容器构建与测试 |
+| [086e0fd](https://github.com/vvvv11112222/cangjie/commit/086e0fdc32c595a5a6bf3649260fb570d0976638) | `docs(video): add commits report and align latest team status` | 编写 commits 报告，修正根 README 过时的实现状态，记录最新主分支基线 |
+| [a21166e](https://github.com/vvvv11112222/cangjie/commit/a21166e563a48285edc653d50b9df4ce06810401) | `fix(video): support fresh checkouts and Windows CI runtime` | 修复首次下载缺少临时目录的问题，为 Windows 选择可安装的 Python 3.12.10，完整检查通过 |
 
-本报告与 README 状态修正在后续文档提交中保存。完整历史可执行 `git log --oneline 8827ed2..feat/vision-worker` 查看；本报告不填写自身的提交摘要，避免修改报告后摘要再次改变。
+PR：[视频工程师交付 #8](https://github.com/vvvv11112222/cangjie/pull/8)，已上传，等待团队审查。本轮验收结果在后续文档提交中保存；完整历史可执行 `git log --oneline 8827ed2..feat/vision-worker` 查看。本报告不填写最新文档提交自身的摘要，避免修改报告后摘要再次改变。
 
 ## 2. 已完成的工作
 
@@ -28,7 +30,8 @@ P0 完成接口保持契约 1.1，行为事件为空，模型信息为 null。�
 ## 3. 检查结果
 
 - 本机既有 Python 3.12 环境：54 项测试通过，协议检查通过 133 个案例、81 个端点映射。
-- 全部固定依赖从 PyPI 下载并安装到 Windows Python 3.12 独立环境，54 项测试通过（11.30 秒），实际 FFmpeg 运行信息检查通过；未修改原示例运行环境。GitHub 自动检查结果在完成后补记。
+- 全部固定依赖从 PyPI 下载并安装到 Windows Python 3.12 独立环境，54 项测试通过（11.30 秒），实际 FFmpeg 运行信息检查通过；未修改原示例运行环境。再从提交解压到新目录验证，54 项测试通过（11.99 秒），协议与文档检查通过。
+- [GitHub 自动检查](https://github.com/vvvv11112222/cangjie/actions/runs/37630242939)：Ubuntu 24.04、Windows 2025 两个环境的安装、依赖、协议、运行信息和完整测试均通过；CPU Docker 镜像构建、运行信息与容器内完整测试通过。检查对应 `a21166e`，采用合成媒体，无 GPU 权重与真实学生数据。
 - 真实近景和密集录像完成 P0 模拟 HTTP 联调；源录像、播放代理、关键帧时间与协议回传均检查通过。模拟服务不是正式 Go 后端。
 - Git 中不包含真实课堂媒体、人物明细、人工标签、模型权重或登录凭据。
 
