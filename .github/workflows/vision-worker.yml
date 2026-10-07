@@ -25,7 +25,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        include:
+          - os: ubuntu-24.04
+            python: '3.12.14'
+          - os: windows-2025
+            python: '3.12.10'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
@@ -37,7 +41,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: '3.12.14'
+          python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: workers/requirements.lock
       - name: Install locked dependencies

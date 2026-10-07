@@ -10,6 +10,11 @@ from workers.common.config import Settings
 from workers.vision_core.media import digest_file, ffmpeg_executable
 
 
+def pytest_configure(config):
+    if config.option.basetemp:
+        Path(config.option.basetemp).resolve().parent.mkdir(parents=True, exist_ok=True)
+
+
 @pytest.fixture
 def source(tmp_path):
     file = tmp_path / "synthetic.mp4"
