@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
 	"github.com/vvvv11112222/cangjie/internal/identity"
@@ -905,7 +906,7 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 	if code == "" {
 		return Offering{}, invalid("offering code is required")
 	}
-	ownershipChanged := org != v.OrgUnitID || term != v.TermID || course != v.CourseID || teacher != v.TeacherID || group != v.ClassGroupID
+	ownershipChanged := !sameUUID(org, v.OrgUnitID) || !sameUUID(term, v.TermID) || !sameUUID(course, v.CourseID) || !sameUUID(teacher, v.TeacherID) || !sameUUID(group, v.ClassGroupID)
 	if ownershipChanged {
 		var frozen bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.lesson_sessions WHERE offering_id=$1)`, id).Scan(&frozen); err != nil {
@@ -915,7 +916,7 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 			return Offering{}, apperror.New(http.StatusConflict, "INVALID_STATE", "offering ownership cannot change after a lesson exists")
 		}
 	}
-	teacherChanged, groupChanged := teacher != v.TeacherID, group != v.ClassGroupID
+	teacherChanged, groupChanged := !sameUUID(teacher, v.TeacherID), !sameUUID(group, v.ClassGroupID)
 	if teacherChanged || groupChanged {
 		rows, err := tx.Query(ctx, `SELECT id FROM teaching.schedule_entries WHERE offering_id=$1 FOR UPDATE`, id)
 		if err != nil {
@@ -933,7 +934,7 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 			return Offering{}, dbError(err)
 		}
 		rows.Close()
-		if _, err := tx.Exec(ctx, `SET CONSTRAINTS fk_schedule_offering_resources DEFERRED`); err != nil {
+		if _, err := tx.Exec(ctx, `SET CONSTRAINTS teaching.fk_schedule_offering_resources DEFERRED`); err != nil {
 			return Offering{}, dbError(err)
 		}
 	}
@@ -943,13 +944,13 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 		args = append(args, value)
 		sets = append(sets, fmt.Sprintf("%s=$%d", column, len(args)))
 	}
-	if org != v.OrgUnitID {
+	if !sameUUID(org, v.OrgUnitID) {
 		add("org_unit_id", org)
 	}
-	if term != v.TermID {
+	if !sameUUID(term, v.TermID) {
 		add("term_id", term)
 	}
-	if course != v.CourseID {
+	if !sameUUID(course, v.CourseID) {
 		add("course_id", course)
 	}
 	if teacherChanged {
@@ -984,7 +985,7 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 		if _, err := tx.Exec(ctx, `UPDATE teaching.schedule_entries SET `+strings.Join(scheduleSets, ",")+` WHERE offering_id=$1`, scheduleArgs...); err != nil {
 			return Offering{}, dbError(err)
 		}
-		if _, err := tx.Exec(ctx, `SET CONSTRAINTS fk_schedule_offering_resources IMMEDIATE`); err != nil {
+		if _, err := tx.Exec(ctx, `SET CONSTRAINTS teaching.fk_schedule_offering_resources IMMEDIATE`); err != nil {
 			return Offering{}, dbError(err)
 		}
 	}
@@ -993,6 +994,18 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 	}
 	return v, nil
 }
+
+func sameUUID(a, b string) bool {
+	var left, right pgtype.UUID
+	if err := left.Scan(a); err != nil {
+		return false
+	}
+	if err := right.Scan(b); err != nil {
+		return false
+	}
+	return left == right
+}
+
 func (s *Service) authorizeOffering(ctx context.Context, p identity.Principal, org, teacher string) error {
 	return authorizeOffering(ctx, s.pool, p, org, teacher)
 }

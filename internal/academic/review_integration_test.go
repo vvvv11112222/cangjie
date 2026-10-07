@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
 	"github.com/vvvv11112222/cangjie/internal/database"
@@ -34,6 +36,15 @@ func newReviewFixture(t *testing.T) reviewFixture {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
+	fixtureLock, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixtureLock.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended('cangjie_integration_test_fixture', 0))`); err != nil {
+		fixtureLock.Close(ctx) //nolint:errcheck
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { fixtureLock.Close(context.Background()) })
 	migrationDir, err := filepath.Abs(filepath.Join("..", "..", "database"))
 	if err != nil {
 		t.Fatal(err)
@@ -232,6 +243,37 @@ func TestPatchOfferingSynchronizesSchedulesAndRollsBackConflicts(t *testing.T) {
 	}
 	if got := scanID(t, f.pool, `SELECT class_group_id::text FROM teaching.schedule_entries WHERE id=$1`, scheduleID); got != replacementGroup {
 		t.Fatalf("schedule class changed after rollback: %s", got)
+	}
+}
+
+func TestPatchOfferingWithoutSchedulesUpdatesOnDefaultSearchPath(t *testing.T) {
+	f := newReviewFixture(t)
+	svc := NewService(f.pool)
+	admin := identity.Principal{Roles: []identity.RoleBinding{{RoleCode: "sys_admin"}}}
+
+	got, err := svc.PatchOffering(context.Background(), admin, f.offeringB, PatchOffering{TeacherID: &f.teacherC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TeacherID != f.teacherC {
+		t.Fatalf("offering teacher=%s want=%s", got.TeacherID, f.teacherC)
+	}
+}
+
+func TestPatchOfferingTreatsUppercaseUUIDsAsUnchanged(t *testing.T) {
+	f := newReviewFixture(t)
+	ctx := context.Background()
+	_ = scanID(t, f.pool, `INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by) VALUES($1,'Lesson','2026-10-01 09:00+08','2026-10-01 10:00+08',$2) RETURNING id::text`, f.offeringB, f.teacherB)
+	svc := NewService(f.pool)
+	admin := identity.Principal{Roles: []identity.RoleBinding{{RoleCode: "sys_admin"}}}
+	uppercaseTeacher := strings.ToUpper(f.teacherB)
+
+	got, err := svc.PatchOffering(ctx, admin, f.offeringB, PatchOffering{TeacherID: &uppercaseTeacher})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TeacherID != f.teacherB {
+		t.Fatalf("offering teacher=%s want=%s", got.TeacherID, f.teacherB)
 	}
 }
 
