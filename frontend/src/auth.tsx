@@ -25,7 +25,10 @@ export interface AuthContextValue {
   error: string | null;
   /** 账号级能力，用于账号区展示；资源能否操作以各资源返回的 allowed_actions 为准。 */
   capabilities: readonly AccountAction[] | null;
-  /** 会话标识；登录、退出、换账号都会变化，页面据此重新取数。 */
+  /**
+   * 会话标识：登录、退出、换账号都会变化，同一账号重新登录也会得到新值。
+   * 页面钩子用它做依赖，切换时立即清空旧数据并重新取数。
+   */
   sessionKey: string;
   login(username: string, password: string): Promise<boolean>;
   logout(): Promise<void>;
@@ -37,7 +40,7 @@ const OFFLINE_VALUE: AuthContextValue = {
   me: null,
   error: null,
   capabilities: null,
-  sessionKey: 'offline',
+  sessionKey: 'offline#0',
   async login() {
     return false;
   },
@@ -50,6 +53,12 @@ const AuthContext = createContext<AuthContextValue>(OFFLINE_VALUE);
 export function AuthProvider({ children }: { children: ReactNode }): ReactElement {
   const api = isApiMode();
   const [session, setSession] = useState<SessionState>(() => (api ? CHECKING : OFFLINE));
+  /**
+   * 每次成功登录自增，拼进 sessionKey。
+   * 这样"同一个账号退出后再登录"也会被当成新会话：不会因为 key 与上一次相同，
+   * 而把上次加载好的数据先显示一帧。
+   */
+  const [generation, setGeneration] = useState(0);
   // signOut 需要在失败时原样保留当前会话，用一个 ref 读到最新的 session。
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -79,6 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       setSession(CHECKING);
       // 登录成功后 me 变化会让 sessionKeyOf 改变，页面钩子据此重新取数。
       const next = await signIn(username, password);
+      if (next.status === 'authenticated') {
+        setGeneration((value) => value + 1);
+      }
       setSession(next);
       return next.status === 'authenticated';
     },
@@ -101,12 +113,12 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       me: session.me,
       error: session.error,
       capabilities: capabilitiesOf(session),
-      sessionKey: sessionKeyOf(session),
+      sessionKey: `${sessionKeyOf(session)}#${generation}`,
       login,
       logout,
       clearError,
     }),
-    [session, login, logout, clearError],
+    [session, generation, login, logout, clearError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

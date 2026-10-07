@@ -92,4 +92,17 @@ describe('资源 allowed_actions 原样展示', () => {
     expect(html).toContain('编辑草稿');
     expect(html).toContain('导出');
   });
+
+  it('课堂：学院教务的归档保存下来（项目文档第 2 节允许教务归档目录）', () => {
+    const [task] = buildSessionTasks();
+    const granted: SessionAction[] = ['archive'];
+    const adminTask: SessionTaskView = {
+      ...task!,
+      session: { ...task!.session, allowed_actions: granted },
+    };
+
+    const html = renderToStaticMarkup(<SessionListPage tasks={[adminTask]} />);
+
+    expect(html).toContain('归档');
+  });
 });

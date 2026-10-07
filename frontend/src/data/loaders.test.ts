@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, describeError } from './errors';
 import { clearCsrfToken } from './http';
-import { MAX_SESSION_PAGES, loadReportView, loadSessionTasks, loadTranscriptView } from './loaders';
+import {
+  MAX_DRAFT_RUN_LOOKUPS,
+  MAX_SESSION_PAGES,
+  loadReportView,
+  loadSessionTasks,
+  loadTranscriptView,
+} from './loaders';
 import { apiSource } from './sources';
 import reportDraft from '../../../contracts/examples/report-draft.json';
 import resultsJson from '../../../contracts/examples/results.json';
@@ -99,6 +105,20 @@ describe('接口模式取数组合', () => {
     expect(loaded.tasks[0]?.disclosures.some((item) => item.text.includes('读取失败'))).toBe(true);
   });
 
+  it('列表页保留下一页游标，但不会自己把后续页全取回来（口径交给页面）', async () => {
+    const urls = stubRoutes(
+      defaultRoutes([
+        route('/api/v1/sessions', { items: [BASE_SESSION], next_cursor: 'cursor-page-2' }),
+      ]),
+    );
+
+    const loaded = await loadSessionTasks(apiSource);
+
+    expect(loaded.nextCursor).toBe('cursor-page-2');
+    // 只请求列表页 + 本页每个课堂的批次，没有请求第二页。
+    expect(urls).toEqual(['/api/v1/sessions', `/api/v1/analysis-runs/${RUN_ID}`]);
+  });
+
   it('转写页按 列表 → 批次 → 结果 → 修订 的顺序取数', async () => {
     const urls = stubRoutes(defaultRoutes());
     const loaded = await loadTranscriptView(apiSource);
@@ -182,6 +202,29 @@ describe('接口模式取数组合', () => {
     const error = (await loadReportView(apiSource).catch((reason: unknown) => reason)) as ApiError;
     expect(error.code).toBe('NOT_FOUND');
     expect(describeError(error)).toContain('报告');
+  });
+
+  it('查找草稿时的批次请求有上限，并如实说明只查了前几个课堂', async () => {
+    // 21 个课堂都有批次，但批次都没有 report_id → 查完上限（20）就停下并说明。
+    const sessions = Array.from({ length: MAX_DRAFT_RUN_LOOKUPS + 1 }, (_, index) => ({
+      ...BASE_SESSION,
+      id: `00000000-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
+      title: `课堂 ${index}`,
+      latest_run_id: `00000000-0000-4000-8000-0000000002${String(index).padStart(2, '0')}`,
+    }));
+    const urls = stubRoutes([
+      route('/api/v1/sessions', { items: sessions, next_cursor: null }),
+      (url) =>
+        url.startsWith('/api/v1/analysis-runs/')
+          ? json(200, { ...runPartialJson, report_id: null })
+          : undefined,
+    ]);
+
+    const error = (await loadReportView(apiSource).catch((reason: unknown) => reason)) as ApiError;
+
+    expect(error.message).toContain(`前 ${MAX_DRAFT_RUN_LOOKUPS} 个课堂`);
+    // 1 次列表 + 上限次数的批次请求，没有把 21 个课堂全查一遍。
+    expect(urls).toHaveLength(MAX_DRAFT_RUN_LOOKUPS + 1);
   });
 
   it('后端未实现 /sessions 时给出可读提示，而不是空列表', async () => {

@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth';
 import { describeError } from './errors';
 import { applyIfSameSession, errorState, forSession, loadingState, readyState, signedOutState } from './loadState';
-import type { LoadState, LoadStatus } from './loadState';
+import type { LoadState } from './loadState';
 import { loadReportView, loadSessionTasks as loadSessionTasksApi, loadTranscriptView } from './loaders';
 import { FIXTURES } from './samples';
 import type { AuthStatus } from './sessionFlow';
@@ -22,8 +22,6 @@ import { DATA_SOURCE_LABEL, isApiMode } from './sources';
 import type { DataSourceKind } from './sources';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
 import type { ReportView, SessionTaskView, TranscriptView } from './viewModel';
-
-export type { LoadStatus };
 
 /** 页面顶部"数据来源"一行需要的信息。 */
 export interface DataOrigin {
