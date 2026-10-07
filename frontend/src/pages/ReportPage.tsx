@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react';
 import type { Evidence } from '../types';
-import { buildReportView, fixturePaths } from '../data/viewModel';
-import type { ReportView } from '../data/viewModel';
+import { useReportData } from '../data/hooks';
+import type { Disclosure, ReportView } from '../data/viewModel';
+import { filterReportActions } from '../data/authorization';
+import { useAuth } from '../auth';
 import {
   coverageStatusBadge,
   dimensionLabel,
@@ -14,7 +16,7 @@ import {
   shortId,
   truncateHash,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, Pill } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadStateNote, Pill } from '../components/ui';
 
 function CitedEvidence({
   ids,
@@ -44,26 +46,61 @@ function CitedEvidence({
   );
 }
 
-export function ReportPage({ view = buildReportView() }: { view?: ReportView }): ReactElement {
+export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): ReactElement {
+  const loaded = useReportData(injectedView === undefined);
+  const { capabilities } = useAuth();
+  const view = injectedView ?? loaded.data;
+  const origin = loaded.origin;
   const { report, session, run, evidenceById, disclosures } = view;
   const published = session !== null && session.current_report_id === report.id;
+  const visibleActions = filterReportActions(report.allowed_actions, capabilities);
+  // 接口模式下按钮按账号 allowed_actions 过滤；对应关系是前端展示约定，这里如实标注。
+  const allDisclosures: Disclosure[] =
+    origin.kind === 'api' && capabilities !== null
+      ? [
+          ...disclosures,
+          {
+            tone: 'info',
+            text: '操作按 /auth/me 的 allowed_actions 过滤。该对应关系是前端展示约定，协议未定义，需团队确认；服务端仍会逐次授权。',
+          },
+        ]
+      : disclosures;
+
+  // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空报告假装"确实没有内容"。
+  const ready = injectedView !== undefined || loaded.status === 'ready';
+  const head = (
+    <header className="page-head">
+      <div>
+        <p className="eyebrow">教学观察报告</p>
+        <h1>报告</h1>
+        <p className="muted">
+          六维固定齐全，事实性摘要必须引用同批次证据；证据不足的维度保留原因，不生成结论。
+        </p>
+      </div>
+      {ready ? <BadgeTag badge={reportStatusBadge(report.status)} /> : null}
+    </header>
+  );
+  const notes = (
+    <>
+      <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
+      <LoadStateNote status={loaded.status} error={loaded.error} />
+      {loaded.selection === null ? null : <p className="load-note">{loaded.selection}</p>}
+    </>
+  );
+
+  if (!ready) {
+    return (
+      <div className="page">
+        {head}
+        {notes}
+      </div>
+    );
+  }
 
   return (
     <div className="page">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">教学观察报告</p>
-          <h1>报告</h1>
-          <p className="muted">
-            六维固定齐全，事实性摘要必须引用同批次证据；证据不足的维度保留原因，不生成结论。
-          </p>
-        </div>
-        <BadgeTag badge={reportStatusBadge(report.status)} />
-      </header>
-
-      <DataSourceNote
-        sources={[fixturePaths.report, fixturePaths.results, fixturePaths.sessionPage, fixturePaths.run]}
-      />
+      {head}
+      {notes}
 
       <Card title="报告状态" subtitle="版本与内容摘要用于并发检查和复核追溯。">
         <div className="field-grid">
@@ -102,9 +139,9 @@ export function ReportPage({ view = buildReportView() }: { view?: ReportView }):
             <IdChip id={report.session_id} label="课堂" /> <IdChip id={report.run_id} label="批次" />
           </Field>
           <Field label="allowed_actions">
-            {report.allowed_actions.length === 0
+            {visibleActions.length === 0
               ? '无（只读）'
-              : report.allowed_actions.map(reportActionLabel).join('、')}
+              : visibleActions.map(reportActionLabel).join('、')}
           </Field>
         </div>
       </Card>
@@ -217,14 +254,14 @@ export function ReportPage({ view = buildReportView() }: { view?: ReportView }):
                 : report.provenance.limitations.join('；')}
             </Field>
             <Field label="批次样例">
-              {run === null ? '报告 run_id 没有对应批次样例' : `run.status=${run.status}`}
+              {run === null ? '报告 run_id 没有对应批次数据' : `run.status=${run.status}`}
             </Field>
           </div>
         )}
       </Card>
 
       <Card title="样例数据核对" subtitle="引用不一致必须显示，不能拼成一条看似完整但实际不存在的链路。">
-        <DisclosureList items={disclosures} />
+        <DisclosureList items={allDisclosures} />
       </Card>
     </div>
   );

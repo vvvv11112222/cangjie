@@ -326,3 +326,9 @@ export const run: Run = parseRun(runPartialJson);
 export const results: Results = parseResults(resultsJson);
 export const revision: Revision = parseRevision(revisionJson);
 export const report: Report = parseReport(reportDraftJson);
+
+/**
+ * 三页用到的整组固定样例。M1 的样例取数实现（fixtureSource）只从这里读，
+ * 页面不再各自 import 样例文件。
+ */
+export const fixtures = { sessionPage, run, results, revision, report } as const;

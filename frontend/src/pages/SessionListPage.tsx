@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react';
-import type { SessionTaskView } from '../data/viewModel';
-import { buildSessionTasks, fixturePaths } from '../data/viewModel';
+import type { Disclosure, SessionTaskView } from '../data/viewModel';
+import { useSessionTasks } from '../data/hooks';
+import { filterSessionActions, filterRunActions } from '../data/authorization';
+import { useAuth } from '../auth';
 import {
   formatDateTime,
   jobStageLabel,
@@ -12,7 +14,7 @@ import {
   sessionStatusBadge,
   shortId,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, Pill } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadStateNote, Pill } from '../components/ui';
 
 function Reference({ label, id }: { label: string; id: string | null }): ReactElement {
   return (
@@ -23,29 +25,61 @@ function Reference({ label, id }: { label: string; id: string | null }): ReactEl
   );
 }
 
-export function SessionListPage({
-  tasks = buildSessionTasks(),
-}: {
-  tasks?: SessionTaskView[];
-}): ReactElement {
+export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskView[] } = {}): ReactElement {
+  const loaded = useSessionTasks(injectedTasks === undefined);
+  const { capabilities } = useAuth();
+  const tasks = injectedTasks ?? loaded.data;
+  const origin = loaded.origin;
+  // 接口模式下按钮按账号 allowed_actions 过滤；对应关系是前端展示约定，这里如实标注。
+  const permissionNotes: Disclosure[] =
+    origin.kind === 'api' && capabilities !== null
+      ? [
+          {
+            tone: 'info',
+            text: '操作按 /auth/me 的 allowed_actions 过滤。该对应关系是前端展示约定，协议未定义，需团队确认；服务端仍会逐次授权。',
+          },
+        ]
+      : [];
+  // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空数组假装"没有课堂"。
+  const ready = injectedTasks !== undefined || loaded.status === 'ready';
+  const head = (
+    <header className="page-head">
+      <div>
+        <p className="eyebrow">我的课堂</p>
+        <h1>课堂任务</h1>
+        <p className="muted">
+          一行对应一个课堂，显示当前主媒体、最新批次和当前报告引用。
+          按钮按 allowed_actions 展示，前端展示不代替后端逐次授权。
+        </p>
+      </div>
+    </header>
+  );
+  const notes = (
+    <>
+      <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
+      <LoadStateNote status={loaded.status} error={loaded.error} />
+    </>
+  );
+
+  if (!ready) {
+    return (
+      <div className="page">
+        {head}
+        {notes}
+      </div>
+    );
+  }
+
   return (
     <div className="page">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">我的课堂</p>
-          <h1>课堂任务</h1>
-          <p className="muted">
-            一行对应一个课堂，显示当前主媒体、最新批次和当前报告引用。
-            按钮按 allowed_actions 展示，前端展示不代替后端逐次授权。
-          </p>
-        </div>
-      </header>
-
-      <DataSourceNote sources={[fixturePaths.sessionPage, fixturePaths.run]} />
+      {head}
+      {notes}
 
       <Card title="课堂列表" subtitle={`共 ${tasks.length} 个课堂，next_cursor 为 null 表示没有更多分页`}>
         {tasks.length === 0 ? (
-          <p className="empty">固定样例中没有课堂。</p>
+          <p className="empty">
+            {origin.kind === 'api' ? '当前账号没有可见的课堂。' : '固定样例中没有课堂。'}
+          </p>
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -90,15 +124,18 @@ export function SessionListPage({
                       </div>
                     </td>
                     <td>
-                      {session.allowed_actions.length === 0 ? (
-                        <span className="muted">无</span>
-                      ) : (
-                        <div className="pill-row">
-                          {session.allowed_actions.map((action) => (
-                            <Pill key={action} label={sessionActionLabel(action)} />
-                          ))}
-                        </div>
-                      )}
+                      {(() => {
+                        const visible = filterSessionActions(session.allowed_actions, capabilities);
+                        return visible.length === 0 ? (
+                          <span className="muted">无</span>
+                        ) : (
+                          <div className="pill-row">
+                            {visible.map((action) => (
+                              <Pill key={action} label={sessionActionLabel(action)} />
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
@@ -161,9 +198,10 @@ export function SessionListPage({
                 <span className="muted">{run.report_id ?? 'null'}</span>
               </Field>
               <Field label="run.allowed_actions">
-                {run.allowed_actions.length === 0
-                  ? '无'
-                  : run.allowed_actions.map(runActionLabel).join('、')}
+                {(() => {
+                  const visible = filterRunActions(run.allowed_actions, capabilities);
+                  return visible.length === 0 ? '无' : visible.map(runActionLabel).join('、');
+                })()}
               </Field>
             </div>
 
@@ -174,17 +212,18 @@ export function SessionListPage({
         ),
       )}
 
-      {tasks.map(({ session, disclosures }) =>
-        disclosures.length === 0 ? null : (
+      {tasks.map(({ session, disclosures }) => {
+        const items = [...disclosures, ...permissionNotes];
+        return items.length === 0 ? null : (
           <Card
             key={`notes-${session.id}`}
             title="样例数据核对"
-            subtitle={`${session.title}：这些提示来自样例本身，接入后端后应由服务端状态替代。`}
+            subtitle={`${session.title}：这些提示来自数据本身，接入后端后应由服务端状态替代。`}
           >
-            <DisclosureList items={disclosures} />
+            <DisclosureList items={items} />
           </Card>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
