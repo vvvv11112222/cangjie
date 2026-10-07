@@ -20,6 +20,8 @@ P0 正式接口严格使用 [团队协议](../docs/开发协议.md)及 [Schema 1
 
 ## 安装与检查
 
+[commits 报告](COMMITS.md)记录实际提交与验收范围。[自动检查](../.github/workflows/vision-worker.yml)在 PR 中分别检查 Windows、Linux 和 CPU 容器；具体运行结果以 GitHub Actions 为准，不将 GPU 吞吐与人工准确率视为自动检查通过的内容。
+
 使用 Python 3.12，在仓库根目录执行。Windows：
 
 ```powershell

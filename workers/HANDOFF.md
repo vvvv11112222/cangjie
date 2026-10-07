@@ -1,6 +1,6 @@
 # 视频模块交接
 
-对应项目 FR-04、FR-05、FR-06 的媒体处理部分，提供 FR-08 所需画面证据；已有 FR-13 行为能力作为本地 P1 模块复用。Git 基线为 main 的 `c6c14f7`，本地任务分支 `feat/vision-worker`。
+对应项目 FR-04、FR-05、FR-06 的媒体处理部分，提供 FR-08 所需画面证据；已有 FR-13 行为能力作为本地 P1 模块复用。Git 基线为 main 的 `8827ed2`（已包含前端 PR #7），任务分支 `feat/vision-worker`。提交清单与验收边界见 [commits 报告](COMMITS.md)。
 
 ## 给队友的接入位置
 
