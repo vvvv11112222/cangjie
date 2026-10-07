@@ -53,6 +53,7 @@ def main():
             if name is not None and (name not in schema["$defs"] or name not in covered):
                 raise AssertionError(f"{route}: {field} {name} has no definition or positive fixture")
     docs = [ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "项目文档.md", *sorted((ROOT / "docs").glob("*.md"))]
+    docs.extend(sorted((ROOT / "workers").glob("*.md")))
     remediation = ROOT / "reviews/整改报告.md"
     if remediation.exists():
         docs.append(remediation)
