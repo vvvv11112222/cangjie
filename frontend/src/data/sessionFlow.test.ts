@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCsrfToken, currentCsrfToken, setCsrfToken } from './http';
-import { SIGNED_OUT, bootstrapSession, sessionKeyOf, signIn, signOut } from './sessionFlow';
+import { SIGNED_OUT, bootstrapSession, sessionKeyOf, signIn, signOut, serializeSessionOperation } from './sessionFlow';
 import type { SessionState } from './sessionFlow';
 import type { AccountMe } from './authApi';
 
@@ -121,7 +121,8 @@ describe('退出登录（评审意见 P2：撤销失败不能显示成已退出�
 
     expect(next.status).toBe('anonymous');
     expect(next.me).toBeNull();
-    expect(calls.map((call) => call.url)).toEqual(['/api/v1/auth/logout', '/api/v1/auth/csrf']);
+    expect(calls.map((call) => call.url)).toEqual(['/api/v1/auth/logout']);
+    expect(currentCsrfToken()).toBeNull();
   });
 
   it('服务端 500 时保留已登录状态与可重试的错误提示', async () => {
@@ -134,7 +135,8 @@ describe('退出登录（评审意见 P2：撤销失败不能显示成已退出�
     expect(next.status).toBe('authenticated');
     expect(next.me).toEqual(ME);
     expect(next.error).toContain('服务暂时不可用');
-    // 没有去清理令牌：会话可能仍然有效，不能假装退出完成。
+    // 清理旧令牌供重试，但保留账号状态，不能假装退出完成。
+    expect(currentCsrfToken()).toBeNull();
     expect(calls.map((call) => call.url)).toEqual(['/api/v1/auth/logout']);
   });
 
@@ -191,5 +193,49 @@ describe('启动时恢复会话', () => {
     const state = await bootstrapSession();
     expect(state.status).toBe('anonymous');
     expect(state.error).toContain('服务暂时不可用');
+  });
+});
+
+describe('退出恢复与认证串行化', () => {
+  it('403 后重试重新获取 CSRF，再撤销当前会话', async () => {
+    let attempts = 0;
+    stubRoutes({
+      '/api/v1/auth/logout': () => ++attempts === 1 ? fail(403, 'FORBIDDEN') : respond(204, undefined),
+      '/api/v1/auth/csrf': () => ok({ csrf_token: 'refreshed' }),
+    });
+    const failed = await signOut(SIGNED_IN);
+    expect(failed.status).toBe('authenticated');
+    expect(currentCsrfToken()).toBeNull();
+    expect((await signOut(failed)).status).toBe('anonymous');
+    expect(calls.map(call => call.url)).toEqual(['/api/v1/auth/logout', '/api/v1/auth/csrf', '/api/v1/auth/logout']);
+    expect((calls[2]!.init!.headers as Record<string, string>)['X-CSRF-Token']).toBe('refreshed');
+  });
+
+  it.each([204, 401])('撤销确认 %s 后不等待额外 CSRF 网络请求', async status => {
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url.endsWith('/csrf')) return new Promise<Response>(() => {});
+      return status === 204 ? respond(204, undefined) : fail(401, 'UNAUTHENTICATED');
+    });
+    const result = await signOut(SIGNED_IN);
+    expect(result).toEqual(SIGNED_OUT);
+    expect(currentCsrfToken()).toBeNull();
+  });
+
+  it.each([true, false])('整个认证流程串行，前一个操作失败=%s 也不会与下一个交错', async failure => {
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const events: string[] = [];
+    const first = serializeSessionOperation(async () => {
+      events.push('old-start');
+      await gate;
+      events.push('old-end');
+      if (failure) throw new Error('synthetic');
+    }).catch(() => undefined);
+    const second = serializeSessionOperation(async () => { events.push('new-login'); });
+    await Promise.resolve();
+    expect(events).toEqual(['old-start']);
+    finish();
+    await Promise.all([first, second]);
+    expect(events).toEqual(['old-start', 'old-end', 'new-login']);
   });
 });

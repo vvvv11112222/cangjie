@@ -13,7 +13,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactElement, ReactNode } from 'react';
 import type { AccountAction, AccountMe } from './data/authApi';
 import { isApiMode } from './data/sources';
-import { CHECKING, OFFLINE, bootstrapSession, capabilitiesOf, sessionKeyOf, signIn, signOut } from './data/sessionFlow';
+import { CHECKING, OFFLINE, bootstrapSession, capabilitiesOf, sessionKeyOf, signIn, signOut, serializeSessionOperation } from './data/sessionFlow';
 import type { AuthStatus, SessionState } from './data/sessionFlow';
 
 export type { AuthStatus };
@@ -30,6 +30,7 @@ export interface AuthContextValue {
    * 页面钩子用它做依赖，切换时立即清空旧数据并重新取数。
    */
   sessionKey: string;
+  busy: boolean;
   login(username: string, password: string): Promise<boolean>;
   logout(): Promise<void>;
   clearError(): void;
@@ -41,6 +42,7 @@ const OFFLINE_VALUE: AuthContextValue = {
   error: null,
   capabilities: null,
   sessionKey: 'offline#0',
+  busy: false,
   async login() {
     return false;
   },
@@ -61,23 +63,35 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   const [generation, setGeneration] = useState(0);
   // signOut 需要在失败时原样保留当前会话，用一个 ref 读到最新的 session。
   const sessionRef = useRef(session);
-  sessionRef.current = session;
+  const busyRef = useRef(api);
+  const [busy, setBusy] = useState(api);
+  const mounted = useRef(false);
+  const bootstrap = useRef<Promise<SessionState> | null>(null);
+  const publish = useCallback((next: SessionState) => {
+    sessionRef.current = next;
+    setSession(next);
+  }, []);
 
   useEffect(() => {
+    mounted.current = true;
     if (!api) {
-      return;
+      return () => { mounted.current = false; };
     }
     let cancelled = false;
     void (async () => {
-      const next = await bootstrapSession();
+      // StrictMode 的 effect 重放复用同一个初始化流程。
+      const next = await (bootstrap.current ??= serializeSessionOperation(bootstrapSession));
       if (!cancelled) {
-        setSession(next);
+        publish(next);
+        busyRef.current = false;
+        setBusy(false);
       }
     })();
     return () => {
       cancelled = true;
+      mounted.current = false;
     };
-  }, [api]);
+  }, [api, publish]);
 
   const login = useCallback(
     async (username: string, password: string): Promise<boolean> => {
@@ -85,25 +99,41 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
         setSession((current) => ({ ...current, error: '固定样例模式未接入后端，无法登录。' }));
         return false;
       }
-      setSession(CHECKING);
+      // 同步锁先于 React 渲染生效，双击或程序调用也不能产生重叠认证请求。
+      if (busyRef.current || !mounted.current) return false;
+      busyRef.current = true;
+      setBusy(true);
+      publish(CHECKING);
       // 登录成功后 me 变化会让 sessionKeyOf 改变，页面钩子据此重新取数。
-      const next = await signIn(username, password);
-      if (next.status === 'authenticated') {
-        setGeneration((value) => value + 1);
+      try {
+        const next = await serializeSessionOperation(() => signIn(username, password));
+        if (!mounted.current) return false;
+        if (next.status === 'authenticated') setGeneration((value) => value + 1);
+        publish(next);
+        return next.status === 'authenticated';
+      } finally {
+        busyRef.current = false;
+        if (mounted.current) setBusy(false);
       }
-      setSession(next);
-      return next.status === 'authenticated';
     },
-    [api],
+    [api, publish],
   );
 
   const logout = useCallback(async (): Promise<void> => {
-    if (!api) {
+    if (!api || busyRef.current || !mounted.current) {
       return;
     }
     // 服务端撤销失败时 signOut 会保留当前会话，界面据此显示"退出失败、可重试"。
-    setSession(await signOut(sessionRef.current));
-  }, [api]);
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const next = await serializeSessionOperation(() => signOut(sessionRef.current));
+      if (mounted.current) publish(next);
+    } finally {
+      busyRef.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }, [api, publish]);
 
   const clearError = useCallback(() => setSession((current) => ({ ...current, error: null })), []);
 
@@ -114,11 +144,12 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       error: session.error,
       capabilities: capabilitiesOf(session),
       sessionKey: `${sessionKeyOf(session)}#${generation}`,
+      busy,
       login,
       logout,
       clearError,
     }),
-    [session, generation, login, logout, clearError],
+    [session, generation, busy, login, logout, clearError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

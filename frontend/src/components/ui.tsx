@@ -127,5 +127,10 @@ export function LoadStateNote({
   if (status === 'signed_out') {
     return <p className="load-note">当前未登录，登录成功后会自动读取数据。</p>;
   }
+  if (status === 'paused') return <p className="load-note">{error}</p>;
   return <p className="load-note load-note-error">{error ?? '读取数据失败。'}</p>;
+}
+
+export function LoadControls({ actionLabel, loadMore }: { actionLabel: string | null; loadMore(): void }): ReactElement | null {
+  return actionLabel === null ? null : <button type="button" className="account-button" onClick={loadMore}>{actionLabel}</button>;
 }

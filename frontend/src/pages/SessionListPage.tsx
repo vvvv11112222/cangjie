@@ -12,7 +12,7 @@ import {
   sessionStatusBadge,
   shortId,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadStateNote, Pill } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill } from '../components/ui';
 
 function Reference({ label, id }: { label: string; id: string | null }): ReactElement {
   return (
@@ -29,9 +29,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const origin = loaded.origin;
   // 操作展示以各资源返回的 allowed_actions 为准（协议第 1.1 节：前端按 allowed_actions 展示，
   // 后端逐次授权）。账号级能力只在账号区展示，不用来删减服务端已授予的操作。
-  const truncated = loaded.data.nextCursor !== null;
+  const truncated = injectedTasks === undefined && loaded.data.nextCursor !== null;
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空数组假装"没有课堂"。
-  const ready = injectedTasks !== undefined || loaded.status === 'ready';
+  const ready = injectedTasks !== undefined || loaded.hasData;
   const head = (
     <header className="page-head">
       <div>
@@ -48,6 +48,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
+      <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
     </>
   );
 
@@ -69,13 +70,13 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
         title="课堂列表"
         subtitle={
           truncated
-            ? `共 ${tasks.length} 个课堂，next_cursor 非空：后面还有课堂，分页浏览待后续实现`
+            ? `已加载 ${tasks.length} 个课堂，还有更多课堂可加载`
             : `共 ${tasks.length} 个课堂，next_cursor 为 null，已到最后一页`
         }
       >
         {tasks.length === 0 ? (
           <p className="empty">
-            {origin.kind === 'api' ? '当前账号没有可见的课堂。' : '固定样例中没有课堂。'}
+            {truncated ? '本页没有课堂，可继续加载后续页面。' : origin.kind === 'api' ? '当前账号没有可见的课堂。' : '固定样例中没有课堂。'}
           </p>
         ) : (
           <div className="table-wrap">

@@ -29,6 +29,15 @@ export const CHECKING: SessionState = { status: 'checking', me: null, error: nul
 export const SIGNED_OUT: SessionState = { status: 'anonymous', me: null, error: null };
 export const OFFLINE: SessionState = { status: 'offline', me: null, error: null };
 
+// Cookie 和内存令牌属于同一个浏览器会话；完整认证流程串行执行，
+// 即使 Provider 卸载后重新挂载，也不能让旧请求与新登录交错写入令牌。
+let operationTail: Promise<unknown> = Promise.resolve();
+export function serializeSessionOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = operationTail.then(operation);
+  operationTail = next.catch(() => undefined);
+  return next;
+}
+
 /**
  * 页面取数用的会话标识：登录后按用户区分，未登录/检查中按状态区分。
  * 页面钩子用它做依赖，登录、退出、换账号都会触发重新取数。
@@ -92,19 +101,15 @@ export async function signOut(current: SessionState): Promise<SessionState> {
   } catch (error) {
     const sessionGone = error instanceof ApiError && error.code === 'UNAUTHENTICATED';
     if (!sessionGone) {
+      clearCsrfToken();
       // 撤销没有真正完成：保留已登录状态，界面显示失败原因，用户可以再点一次退出。
       return { ...current, error: describeError(error) };
     }
   }
 
   clearCsrfToken();
-  try {
-    // 退出后重新取一次令牌，方便直接换账号登录。
-    await fetchCsrfToken();
-    return SIGNED_OUT;
-  } catch (error) {
-    return { status: 'anonymous', me: null, error: describeError(error) };
-  }
+  // 撤销确认后立即退出；下一次登录本来就会获取新的 CSRF。
+  return SIGNED_OUT;
 }
 
 export function capabilitiesOf(state: SessionState): readonly AccountAction[] | null {

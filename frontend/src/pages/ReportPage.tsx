@@ -14,7 +14,7 @@ import {
   shortId,
   truncateHash,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadStateNote, Pill } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill } from '../components/ui';
 
 function CitedEvidence({
   ids,
@@ -52,7 +52,7 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
   const published = session !== null && session.current_report_id === report.id;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空报告假装"确实没有内容"。
-  const ready = injectedView !== undefined || loaded.status === 'ready';
+  const ready = injectedView !== undefined || loaded.hasData;
   const head = (
     <header className="page-head">
       <div>
@@ -69,6 +69,7 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
+      <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
       {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
     </>
   );

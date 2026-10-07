@@ -13,7 +13,7 @@ import { isApiMode } from '../data/sources';
 import { accountActionLabel, roleLabel } from '../format';
 
 export function AccountBar(): ReactElement {
-  const { status, me, error, login, logout, clearError } = useAuth();
+  const { status, me, error, busy, login, logout, clearError } = useAuth();
   const [formOpen, setFormOpen] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -54,19 +54,19 @@ export function AccountBar(): ReactElement {
         <button
           type="button"
           className="account-button"
+          disabled={busy}
           onClick={() => {
             clearError();
             void logout();
           }}
         >
-          退出
+          {busy ? '正在退出…' : '退出'}
         </button>
         {error === null ? null : <p className="account-error">{error}</p>}
       </div>
     );
   }
 
-  const busy = status === 'checking';
 
   return (
     <div className="account-bar">

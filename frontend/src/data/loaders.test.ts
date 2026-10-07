@@ -3,12 +3,12 @@ import { ApiError, describeError } from './errors';
 import { clearCsrfToken } from './http';
 import {
   MAX_DRAFT_RUN_LOOKUPS,
-  MAX_SESSION_PAGES,
   loadReportView,
   loadSessionTasks,
   loadTranscriptView,
 } from './loaders';
 import { apiSource } from './sources';
+import { SearchPaused, newSearch } from './search';
 import reportDraft from '../../../contracts/examples/report-draft.json';
 import resultsJson from '../../../contracts/examples/results.json';
 import revisionJson from '../../../contracts/examples/revision.json';
@@ -160,7 +160,7 @@ describe('接口模式取数组合', () => {
     expect(loaded.selection).toContain('合成课堂');
   });
 
-  it('翻满页数上限仍找不到目标时，明确说明只查了前几页（不会静默截断）', async () => {
+  it('重复游标立即报协议错误，不能当成合法数量上限', async () => {
     const endlessSession = { ...BASE_SESSION, latest_run_id: null };
     const urls = stubRoutes([
       (url) =>
@@ -170,9 +170,9 @@ describe('接口模式取数组合', () => {
     ]);
 
     const error = (await loadTranscriptView(apiSource).catch((reason: unknown) => reason)) as ApiError;
-    expect(error.code).toBe('NOT_FOUND');
-    expect(error.message).toContain(`前 ${MAX_SESSION_PAGES} 页`);
-    expect(urls).toHaveLength(MAX_SESSION_PAGES);
+    expect(error.code).toBe('MALFORMED_RESPONSE');
+    expect(error.message).toContain('重复');
+    expect(urls).toHaveLength(2);
   });
 
   it('报告页取当前发布版报告及其结果', async () => {
@@ -220,9 +220,10 @@ describe('接口模式取数组合', () => {
           : undefined,
     ]);
 
-    const error = (await loadReportView(apiSource).catch((reason: unknown) => reason)) as ApiError;
-
-    expect(error.message).toContain(`前 ${MAX_DRAFT_RUN_LOOKUPS} 个课堂`);
+    const checkpoint = newSearch();
+    const error = await loadReportView(apiSource, checkpoint).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(SearchPaused);
+    expect(checkpoint.index).toBe(MAX_DRAFT_RUN_LOOKUPS);
     // 1 次列表 + 上限次数的批次请求，没有把 21 个课堂全查一遍。
     expect(urls).toHaveLength(MAX_DRAFT_RUN_LOOKUPS + 1);
   });

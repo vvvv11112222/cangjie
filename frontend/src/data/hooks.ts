@@ -13,13 +13,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth';
 import { describeError } from './errors';
-import { applyIfSameSession, errorState, forSession, loadingState, readyState, signedOutState } from './loadState';
+import { loadingState, readyState, signedOutState } from './loadState';
 import type { LoadState } from './loadState';
 import { loadReportView, loadSessionTasks as loadSessionTasksApi, loadTranscriptView } from './loaders';
 import { FIXTURES } from './samples';
 import type { AuthStatus } from './sessionFlow';
 import { DATA_SOURCE_LABEL, isApiMode } from './sources';
-import type { DataSourceKind } from './sources';
+import type { DataSourceKind, SessionQuery } from './sources';
+import { dataSource } from './sources';
+import { SearchPaused, newSearch, checkNextCursor } from './search';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
 import type { ReportView, SessionTaskView, TranscriptView } from './viewModel';
 
@@ -53,59 +55,75 @@ function originFor(kind: DataSourceKind, sources: string[]): DataOrigin {
  *   - 接口模式 + 未登录：不发请求，状态为 signed_out（提示先登录）；
  *   - 接口模式 + 已登录：请求数据；会话切换时立即清空并丢弃旧会话的迟到响应。
  */
-function useLoaded<T>(options: {
+interface LoadActions {
+  hasData: boolean;
+  actionLabel: string | null;
+  loadMore(): void;
+}
+
+function useLoaded<T, P>(options: {
   enabled: boolean;
-  /** 会话标识，来自 useAuth（登录/退出/换账号会变化）。 */
   sessionKey: string;
-  /** 登录状态：只有 authenticated 才取数；checking 显示加载中，anonymous 提示先登录。 */
   authStatus: AuthStatus;
   initialData: T;
-  load: () => Promise<T>;
-}): LoadState<T> {
-  const { enabled, sessionKey, authStatus, initialData, load } = options;
+  newProgress(): P;
+  load(progress: P, previous: T): Promise<T>;
+  hasMore?: (data: T) => boolean;
+}): LoadState<T> & LoadActions {
+  const { enabled, sessionKey, authStatus, initialData } = options;
   const key = API && enabled ? sessionKey : LOCAL_KEY;
   const canLoad = authStatus === 'authenticated';
-
-  const fallback = (): LoadState<T> => {
-    if (!API || !enabled) {
-      return readyState(key, initialData);
-    }
-    // 还没确认完登录状态时按"加载中"呈现，不能先说"未登录"。
-    return authStatus === 'anonymous' ? signedOutState(key, initialData) : loadingState(key, initialData);
+  const fallback = (): LoadState<T> & { hasData: boolean } => {
+    if (!API || !enabled) return { ...readyState(key, initialData), hasData: true };
+    return { ...(authStatus === 'anonymous' ? signedOutState(key, initialData) : loadingState(key, initialData)), hasData: false };
   };
+  const [state, setState] = useState(fallback);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const currentKey = useRef(key);
+  currentKey.current = key;
+  type Context = { key: string; progress: P; busy: boolean; active: boolean; data: T; hasData: boolean };
+  const context = useRef<Context | null>(null);
 
-  const [state, setState] = useState<LoadState<T>>(fallback);
-  const loadRef = useRef(load);
-  loadRef.current = load;
+  async function run(ctx: Context): Promise<void> {
+    if (!ctx.active || ctx.busy || currentKey.current !== ctx.key) return;
+    ctx.busy = true;
+    setState({ ...loadingState(ctx.key, ctx.data), hasData: ctx.hasData });
+    const valid = () => ctx.active && context.current === ctx && currentKey.current === ctx.key;
+    try {
+      const data = await optionsRef.current.load(ctx.progress, ctx.data);
+      if (valid()) {
+        ctx.data = data;
+        ctx.hasData = true;
+        setState({ ...readyState(ctx.key, data), hasData: true });
+      }
+    } catch (error) {
+      if (valid()) setState({
+        key: ctx.key, data: ctx.data, hasData: ctx.hasData,
+        status: error instanceof SearchPaused ? 'paused' : 'error',
+        error: error instanceof SearchPaused ? error.message : describeError(error),
+      });
+    } finally {
+      ctx.busy = false;
+    }
+  }
 
   useEffect(() => {
-    if (!enabled || !API || !canLoad) {
-      return;
-    }
-    let cancelled = false;
-    setState(loadingState(key, initialData));
-    void (async () => {
-      try {
-        const data = await loadRef.current();
-        if (!cancelled) {
-          setState((current) => applyIfSameSession(current, key, readyState(key, data)));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setState((current) =>
-            applyIfSameSession(current, key, errorState(key, describeError(error), initialData)),
-          );
-        }
-      }
-    })();
-    return () => {
-      // 依赖变化（换账号）或卸载时，旧请求的结果一律作废。
-      cancelled = true;
-    };
+    if (!enabled || !API || !canLoad) return;
+    const ctx: Context = { key, progress: optionsRef.current.newProgress(), data: initialData, hasData: false, busy: false, active: true };
+    context.current = ctx;
+    void run(ctx);
+    return () => { ctx.active = false; };
   }, [key, enabled, canLoad, initialData]);
 
-  // 状态还停留在旧会话时，立即按新会话的初始状态呈现，不闪出上一个账号的数据。
-  return forSession(state, key, fallback);
+  const visible = state.key === key ? state : fallback();
+  const actionLabel = !API || !enabled || !canLoad ? null
+    : visible.status === 'paused' ? '继续查找'
+    : visible.status === 'error' ? '重试'
+    : visible.status === 'ready' && options.hasMore?.(visible.data) ? '加载更多' : null;
+  return { ...visible, actionLabel, loadMore: () => {
+    if (actionLabel !== null && context.current !== null) void run(context.current);
+  } };
 }
 
 function useSessionContext(): { sessionKey: string; authStatus: AuthStatus } {
@@ -124,12 +142,26 @@ export interface SessionTasksData {
   nextCursor: string | null;
 }
 
-export type SessionTasksResult = LoadState<SessionTasksData> & { origin: DataOrigin };
+export type SessionTasksResult = LoadState<SessionTasksData> & LoadActions & { origin: DataOrigin };
 
-export function useSessionTasks(enabled = true): SessionTasksResult {
+export function useSessionTasks(enabled = true, query: Omit<SessionQuery, 'cursor'> = {}): SessionTasksResult {
   const { sessionKey, authStatus } = useSessionContext();
   const initial = useMemo<SessionTasksData>(() => (API ? { tasks: [], nextCursor: null } : fixtureTasks()), []);
-  const state = useLoaded({ enabled, sessionKey, authStatus, initialData: initial, load: loadSessionTasksApi });
+  const state = useLoaded({
+    enabled, sessionKey: `${sessionKey}:${JSON.stringify(query)}`, authStatus, initialData: initial,
+    newProgress: () => ({ cursor: undefined as string | undefined, seen: [] as string[] }),
+    load: async (progress, previous) => {
+      const loaded = await loadSessionTasksApi(dataSource, { ...query, cursor: progress.cursor });
+      const seen = [...progress.seen, progress.cursor ?? ''];
+      checkNextCursor(loaded.nextCursor, seen);
+      const tasks = new Map(previous.tasks.map(task => [task.session.id, task]));
+      for (const task of loaded.tasks) tasks.set(task.session.id, task);
+      progress.cursor = loaded.nextCursor ?? undefined;
+      progress.seen = seen;
+      return { tasks: [...tasks.values()], nextCursor: loaded.nextCursor };
+    },
+    hasMore: data => data.nextCursor !== null,
+  });
 
   return {
     ...state,
@@ -161,7 +193,7 @@ export interface TranscriptData {
   selection: string | null;
 }
 
-export type TranscriptResult = LoadState<TranscriptData> & { origin: DataOrigin };
+export type TranscriptResult = LoadState<TranscriptData> & LoadActions & { origin: DataOrigin };
 
 export function useTranscriptData(enabled = true): TranscriptResult {
   const { sessionKey, authStatus } = useSessionContext();
@@ -180,8 +212,9 @@ export function useTranscriptData(enabled = true): TranscriptResult {
     sessionKey,
     authStatus,
     initialData: initial,
-    load: async () => {
-      const loaded = await loadTranscriptView();
+    newProgress: newSearch,
+    load: async (progress) => {
+      const loaded = await loadTranscriptView(dataSource, progress);
       return { view: loaded.view, selection: loaded.selection };
     },
   });
@@ -236,7 +269,7 @@ export interface ReportData {
   selection: string | null;
 }
 
-export type ReportResult = LoadState<ReportData> & { origin: DataOrigin };
+export type ReportResult = LoadState<ReportData> & LoadActions & { origin: DataOrigin };
 
 export function useReportData(enabled = true): ReportResult {
   const { sessionKey, authStatus } = useSessionContext();
@@ -249,8 +282,9 @@ export function useReportData(enabled = true): ReportResult {
     sessionKey,
     authStatus,
     initialData: initial,
-    load: async () => {
-      const loaded = await loadReportView();
+    newProgress: newSearch,
+    load: async (progress) => {
+      const loaded = await loadReportView(dataSource, progress);
       return { view: loaded.view, selection: loaded.selection };
     },
   });

@@ -14,7 +14,7 @@ import {
   speakerLabel,
   truncateHash,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadStateNote } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote } from '../components/ui';
 
 /** 证据与片段的业务关联在后端建立；样例用 provenance.source_segment_no 表达。 */
 function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] {
@@ -28,7 +28,7 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
   const { results, revision, run, segments, evidence, disclosures } = view;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免把空数组当成"确实没有转写"。
-  const ready = injectedView !== undefined || loaded.status === 'ready';
+  const ready = injectedView !== undefined || loaded.hasData;
   const head = (
     <header className="page-head">
       <div>
@@ -45,6 +45,7 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
+      <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
       {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
     </>
   );
