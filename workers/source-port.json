@@ -1,0 +1,69 @@
+{
+  "source_version": "vision-lab-0.4.3",
+  "files": {
+    "analysis.py": {
+      "source_sha256": "81ea38269dd6a031381c8d1138ebd552f01a548d9b4044c87e05bed35c4840ed",
+      "ported_sha256": "81ea38269dd6a031381c8d1138ebd552f01a548d9b4044c87e05bed35c4840ed"
+    },
+    "behavior.py": {
+      "source_sha256": "3cc71ad1a5912a3a753d9255f53167101e36f5d24ee115b783afed4579cd87be",
+      "ported_sha256": "3cc71ad1a5912a3a753d9255f53167101e36f5d24ee115b783afed4579cd87be"
+    },
+    "camera.py": {
+      "source_sha256": "a6c42219c98fb0c3387e8810251e7655330a45b4cd7002a73d541421109ba552",
+      "ported_sha256": "a6c42219c98fb0c3387e8810251e7655330a45b4cd7002a73d541421109ba552"
+    },
+    "config.py": {
+      "source_sha256": "373f3cc2b3a9ccf67bb070eb6e30e402fdf23c471d422f346563ae92dc2753b1",
+      "ported_sha256": "c7876eec846a72600fdddd9a0764dc86418e7c3d8f2c081bac3cf5a18a07e94a"
+    },
+    "devices.py": {
+      "source_sha256": "51a31b433b2fa10f952df21216b08fe3dfd5959972afd17a7d0ccd9c14606681",
+      "ported_sha256": "51a31b433b2fa10f952df21216b08fe3dfd5959972afd17a7d0ccd9c14606681"
+    },
+    "layout.py": {
+      "source_sha256": "eb3d6b9461f8399160d42d4a21db8bc7f59a661b239d3ee47ffb514742acbd58",
+      "ported_sha256": "eb3d6b9461f8399160d42d4a21db8bc7f59a661b239d3ee47ffb514742acbd58"
+    },
+    "media.py": {
+      "source_sha256": "f50fbe350c6078a9fdfb39c1f8241294ba412672259fbc452019b60e2a6e06e9",
+      "ported_sha256": "16d523e399606331c204e06f6cafe87997ce9e08e2877dbd3723c711aa688421"
+    },
+    "models.py": {
+      "source_sha256": "5d7f719fd4b606d8bc52883119b9ea962ad928a2839eb9e12a78f60b577b9ce3",
+      "ported_sha256": "845359d70d06aeb935cd024d000969896eb987ae72a9ecb6a4ed764b7c7bc3cd"
+    },
+    "pipeline.py": {
+      "source_sha256": "730c6c8fb40c9bb26c26db388788342220479e6e68ead9fd17d1704bd7e2c882",
+      "ported_sha256": "730c6c8fb40c9bb26c26db388788342220479e6e68ead9fd17d1704bd7e2c882"
+    },
+    "reporting.py": {
+      "source_sha256": "5f633bfb0d70bf259729fdf9b007b786aa715d5297e2d6d2bcea44be1cbcf85e",
+      "ported_sha256": "5f633bfb0d70bf259729fdf9b007b786aa715d5297e2d6d2bcea44be1cbcf85e"
+    },
+    "review.py": {
+      "source_sha256": "dd118758ac9034edb385bca240e107ad3df6e57989ede65525bf63dcd01be892",
+      "ported_sha256": "dd118758ac9034edb385bca240e107ad3df6e57989ede65525bf63dcd01be892"
+    },
+    "__init__.py": {
+      "source_sha256": "77b7a967557e6b6685af500700331373506f3b6d46442a41d44215dba67e873a",
+      "ported_sha256": "54596025b551f898c8cf42849128a869431f088af5ff59fbde5df994d8148fd5"
+    }
+  },
+  "changes": [
+    "portable model/runtime/FFmpeg paths",
+    "CPU provider selection",
+    "media public origin and negative timestamp checks",
+    "preserve source encoder time base",
+    "verify weights before creating model sessions"
+  ],
+  "unchanged_logic": [
+    "analysis.py",
+    "behavior.py",
+    "camera.py",
+    "layout.py",
+    "pipeline.py",
+    "reporting.py",
+    "review.py"
+  ]
+}
