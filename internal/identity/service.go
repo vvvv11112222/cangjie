@@ -355,12 +355,26 @@ func (s *Service) CreateUser(ctx context.Context, actor Principal, input CreateU
 }
 
 func (s *Service) PatchUser(ctx context.Context, actor Principal, id string, input PatchUser) (User, error) {
-	current, err := s.GetUser(ctx, actor, id)
-	if err != nil {
-		return User{}, err
-	}
 	if id == actor.UserID && !actor.Has("sys_admin") {
 		return User{}, apperror.New(http.StatusForbidden, "FORBIDDEN", "academic administrators cannot modify their own account")
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return User{}, fmt.Errorf("begin user update: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var current User
+	err = tx.QueryRow(ctx, `SELECT id::text,org_unit_id::text,username,display_name,status FROM teaching.user_accounts WHERE id=$1 FOR UPDATE`, id).Scan(&current.ID, &current.OrgUnitID, &current.Username, &current.DisplayName, &current.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, apperror.New(http.StatusNotFound, "NOT_FOUND", "user not found")
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("lock user: %w", err)
+	}
+	if !actor.Has("sys_admin") {
+		if err := requireManageableUser(ctx, tx, actor, id, current.OrgUnitID); err != nil {
+			return User{}, err
+		}
 	}
 	org := current.OrgUnitID
 	if input.OrgUnitID.Set {
@@ -370,7 +384,7 @@ func (s *Service) PatchUser(ctx context.Context, actor Principal, id string, inp
 		return User{}, apperror.New(http.StatusBadRequest, "INVALID_ARGUMENT", "org_unit_id is required")
 	}
 	if !actor.Has("sys_admin") {
-		allowed, scopeErr := s.inAcademicScope(ctx, actor, *org)
+		allowed, scopeErr := inAcademicScope(ctx, tx, actor, *org)
 		if scopeErr != nil {
 			return User{}, scopeErr
 		}
@@ -393,11 +407,6 @@ func (s *Service) PatchUser(ctx context.Context, actor Principal, id string, inp
 	if username == "" || name == "" || (status != "active" && status != "disabled") {
 		return User{}, apperror.New(http.StatusBadRequest, "INVALID_ARGUMENT", "invalid user fields")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return User{}, fmt.Errorf("begin user update: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 	if status == "disabled" {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('active_system_administrators'))`); err != nil {
 			return User{}, fmt.Errorf("lock administrator continuity: %w", err)
@@ -523,10 +532,14 @@ func (s *Service) requireAnotherActiveAdministrator(ctx context.Context, q rowGe
 }
 
 func (s *Service) requireManageableUser(ctx context.Context, actor Principal, userID string, orgID *string) error {
+	return requireManageableUser(ctx, s.pool, actor, userID, orgID)
+}
+
+func requireManageableUser(ctx context.Context, q rowGetter, actor Principal, userID string, orgID *string) error {
 	if orgID == nil {
 		return apperror.New(http.StatusNotFound, "NOT_FOUND", "user not found")
 	}
-	allowed, err := s.inAcademicScope(ctx, actor, *orgID)
+	allowed, err := inAcademicScope(ctx, q, actor, *orgID)
 	if err != nil {
 		return err
 	}
@@ -535,7 +548,7 @@ func (s *Service) requireManageableUser(ctx context.Context, actor Principal, us
 	}
 	var unsafe bool
 	scopes := academicScopes(actor)
-	err = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.role_bindings WHERE user_id=$1 AND (role_code IN ('sys_admin','academic_admin') OR (scope_org_id IS NOT NULL AND NOT scope_org_id=ANY($2::uuid[]))))`, userID, scopes).Scan(&unsafe)
+	err = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.role_bindings WHERE user_id=$1 AND (role_code IN ('sys_admin','academic_admin') OR (scope_org_id IS NOT NULL AND NOT scope_org_id=ANY($2::uuid[]))))`, userID, scopes).Scan(&unsafe)
 	if err != nil {
 		return err
 	}
@@ -546,8 +559,12 @@ func (s *Service) requireManageableUser(ctx context.Context, actor Principal, us
 }
 
 func (s *Service) inAcademicScope(ctx context.Context, actor Principal, orgID string) (bool, error) {
+	return inAcademicScope(ctx, s.pool, actor, orgID)
+}
+
+func inAcademicScope(ctx context.Context, q rowGetter, actor Principal, orgID string) (bool, error) {
 	var college *string
-	if err := s.pool.QueryRow(ctx, `SELECT teaching.college_of($1)`, orgID).Scan(&college); err != nil {
+	if err := q.QueryRow(ctx, `SELECT teaching.college_of($1)`, orgID).Scan(&college); err != nil {
 		return false, err
 	}
 	return college != nil && actor.Scoped("academic_admin", *college), nil

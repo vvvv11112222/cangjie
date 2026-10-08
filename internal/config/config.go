@@ -129,7 +129,7 @@ func validate(cfg Config, value func(string, string) string, budget float64) err
 		return fmt.Errorf("DATABASE_URL is required")
 	}
 	if _, err := url.Parse(cfg.DatabaseURL); err != nil {
-		return fmt.Errorf("DATABASE_URL is invalid: %w", err)
+		return fmt.Errorf("DATABASE_URL is invalid")
 	}
 	for key, path := range map[string]string{
 		"MEDIA_ROOT": cfg.MediaRoot, "WORKER_TEMP_ROOT": cfg.WorkerTempRoot,

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/database"
@@ -28,6 +29,15 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
+	fixtureLock, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixtureLock.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended('cangjie_integration_test_fixture', 0))`); err != nil {
+		fixtureLock.Close(ctx) //nolint:errcheck
+		t.Fatal(err)
+	}
+	defer fixtureLock.Close(context.Background()) //nolint:errcheck
 	migrationDir, err := filepath.Abs(filepath.Join("..", "..", "database"))
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +125,14 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 		t.Fatalf("teacher course scope = %#v", items)
 	}
 	requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/courses/"+otherCourse["id"].(string), nil, "", http.StatusNotFound)
+	teacherRoleID := queryID(t, pool, `SELECT id::text FROM teaching.role_bindings WHERE user_id='`+teacherID+`' AND role_code='teacher'`)
+	requestJSON(t, admin, http.MethodDelete, server.URL+"/api/v1/users/"+teacherID+"/role-bindings/"+teacherRoleID, nil, adminCSRF, http.StatusNoContent)
+	for _, resource := range []string{"courses", "class-groups", "offerings"} {
+		page := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/"+resource, nil, "", http.StatusOK)
+		if got := page["items"].([]any); len(got) != 0 {
+			t.Fatalf("revoked teacher %s scope = %#v", resource, got)
+		}
+	}
 
 	bad := newTestClient(t)
 	csrf := getCSRF(t, bad, server.URL)

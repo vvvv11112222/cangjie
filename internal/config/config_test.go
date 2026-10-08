@@ -22,6 +22,19 @@ func TestFromLookupRequiresDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestFromLookupDoesNotExposeInvalidDatabaseURL(t *testing.T) {
+	const secret = "synthetic-secret"
+	_, err := FromLookup(mapLookup(map[string]string{
+		"DATABASE_URL": "postgres://user:" + secret + "@localhost/db%zz",
+	}))
+	if err == nil {
+		t.Fatal("expected invalid DATABASE_URL error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("DATABASE_URL error exposed credentials: %v", err)
+	}
+}
+
 func TestFromLookupRejectsHeartbeatAtLease(t *testing.T) {
 	_, err := FromLookup(mapLookup(map[string]string{
 		"DATABASE_URL":          "postgres://localhost/teaching",

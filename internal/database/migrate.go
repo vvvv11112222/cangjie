@@ -27,7 +27,7 @@ type migration struct {
 func RunMigrations(ctx context.Context, databaseURL, directory string) error {
 	config, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
-		return fmt.Errorf("parse DATABASE_URL: %w", err)
+		return fmt.Errorf("parse DATABASE_URL: invalid connection string")
 	}
 	config.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	conn, err := pgx.ConnectConfig(ctx, config)
