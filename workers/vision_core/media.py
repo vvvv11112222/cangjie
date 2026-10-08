@@ -15,6 +15,9 @@ class Cancelled(Exception):
 
 
 def check_cancel(cancel):
+    if hasattr(cancel, "check"):
+        cancel.check()  # A Worker Guard must preserve timeout vs lease-loss exceptions.
+        return
     if cancel.is_set():
         raise Cancelled("分析已取消")
 
@@ -33,7 +36,7 @@ def half_up_ms(seconds):
     return (value.numerator * 2 + value.denominator) // (2 * value.denominator)
 
 
-def inspect_media(path):
+def inspect_media(path, *, max_duration_ms=None):
     with av.open(str(path)) as container:
         if not container.streams.video:
             raise ValueError("媒体没有视频流")
@@ -47,8 +50,8 @@ def inspect_media(path):
             duration = float(video.duration * video.time_base)
         if duration is None or duration <= 0:
             raise ValueError("无法确定有效录像时长")
-        if duration > 7200:
-            raise ValueError("本实验版每段录像最长支持 2 小时")
+        if max_duration_ms is not None and half_up_ms(Fraction(str(duration))) > max_duration_ms:
+            raise ValueError("录像超过本地分析时长上限")
         frame = next(container.decode(video), None)
         if frame is None or frame.pts is None:
             raise ValueError("视频不能解码或首帧时间戳缺失")
@@ -75,13 +78,14 @@ def ffmpeg_executable():
     return os.environ.get("VISION_FFMPEG_BINARY") or imageio_ffmpeg.get_ffmpeg_exe()
 
 
-def make_proxy(source, target, cancel):
+def make_proxy(source, target, cancel, *, timeout_s=3600):
     executable = ffmpeg_executable()
     command = [
         executable, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
         "-copyts", "-start_at_zero", "-i", str(source),
         "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast",
-        "-crf", "24", "-pix_fmt", "yuv420p", "-fps_mode", "passthrough",
+        "-crf", "24", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0:black",
+        "-pix_fmt", "yuv420p", "-fps_mode", "passthrough",
         "-enc_time_base:v", "demux",
         "-c:a", "aac", "-movflags", "+faststart", str(target),
     ]
@@ -92,7 +96,7 @@ def make_proxy(source, target, cancel):
             started = time.monotonic()
             while process.poll() is None:
                 check_cancel(cancel)
-                if time.monotonic() - started > 3600:
+                if timeout_s is not None and time.monotonic() - started > timeout_s:
                     raise TimeoutError("播放代理生成超过 1 小时")
                 time.sleep(0.2)
             if process.returncode:

@@ -21,7 +21,7 @@ def analyze_local(source, output, config=None, *, cancel=None, progress=None, pr
     config = config if config is not None else AnalysisConfig(duration_s=0)
     if not isinstance(config, AnalysisConfig):
         config = AnalysisConfig.model_validate(config)
-    metadata = inspect_media(source)
+    metadata = inspect_media(source, max_duration_ms=7_200_000)
     total_started = time.perf_counter()
     progress(stage="preparing", message="准备播放视频", progress=0)
     proxy_info = make_proxy(source, output / "playback.mp4", cancel)

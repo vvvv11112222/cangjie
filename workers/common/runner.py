@@ -12,7 +12,7 @@ from .transport import Transport
 LOG = logging.getLogger(__name__)
 
 
-def execute_claim(settings, claim, guard, directory, transport=None, handlers=None):
+def execute_claim(settings, claim, guard, directory, transport=None, handlers=None, *, report_timeout=True):
     from workers.video.handlers import HANDLERS
     transport = transport or Transport(settings)
     handlers = HANDLERS if handlers is None else handlers
@@ -34,11 +34,12 @@ def execute_claim(settings, claim, guard, directory, transport=None, handlers=No
     except Exception as error:
         if not isinstance(error, WorkerError):
             error = WorkerError("PROCESSING_FAILED", "媒体阶段执行失败；请查看受控本地诊断日志")
+        if error.code == "PROCESSING_TIMEOUT" and not report_timeout:
+            # The parent owns timeout reporting for spawned workers, preventing duplicate fail calls.
+            return "timed_out"
         try:
             # A local processing timeout can fail while the Go lease is still live.
-            guard.local_deadline = guard.deadline
-            guard.event.clear() if error.code == "PROCESSING_TIMEOUT" else None
-            transport.fail(claim, error, guard)
+            transport.fail(claim, error, guard.for_reporting())
         except (LeaseLost, WorkerError, httpx.TransportError):
             pass
         LOG.error("job=%s stage=%s error=%s", claim["job_id"], claim["stage"], error.code)
@@ -50,7 +51,7 @@ def execute_claim(settings, claim, guard, directory, transport=None, handlers=No
 
 
 def _child(settings, claim, guard, directory, outcome):
-    outcome.put(execute_claim(settings, claim, guard, directory))
+    outcome.put(execute_claim(settings, claim, guard, directory, report_timeout=False))
 
 
 class Runner:
@@ -69,7 +70,7 @@ class Runner:
         outcome = context.Queue()
         process = context.Process(target=_child, args=(self.settings, claim, guard, directory, outcome))
         try:
-            result = self.transport.heartbeat(claim, 0)
+            result = self.transport.heartbeat(claim, 0, guard)
             guard.expires.value = epoch(result["lease_expires_at"])
             process.start()
             next_heartbeat = time.monotonic() + self.settings.heartbeat_seconds
@@ -77,27 +78,36 @@ class Runner:
                 if guard.progress.value < 100:
                     guard.check()
                 if guard.progress.value < 100 and time.monotonic() >= next_heartbeat:
+                    heartbeat_delay = self.settings.heartbeat_seconds
                     try:
-                        result = self.transport.heartbeat(claim, guard.progress.value)
+                        result = self.transport.heartbeat(claim, guard.progress.value, guard)
                         guard.expires.value = epoch(result["lease_expires_at"])
                         (directory / "lease.deadline").write_text(str(guard.deadline), encoding="utf-8") if directory.exists() else None
                     except httpx.TransportError:
                         # Keep the last acknowledged expiry; never assume a renewed lease.
                         LOG.warning("job=%s heartbeat unreachable", claim["job_id"])
-                    next_heartbeat = time.monotonic() + self.settings.heartbeat_seconds
+                    except WorkerError as error:
+                        if not error.retryable or error.code != "WORKER_API_ERROR":
+                            raise
+                        LOG.warning("job=%s heartbeat temporarily unavailable", claim["job_id"])
+                        heartbeat_delay = max(heartbeat_delay, error.retry_after or 0)
+                    next_heartbeat = time.monotonic() + heartbeat_delay
                 process.join(timeout=0.2)
             process.join()
             if process.exitcode:
                 self.transport.fail(claim, WorkerError("PROCESSING_FAILED", "媒体子进程异常退出", True), guard)
                 return "failed"
-            return outcome.get(timeout=2)
+            result = outcome.get(timeout=2)
+            if result == "timed_out":
+                raise WorkerError("PROCESSING_TIMEOUT", "媒体阶段超过本地执行时限", True)
+            return result
         except LeaseLost:
             return "stopped"
         except WorkerError as error:
-            if error.code == "PROCESSING_TIMEOUT":
-                guard.local_deadline = guard.deadline
-                guard.event.clear()
-                self.transport.fail(claim, error, guard)
+            try:
+                self.transport.fail(claim, error, guard.for_reporting())
+            except (LeaseLost, WorkerError, httpx.TransportError):
+                pass
             return "failed"
         finally:
             guard.event.set()
@@ -115,8 +125,22 @@ class Runner:
     def run(self, once=False):
         cleanup_expired(self.settings.temp_root)
         try:
+            failures = 0
             while True:
-                claim = self.transport.claim()
+                try:
+                    claim = self.transport.claim()
+                except WorkerError as error:
+                    if not error.retryable or once:
+                        raise
+                    failures += 1
+                    delay = max(error.retry_after or 0, min(30, 2 ** min(failures - 1, 5)))
+                    if error.claim_uncertain:
+                        # No recovery endpoint exists in 1.1; do not immediately repeat an uncertain claim.
+                        delay = max(delay, self.settings.lease_seconds)
+                    LOG.warning("claim temporarily unavailable; poll resumes after %.1f seconds", delay)
+                    time.sleep(delay)
+                    continue
+                failures = 0
                 if claim is not None:
                     LOG.info("job=%s stage=%s started", claim["job_id"], claim["stage"])
                     outcome = self.run_claim(claim)

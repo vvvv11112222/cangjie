@@ -1,5 +1,6 @@
 """Lease ownership, hard deadlines and isolated temporary storage."""
 from datetime import datetime
+import copy
 import multiprocessing as mp
 from pathlib import Path
 import shutil
@@ -22,25 +23,39 @@ class Guard:
         self.deadline = epoch(claim["execution_deadline_at"])
         self.local_deadline = time.time() + timeout if timeout else self.deadline
 
-    def check(self):
+    def check_lease(self):
         if self.event.is_set() or time.time() >= min(self.expires.value, self.deadline):
             self.event.set()
             raise LeaseLost("任务已取消、租约到期或超过执行截止时间")
+
+    def check(self):
+        self.check_lease()
         if time.time() >= self.local_deadline:
-            self.event.set()
             raise WorkerError("PROCESSING_TIMEOUT", "媒体阶段超过本地执行时限", True)
+
+    def for_reporting(self):
+        # Share lease/cancellation state, but do not apply the processing budget to fail().
+        guard = copy.copy(self)
+        guard.local_deadline = self.deadline
+        return guard
 
     def is_set(self):
         try:
             self.check()
-        except (LeaseLost, WorkerError):
+        except LeaseLost:
             return True
         return False
 
     def wait(self, seconds):
-        if self.event.wait(seconds):
+        end = time.monotonic() + max(0, seconds)
+        while True:
             self.check()
-        self.check()
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                return
+            # Renewal can extend expires while sleeping; still honor the entire Retry-After.
+            live = min(self.expires.value, self.deadline, self.local_deadline) - time.time()
+            self.event.wait(min(remaining, max(0, live)))
 
     def update(self, **values):
         self.check()

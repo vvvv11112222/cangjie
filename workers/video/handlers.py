@@ -83,11 +83,13 @@ def probe(claim, directory, settings, transport, guard):
     metadata = inspect_source(source, settings)
     guard.update(progress=10)
     proxy = directory / "playback.mp4"
-    make_proxy(source, proxy, guard)
+    make_proxy(source, proxy, guard, timeout_s=None)  # Guard applies the configured stage budget.
     check_proxy_timeline(source, proxy, guard)
     guard.update(progress=90)
     asset = transport.upload(claim, proxy, "proxy", None, guard)
     limitations = [] if metadata["has_audio"] else ["录像没有音轨；音频阶段应返回无音轨限制。"]
+    if metadata["width"] % 2 or metadata["height"] % 2:
+        limitations.append("播放视频右侧或底部补齐最多 1 像素黑边，原画面不缩放；宽高记录原录像尺寸。")
     return {**base_result(claim), "duration_ms": metadata["duration_ms"],
             "has_audio": metadata["has_audio"], "width": metadata["width"], "height": metadata["height"],
             "video_codec": metadata["codec"], "playback_asset_id": asset,

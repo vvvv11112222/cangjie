@@ -27,7 +27,7 @@
     },
     "media.py": {
       "source_sha256": "f50fbe350c6078a9fdfb39c1f8241294ba412672259fbc452019b60e2a6e06e9",
-      "ported_sha256": "16d523e399606331c204e06f6cafe87997ce9e08e2877dbd3723c711aa688421"
+      "ported_sha256": "ab2e8deca4165e309b26c77a3f28cf9b0e7d04e8fc662779d6bf3163b808c876"
     },
     "models.py": {
       "source_sha256": "5d7f719fd4b606d8bc52883119b9ea962ad928a2839eb9e12a78f60b577b9ce3",
@@ -39,7 +39,7 @@
     },
     "reporting.py": {
       "source_sha256": "5f633bfb0d70bf259729fdf9b007b786aa715d5297e2d6d2bcea44be1cbcf85e",
-      "ported_sha256": "5f633bfb0d70bf259729fdf9b007b786aa715d5297e2d6d2bcea44be1cbcf85e"
+      "ported_sha256": "5cb505d4a4eebe2c7a680e0ecea0b3df50fa6c328eea9fe48e91ae43e363d2ce"
     },
     "review.py": {
       "source_sha256": "dd118758ac9034edb385bca240e107ad3df6e57989ede65525bf63dcd01be892",
@@ -55,7 +55,10 @@
     "CPU provider selection",
     "media public origin and negative timestamp checks",
     "preserve source encoder time base",
-    "verify weights before creating model sessions"
+    "verify weights before creating model sessions",
+    "pad odd proxy dimensions without resizing the source image",
+    "apply duration limits at the caller boundary",
+    "encode spreadsheet formula prefixes only at the CSV export boundary"
   ],
   "unchanged_logic": [
     "analysis.py",
@@ -63,7 +66,6 @@
     "camera.py",
     "layout.py",
     "pipeline.py",
-    "reporting.py",
     "review.py"
   ]
 }

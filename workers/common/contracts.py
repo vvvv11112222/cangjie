@@ -8,9 +8,10 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 
 class WorkerError(Exception):
-    def __init__(self, code, message, retryable=False):
+    def __init__(self, code, message, retryable=False, *, retry_after=None, claim_uncertain=False):
         super().__init__(message)
         self.code, self.retryable = code, retryable
+        self.retry_after, self.claim_uncertain = retry_after, claim_uncertain
 
 
 class LeaseLost(Exception):

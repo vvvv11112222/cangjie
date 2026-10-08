@@ -151,13 +151,22 @@ def markdown_report(report):
     return "\n".join(lines)
 
 
+def csv_text(value):
+    # CSV quoting does not stop spreadsheet formula interpretation. Preserve JSON originals.
+    if isinstance(value, str) and (
+        value.startswith(('\t', '\r', '\n')) or value.lstrip().startswith(('=', '+', '-', '@'))
+    ):
+        return "'" + value
+    return value
+
+
 def csv_counts(report):
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
     keys = ["timestamp_ms", "frame_index", "visible_count", "brightness", "sharpness", "valid", "pose_evaluated", "hand_raise_count", "hand_evaluable_count", "head_down_count", "head_evaluable_count"]
     writer.writerow(keys)
     for row in report["counts"]:
-        writer.writerow([row.get(k) for k in keys])
+        writer.writerow([csv_text(row.get(k)) for k in keys])
     return "\ufeff" + buffer.getvalue()
 
 
@@ -168,12 +177,13 @@ def csv_persons(report):
     writer.writerow(keys+review_keys+['original_file','annotated_file','detection_confidence'])
     for person in report.get('persons',[]):
         for o in person['observations']:
-            writer.writerow([person['track_id'],o['timestamp_ms'],o['frame_index'],o['seat_id'],
+            row = [person['track_id'],o['timestamp_ms'],o['frame_index'],o['seat_id'],
                              *['unknown' if o['behaviors'][k] is None else int(o['behaviors'][k]) for k in keys[4:8]],
                              *[(o.get('head_angles') or {}).get(k) for k in ('pitch','yaw','roll')],o['pose_available'],
                              *[('' if k not in o.get('reviews',{}) else ('unknown' if o['reviews'][k]['value'] is None else int(o['reviews'][k]['value']))) if field=='value' else o.get('reviews',{}).get(k,{}).get(field,'')
                                for k in keys[4:8] for field in ('value','reason','reviewer','reviewed_at')],
-                             *[o.get(k,'') for k in ('original_file','annotated_file','detection_confidence')]])
+                             *[o.get(k,'') for k in ('original_file','annotated_file','detection_confidence')]]
+            writer.writerow([csv_text(value) for value in row])
     return '\ufeff'+buffer.getvalue()
 
 
