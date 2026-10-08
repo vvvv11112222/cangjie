@@ -62,6 +62,13 @@ func run() error {
 		ASRModelName: cfg.ASRModelName, ASRModelRevision: cfg.ASRModelRevision, ASRDevice: cfg.ASRDevice,
 		KeyframeIntervalMS: cfg.KeyframeIntervalMS, MaxKeyframes: cfg.MaxKeyframes, MaxVideoHeight: cfg.MaxVideoHeight,
 		MaxMediaDurationMS: cfg.MaxMediaDurationMS, MaxArtifactBytes: cfg.MaxArtifactBytes,
+		GoStageTimeout: cfg.GoStageTimeout, ReportEnabled: cfg.ReportEnabled,
+		ReportAPIBase: cfg.ReportAPIBase, ReportAPIKey: cfg.ReportAPIKey,
+		ReportModel: cfg.ReportModel, ReportModelRevision: cfg.ReportModelRevision,
+		ReportPromptVersion: cfg.ReportPromptVersion, ReportPromptSHA256: cfg.ReportPromptSHA256,
+		ReportSelectionVersion: cfg.ReportSelectionVersion, ReportTimeout: cfg.ReportTimeout,
+		ReportPriceVersion:   cfg.ReportPriceVersion,
+		ReportMaxInputTokens: cfg.ReportMaxInputTokens, ReportMaxOutputTokens: cfg.ReportMaxOutputTokens,
 	})
 
 	checks := httpapi.ReadinessChecks{
@@ -102,6 +109,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go analysisService.RunReaper(ctx, cfg.JobReaper)
+	go analysisService.RunGoWorker(ctx, time.Second)
 
 	errCh := make(chan error, 1)
 	go func() {

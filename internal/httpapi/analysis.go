@@ -21,6 +21,84 @@ func (s *server) registerAnalysisRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/analysis-runs/{id}", s.getAnalysisRun)
 	mux.HandleFunc("POST /api/v1/analysis-runs/{id}/cancel", s.cancelAnalysisRun)
 	mux.HandleFunc("GET /api/v1/analysis-runs/{id}/results", s.getAnalysisResults)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/reports", s.listReports)
+	mux.HandleFunc("GET /api/v1/reports/{id}", s.getReport)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/transcript-revisions", s.listTranscriptRevisions)
+	mux.HandleFunc("GET /api/v1/transcript-revisions/{id}", s.getTranscriptRevision)
+}
+
+func (s *server) getReport(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	value, err := s.analysis.GetReport(r.Context(), p, id)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, value)
+}
+func (s *server) listReports(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	after, limit, ok := s.page(w, r)
+	if !ok {
+		return
+	}
+	items, next, err := s.analysis.ListReports(r.Context(), p, id, after, limit)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, page(items, next))
+}
+
+func (s *server) getTranscriptRevision(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	value, err := s.analysis.GetRevision(r.Context(), p, id)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, value)
+}
+func (s *server) listTranscriptRevisions(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	after, limit, ok := s.page(w, r)
+	if !ok {
+		return
+	}
+	items, next, err := s.analysis.ListRevisions(r.Context(), p, id, r.URL.Query().Get("media_asset_id"), after, limit)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, page(items, next))
 }
 
 func (s *server) registerWorkerRoutes(mux *http.ServeMux) {

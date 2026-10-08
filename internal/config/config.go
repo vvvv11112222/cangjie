@@ -15,39 +15,50 @@ import (
 )
 
 type Config struct {
-	AppEnv             string
-	APIListenAddr      string
-	PublicOrigin       string
-	DatabaseURL        string
-	MediaRoot          string
-	WorkerTempRoot     string
-	DeletionLedgerPath string
-	JobLease           time.Duration
-	JobHeartbeat       time.Duration
-	JobReaper          time.Duration
-	ProbeTimeout       time.Duration
-	ASRTimeout         time.Duration
-	VideoTimeout       time.Duration
-	GoStageTimeout     time.Duration
-	ReportEnabled      bool
-	SessionTTL         time.Duration
-	MaxUploadBytes     int64
-	UploadTimeout      time.Duration
-	MediaRetention     time.Duration
-	WorkerToken        string
-	WorkerID           string
-	WorkerCapabilities []string
-	ProcessorVersion   string
-	FFmpegSHA256       string
-	ASRModelName       string
-	ASRModelRevision   string
-	ASRDevice          string
-	MediaJobAttempts   int
-	MaxArtifactBytes   int64
-	MaxMediaDurationMS int64
-	MaxVideoHeight     int
-	KeyframeIntervalMS int
-	MaxKeyframes       int
+	AppEnv                 string
+	APIListenAddr          string
+	PublicOrigin           string
+	DatabaseURL            string
+	MediaRoot              string
+	WorkerTempRoot         string
+	DeletionLedgerPath     string
+	JobLease               time.Duration
+	JobHeartbeat           time.Duration
+	JobReaper              time.Duration
+	ProbeTimeout           time.Duration
+	ASRTimeout             time.Duration
+	VideoTimeout           time.Duration
+	GoStageTimeout         time.Duration
+	ReportEnabled          bool
+	ReportAPIBase          string
+	ReportAPIKey           string
+	ReportModel            string
+	ReportModelRevision    string
+	ReportPromptVersion    string
+	ReportPromptSHA256     string
+	ReportSelectionVersion string
+	ReportPriceVersion     string
+	ReportTimeout          time.Duration
+	ReportMaxInputTokens   int
+	ReportMaxOutputTokens  int
+	SessionTTL             time.Duration
+	MaxUploadBytes         int64
+	UploadTimeout          time.Duration
+	MediaRetention         time.Duration
+	WorkerToken            string
+	WorkerID               string
+	WorkerCapabilities     []string
+	ProcessorVersion       string
+	FFmpegSHA256           string
+	ASRModelName           string
+	ASRModelRevision       string
+	ASRDevice              string
+	MediaJobAttempts       int
+	MaxArtifactBytes       int64
+	MaxMediaDurationMS     int64
+	MaxVideoHeight         int
+	KeyframeIntervalMS     int
+	MaxKeyframes           int
 }
 
 func Load() (Config, error) {
@@ -133,45 +144,68 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	reportTimeout, err := seconds(value("REPORT_TIMEOUT_SECONDS", "180"), "REPORT_TIMEOUT_SECONDS")
+	if err != nil {
+		return Config{}, err
+	}
+	reportMaxInput, err := positiveInt(value("REPORT_MAX_INPUT_TOKENS", "8000"), "REPORT_MAX_INPUT_TOKENS")
+	if err != nil {
+		return Config{}, err
+	}
+	reportMaxOutput, err := positiveInt(value("REPORT_MAX_OUTPUT_TOKENS", "3000"), "REPORT_MAX_OUTPUT_TOKENS")
+	if err != nil {
+		return Config{}, err
+	}
 
 	budget, err := nonNegativeFloat(value("MODEL_MONTHLY_BUDGET", "0"), "MODEL_MONTHLY_BUDGET")
 	if err != nil {
 		return Config{}, err
 	}
 	cfg := Config{
-		AppEnv:             value("APP_ENV", "development"),
-		APIListenAddr:      value("API_LISTEN_ADDR", "127.0.0.1:8080"),
-		PublicOrigin:       value("PUBLIC_ORIGIN", "http://localhost:8080"),
-		DatabaseURL:        value("DATABASE_URL", ""),
-		MediaRoot:          value("MEDIA_ROOT", "./var/media"),
-		WorkerTempRoot:     value("WORKER_TEMP_ROOT", "./var/worker-tmp"),
-		DeletionLedgerPath: value("DELETION_LEDGER_PATH", "./var/governance/deletions.jsonl"),
-		JobLease:           lease,
-		JobHeartbeat:       heartbeat,
-		JobReaper:          reaper,
-		ProbeTimeout:       probe,
-		ASRTimeout:         asr,
-		VideoTimeout:       video,
-		GoStageTimeout:     goStage,
-		ReportEnabled:      budget > 0,
-		SessionTTL:         sessionTTL,
-		MaxUploadBytes:     maxUploadBytes,
-		UploadTimeout:      uploadTimeout,
-		MediaRetention:     time.Duration(retentionDays) * 24 * time.Hour,
-		WorkerToken:        value("WORKER_TOKEN", ""),
-		WorkerID:           value("WORKER_ID", "worker-01"),
-		WorkerCapabilities: splitCSV(value("WORKER_CAPABILITIES", "probe,audio_analysis,video_analysis")),
-		ProcessorVersion:   value("WORKER_PROCESSOR_VERSION", ""),
-		FFmpegSHA256:       value("FFMPEG_BUILD_SHA256", ""),
-		ASRModelName:       value("ASR_MODEL_NAME", ""),
-		ASRModelRevision:   value("ASR_MODEL_REVISION", ""),
-		ASRDevice:          value("ASR_DEVICE", "cpu"),
-		MediaJobAttempts:   mediaAttempts,
-		MaxArtifactBytes:   maxArtifactBytes,
-		MaxMediaDurationMS: maxDuration,
-		MaxVideoHeight:     maxVideoHeight,
-		KeyframeIntervalMS: keyframeInterval,
-		MaxKeyframes:       maxKeyframes,
+		AppEnv:                 value("APP_ENV", "development"),
+		APIListenAddr:          value("API_LISTEN_ADDR", "127.0.0.1:8080"),
+		PublicOrigin:           value("PUBLIC_ORIGIN", "http://localhost:8080"),
+		DatabaseURL:            value("DATABASE_URL", ""),
+		MediaRoot:              value("MEDIA_ROOT", "./var/media"),
+		WorkerTempRoot:         value("WORKER_TEMP_ROOT", "./var/worker-tmp"),
+		DeletionLedgerPath:     value("DELETION_LEDGER_PATH", "./var/governance/deletions.jsonl"),
+		JobLease:               lease,
+		JobHeartbeat:           heartbeat,
+		JobReaper:              reaper,
+		ProbeTimeout:           probe,
+		ASRTimeout:             asr,
+		VideoTimeout:           video,
+		GoStageTimeout:         goStage,
+		ReportEnabled:          budget > 0,
+		ReportAPIBase:          value("REPORT_API_BASE", ""),
+		ReportAPIKey:           value("REPORT_API_KEY", ""),
+		ReportModel:            value("REPORT_MODEL", ""),
+		ReportModelRevision:    value("REPORT_MODEL_REVISION", ""),
+		ReportPromptVersion:    value("REPORT_PROMPT_VERSION", "p0-v1"),
+		ReportPromptSHA256:     value("REPORT_PROMPT_SHA256", ""),
+		ReportSelectionVersion: value("REPORT_SELECTION_VERSION", "time-window-v1"),
+		ReportPriceVersion:     value("MODEL_PRICE_VERSION", ""),
+		ReportTimeout:          reportTimeout,
+		ReportMaxInputTokens:   reportMaxInput,
+		ReportMaxOutputTokens:  reportMaxOutput,
+		SessionTTL:             sessionTTL,
+		MaxUploadBytes:         maxUploadBytes,
+		UploadTimeout:          uploadTimeout,
+		MediaRetention:         time.Duration(retentionDays) * 24 * time.Hour,
+		WorkerToken:            value("WORKER_TOKEN", ""),
+		WorkerID:               value("WORKER_ID", "worker-01"),
+		WorkerCapabilities:     splitCSV(value("WORKER_CAPABILITIES", "probe,audio_analysis,video_analysis")),
+		ProcessorVersion:       value("WORKER_PROCESSOR_VERSION", ""),
+		FFmpegSHA256:           value("FFMPEG_BUILD_SHA256", ""),
+		ASRModelName:           value("ASR_MODEL_NAME", ""),
+		ASRModelRevision:       value("ASR_MODEL_REVISION", ""),
+		ASRDevice:              value("ASR_DEVICE", "cpu"),
+		MediaJobAttempts:       mediaAttempts,
+		MaxArtifactBytes:       maxArtifactBytes,
+		MaxMediaDurationMS:     maxDuration,
+		MaxVideoHeight:         maxVideoHeight,
+		KeyframeIntervalMS:     keyframeInterval,
+		MaxKeyframes:           maxKeyframes,
 	}
 	if err := validate(cfg, value, budget); err != nil {
 		return Config{}, err
@@ -237,6 +271,16 @@ func validate(cfg Config, value func(string, string) string, budget float64) err
 			if err != nil || price == 0 {
 				return fmt.Errorf("%s must be positive when reporting is enabled", key)
 			}
+		}
+		if !isSHA256(cfg.ReportPromptSHA256) {
+			return fmt.Errorf("REPORT_PROMPT_SHA256 must be a SHA-256 value when reporting is enabled")
+		}
+		reportBase, parseErr := url.ParseRequestURI(cfg.ReportAPIBase)
+		if parseErr != nil || reportBase.Host == "" || (reportBase.Scheme != "http" && reportBase.Scheme != "https") {
+			return fmt.Errorf("REPORT_API_BASE must be an absolute http(s) URL")
+		}
+		if cfg.ReportTimeout < cfg.JobLease {
+			return fmt.Errorf("REPORT_TIMEOUT_SECONDS must not be shorter than JOB_LEASE_SECONDS")
 		}
 	}
 	return nil

@@ -65,7 +65,7 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	group := queryID(t, pool, `INSERT INTO teaching.class_groups(org_unit_id,code,name,enrollment_year) VALUES('`+college+`','P4-G','P4',2026) RETURNING id::text`)
 	offering := queryID(t, pool, `INSERT INTO teaching.course_offerings(org_unit_id,code,term_id,course_id,teacher_id,class_group_id) VALUES('`+college+`','P4-O','`+term+`','`+course+`','`+teacherID+`','`+group+`') RETURNING id::text`)
 	sessionID := queryID(t, pool, `INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by) VALUES('`+offering+`','P4',now(),now()+interval '1 hour','`+teacherID+`') RETURNING id::text`)
-	sourceID := queryID(t, pool, `INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,registered_by,verified_by,verified_at) VALUES('`+sessionID+`','self_recorded','P4','team','verified','["playback","analysis"]','`+teacherID+`','`+teacherID+`',now()) RETURNING id::text`)
+	sourceID := queryID(t, pool, `INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,external_processing_allowed,registered_by,verified_by,verified_at) VALUES('`+sessionID+`','self_recorded','P4','team','verified','["playback","analysis"]',true,'`+teacherID+`','`+teacherID+`',now()) RETURNING id::text`)
 	store, err := storage.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,38 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	}
 	mediaID := queryID(t, pool, `INSERT INTO teaching.media_assets(session_id,source_record_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,status) VALUES('`+sessionID+`','`+sourceID+`','source','filesystem','source/p4.mp4','`+strings.Repeat("a", 64)+`','video/mp4',24,'pending') RETURNING id::text`)
 	workerToken := "0123456789abcdef0123456789abcdef"
-	cfg := analysis.Config{Lease: 2 * time.Second, ProbeTimeout: time.Minute, ASRTimeout: time.Minute, VideoTimeout: time.Minute, MediaJobAttempts: 3, ProcessorVersion: "fixed-json-v1", FFmpegSHA256: strings.Repeat("b", 64), ASRModelName: "fixed-json-asr", ASRModelRevision: "p0-v1", ASRDevice: "cpu", KeyframeIntervalMS: 30000, MaxKeyframes: 240, MaxVideoHeight: 1080, MaxMediaDurationMS: 7200000, MaxArtifactBytes: 1 << 20}
+	reportProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.Messages) != 2 {
+			t.Errorf("invalid report request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var input struct {
+			Evidence []struct {
+				ID string `json:"id"`
+			} `json:"evidence"`
+		}
+		if err := json.Unmarshal([]byte(request.Messages[1].Content), &input); err != nil || len(input.Evidence) != 1 {
+			t.Errorf("invalid model input: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		evidenceID := input.Evidence[0].ID
+		dimensions := []map[string]any{{"dimension_code": "content", "coverage_status": "observed", "summary": "课堂介绍了固定主题", "limitation": "", "coverage": []map[string]any{{"start_ms": 1000, "end_ms": 3000}}, "summary_evidence_ids": []string{evidenceID}}}
+		for _, code := range []string{"pace", "thinking", "expression", "management", "technology"} {
+			dimensions = append(dimensions, map[string]any{"dimension_code": code, "coverage_status": "insufficient", "summary": "", "limitation": "当前仅有文本证据", "coverage": []any{}, "summary_evidence_ids": []any{}})
+		}
+		candidate := map[string]any{"summary": "固定转写课堂摘要", "summary_evidence_ids": []string{evidenceID}, "dimensions": dimensions, "observations": []map[string]any{{"dimension_code": "content", "observation_type": "observation", "observation_text": "教师讲解了固定转写主题。", "suggestion": "", "evidence_ids": []string{evidenceID}}}}
+		content, _ := json.Marshal(candidate)
+		writeJSON(w, http.StatusOK, map[string]any{"choices": []map[string]any{{"message": map[string]any{"content": string(content)}}}})
+	}))
+	defer reportProvider.Close()
+	cfg := analysis.Config{Lease: 2 * time.Second, ProbeTimeout: time.Minute, ASRTimeout: time.Minute, VideoTimeout: time.Minute, GoStageTimeout: time.Minute, MediaJobAttempts: 3, ProcessorVersion: "fixed-json-v1", FFmpegSHA256: strings.Repeat("b", 64), ASRModelName: "fixed-json-asr", ASRModelRevision: "p0-v1", ASRDevice: "cpu", KeyframeIntervalMS: 30000, MaxKeyframes: 240, MaxVideoHeight: 1080, MaxMediaDurationMS: 7200000, MaxArtifactBytes: 1 << 20, ReportEnabled: true, ReportAPIBase: reportProvider.URL, ReportAPIKey: "fixture-key", ReportModel: "synthetic-report", ReportModelRevision: "fixture-1", ReportPromptVersion: "p0-v1", ReportPromptSHA256: strings.Repeat("d", 64), ReportSelectionVersion: "time-window-v1", ReportTimeout: time.Minute, ReportMaxOutputTokens: 3000}
 	analysisService := analysis.NewService(pool, store, cfg)
 	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: mediaservice.NewService(pool, store, 1<<20, 14*24*time.Hour), Analysis: analysisService, PublicOrigin: "http://frontend.test", WorkerToken: workerToken, WorkerID: "worker-01", WorkerCapabilities: []string{"probe", "audio_analysis", "video_analysis"}, MaxArtifactBytes: 1 << 20})
 	server := httptest.NewServer(handler)
@@ -133,8 +164,13 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	frame := uploadWorkerArtifact(t, server.URL+"/internal/v1/jobs/"+videoClaim["job_id"].(string)+"/artifacts", workerToken, videoClaim["lease_token"].(string), []byte("jpeg"), videoClaim["lease_token"].(string)+"/frame-0", "keyframe", "1000", http.StatusCreated)
 	videoPayload := map[string]any{"schema_version": "1.1", "job_id": videoClaim["job_id"], "run_id": fullID, "session_id": sessionID, "media_asset_id": mediaID, "stage": "video_analysis", "frames": []map[string]any{{"asset_id": frame["asset_id"], "timestamp_ms": 1000}}, "events": []any{}, "model": nil, "sampling": map[string]any{"interval_ms": 30000, "max_frames": 240}, "coverage": []map[string]any{{"start_ms": 0, "end_ms": 60000}}, "limitations": []string{}, "execution": videoClaim["execution"]}
 	requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+videoClaim["job_id"].(string)+"/complete", videoPayload, workerToken, videoClaim["lease_token"].(string), http.StatusOK)
+	for _, stage := range []string{"evidence", "report", "validate"} {
+		if processed, err := analysisService.ProcessNextGoJob(ctx); err != nil || !processed {
+			t.Fatalf("process %s: processed=%v err=%v", stage, processed, err)
+		}
+	}
 	finished := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID, nil, "", http.StatusOK)
-	if finished["status"] != "partial" {
+	if finished["status"] != "succeeded" {
 		t.Fatalf("full phase4 status=%v", finished["status"])
 	}
 	for _, raw := range finished["jobs"].([]any) {
@@ -143,8 +179,17 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 		}
 	}
 	results := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID+"/results", nil, "", http.StatusOK)
-	if len(results["segments"].([]any)) != 1 || len(results["frames"].([]any)) != 1 {
+	if len(results["segments"].([]any)) != 1 || len(results["frames"].([]any)) != 1 || len(results["evidence"].([]any)) != 2 || results["transcript_revision_id"] == nil {
 		t.Fatalf("fixed results=%#v", results)
+	}
+	revision := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/transcript-revisions/"+results["transcript_revision_id"].(string), nil, "", http.StatusOK)
+	if len(revision["segments"].([]any)) != 1 || revision["source_type"] != "asr" {
+		t.Fatalf("transcript revision=%#v", revision)
+	}
+	reportID := finished["report_id"].(string)
+	report := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/reports/"+reportID, nil, "", http.StatusOK)
+	if len(report["dimensions"].([]any)) != 6 || len(report["observations"].([]any)) != 1 {
+		t.Fatalf("validated report=%#v", report)
 	}
 
 	cancelRun := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs", create, csrf, map[string]string{"Idempotency-Key": "cancel-1"}, http.StatusAccepted)

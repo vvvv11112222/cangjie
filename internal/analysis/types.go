@@ -19,6 +19,15 @@ type Config struct {
 	ASRModelName, ASRModelRevision, ASRDevice        string
 	KeyframeIntervalMS, MaxKeyframes, MaxVideoHeight int
 	MaxMediaDurationMS, MaxArtifactBytes             int64
+	GoStageTimeout                                   time.Duration
+	ReportEnabled                                    bool
+	ReportAPIBase, ReportAPIKey                      string
+	ReportModel, ReportModelRevision                 string
+	ReportPromptVersion, ReportPromptSHA256          string
+	ReportSelectionVersion                           string
+	ReportPriceVersion                               string
+	ReportTimeout                                    time.Duration
+	ReportMaxInputTokens, ReportMaxOutputTokens      int
 }
 
 type Service struct {
@@ -210,4 +219,88 @@ type Results struct {
 	Events               []json.RawMessage `json:"events"`
 	Limitations          []string          `json:"limitations"`
 	RunStatus            string            `json:"run_status"`
+}
+
+type Evidence struct {
+	ID                  string         `json:"id"`
+	RunID               string         `json:"run_id"`
+	SessionID           string         `json:"session_id"`
+	MediaAssetID        string         `json:"media_asset_id"`
+	Kind                string         `json:"kind"`
+	StartMS             int64          `json:"start_ms"`
+	EndMS               int64          `json:"end_ms"`
+	TranscriptSegmentID *string        `json:"transcript_segment_id"`
+	FrameAssetID        *string        `json:"frame_asset_id"`
+	Availability        string         `json:"availability"`
+	Description         string         `json:"description"`
+	Provenance          map[string]any `json:"provenance"`
+}
+
+type Dimension struct {
+	DimensionCode      string     `json:"dimension_code"`
+	CoverageStatus     string     `json:"coverage_status"`
+	Summary            string     `json:"summary"`
+	Limitation         string     `json:"limitation"`
+	Coverage           []Interval `json:"coverage"`
+	SummaryEvidenceIDs []string   `json:"summary_evidence_ids"`
+}
+
+type CandidateObservation struct {
+	DimensionCode   string   `json:"dimension_code"`
+	ObservationType string   `json:"observation_type"`
+	ObservationText string   `json:"observation_text"`
+	Suggestion      string   `json:"suggestion"`
+	EvidenceIDs     []string `json:"evidence_ids"`
+}
+
+type ReportCandidate struct {
+	Summary            string                 `json:"summary"`
+	SummaryEvidenceIDs []string               `json:"summary_evidence_ids"`
+	Dimensions         []Dimension            `json:"dimensions"`
+	Observations       []CandidateObservation `json:"observations"`
+}
+
+type Report struct {
+	ID                    string         `json:"id"`
+	RunID                 string         `json:"run_id"`
+	SessionID             string         `json:"session_id"`
+	Revision              int            `json:"revision"`
+	LockVersion           int            `json:"lock_version"`
+	Status                string         `json:"status"`
+	Summary               string         `json:"summary"`
+	Dimensions            []Dimension    `json:"dimensions"`
+	Observations          []Observation  `json:"observations"`
+	SummaryEvidenceIDs    []string       `json:"summary_evidence_ids"`
+	ContentSHA256         *string        `json:"content_sha256"`
+	ReviewedContentSHA256 *string        `json:"reviewed_content_sha256"`
+	ReviewedBy            *string        `json:"reviewed_by"`
+	ReviewedAt            *time.Time     `json:"reviewed_at"`
+	Provenance            map[string]any `json:"provenance"`
+	AllowedActions        []string       `json:"allowed_actions"`
+}
+
+type Observation struct {
+	ID              string   `json:"id"`
+	DimensionCode   string   `json:"dimension_code"`
+	ObservationType string   `json:"observation_type"`
+	ObservationText string   `json:"observation_text"`
+	Suggestion      string   `json:"suggestion"`
+	ReviewStatus    string   `json:"review_status"`
+	EvidenceIDs     []string `json:"evidence_ids"`
+}
+
+type Revision struct {
+	ID                    string    `json:"id"`
+	SessionID             string    `json:"session_id"`
+	MediaAssetID          string    `json:"media_asset_id"`
+	SourceRunID           string    `json:"source_run_id"`
+	ParentRevisionID      *string   `json:"parent_revision_id"`
+	RevisionNo            int       `json:"revision_no"`
+	SourceType            string    `json:"source_type"`
+	ContentSHA256         string    `json:"content_sha256"`
+	CreatedBy             string    `json:"created_by"`
+	CreatedAt             time.Time `json:"created_at"`
+	Reason                string    `json:"reason"`
+	TranscriptLockVersion int       `json:"transcript_lock_version"`
+	Segments              []Segment `json:"segments"`
 }
