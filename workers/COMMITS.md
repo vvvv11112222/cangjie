@@ -1,6 +1,6 @@
 # 视觉工程师 commits 报告
 
-日期：2026-10-07。仓库：`vvvv11112222/cangjie`；分支：`feat/vision-worker`；集成基线：`8827ed2`。本次交付复用已开发的 vision-lab 0.4.3，负责视频工程师能够独立完成的代码、检查和交接。
+更新日期：2026-10-08，首次交付 2026-10-07。仓库：`vvvv11112222/cangjie`；分支：`feat/vision-worker`；集成基线：`8827ed2`。本次交付复用已开发的 vision-lab 0.4.3，负责视频工程师能够独立完成的代码、检查和交接。
 
 ## 1. 提交清单
 
@@ -11,6 +11,8 @@
 | [498211b](https://github.com/vvvv11112222/cangjie/commit/498211ba21fea995fa906679fc36d8699a9e745a) | `ci(video): verify Windows Linux and CPU container` | 增加 Windows、Linux 自动测试及 CPU 容器构建与测试 |
 | [086e0fd](https://github.com/vvvv11112222/cangjie/commit/086e0fdc32c595a5a6bf3649260fb570d0976638) | `docs(video): add commits report and align latest team status` | 编写 commits 报告，修正根 README 过时的实现状态，记录最新主分支基线 |
 | [a21166e](https://github.com/vvvv11112222/cangjie/commit/a21166e563a48285edc653d50b9df4ce06810401) | `fix(video): support fresh checkouts and Windows CI runtime` | 修复首次下载缺少临时目录的问题，为 Windows 选择可安装的 Python 3.12.10，完整检查通过 |
+| `ceccad8` | `docs(video): record passing CI and final delivery acceptance` | 记录首次交付的 Windows、Linux 和 CPU 容器通过结果 |
+| `e251786` | `fix(video): recover transient failures and preserve media timeout reasons` | 修复 PR #8 六项反馈：领取恢复、429、超时原因、奇数尺寸、配置时长上限及 CSV 文本；新增 32 项回归案例，处理器版本 1.0.1 |
 
 PR：[视频工程师交付 #8](https://github.com/vvvv11112222/cangjie/pull/8)，已上传，等待团队审查。本轮验收结果在后续文档提交中保存；完整历史可执行 `git log --oneline 8827ed2..feat/vision-worker` 查看。本报告不填写最新文档提交自身的摘要，避免修改报告后摘要再次改变。
 
@@ -67,3 +69,16 @@ P0 完成接口保持契约 1.1，行为事件为空，模型信息为 null。�
 5. 达到 2 分钟录像在 120 秒内完成的更高速度目标，以及 CUDA 执行器验证。
 
 代码通过任务分支与 PR 提交，保留前端 PR #7 已合入的内容；合并 main 由团队审查后执行。
+
+## 6. 2026-10-08 修复报告
+
+| 反馈 | 修复 | 验证 |
+| --- | --- | --- |
+| 暂时领取失败使 Worker 退出 | 持续运行入口退避恢复；不确认的领取等待租约上限，凭据失效停止 | 429、503、断网和 401/403/409/410 受控探针 |
+| 429 被判为永久失败 | 识别 Retry-After；已领取任务最多 3 次重试，耗尽仍报告 retryable | 下载、上传、完成；内容与字节保持、租约到期及续租等待 |
+| 本地超时丢失原因 | 保留 PROCESSING_TIMEOUT，独立检查回报时的租约；父进程负责子进程超时回报 | 媒体循环先超时、父进程超时、外部取消不清除 |
+| 奇数宽高转码失败 | 右侧/底部补最多 1 像素，不缩放、不改时间轴 | 实际 FFmpeg 161×120、160×121、161×121 输入 |
+| 共享媒体函数固定两小时 | 正式入口使用 Settings 上限，本地演示单独保留两小时约束 | 配置三小时接受 2.5 小时元数据，默认配置返回 MEDIA_TOO_LARGE |
+| CSV 复核文本被当作公式 | CSV 对公式前缀加文本标记，JSON 保留原文 | 公式、空白/换行、普通中文、负数角度及 unknown |
+
+完整 86 项测试通过。密集课堂修复前后 241 张推理输入完全相同；11,588 次观察的历史 CSV 无差异，导出新增开销约 0.048 秒。没有重新做完整 GPU 速度验收，也没有宣称达到 120 秒目标。细节见 [验证记录](VALIDATION.md)，本轮自动检查结果见 [PR #8](https://github.com/vvvv11112222/cangjie/pull/8/checks)。

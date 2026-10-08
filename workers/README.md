@@ -62,13 +62,19 @@ python -m workers run
 
 `--once` 只领取一次。环境变量与 [配置模板](../.env.example)一致；程序读取进程环境，不自行加载配置文件。后端固定同一 `processor_version`、FFmpeg 摘要和参数摘要到 Claim。参数间隔和上限使用 Claim，不能由本机默认值偷偷替换。
 
+处理器版本已更新为 `cangjie-video-worker-1.0.1`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
+
+已领取任务的媒体访问、心跳、上传与回传每次操作最多尝试 3 次，遵循 `Retry-After`（秒数或 HTTP 日期），并持续检查租约、取消及截止时间。重传产物复用同一键与内容，完成请求保留原字节；超过次数报告可重试失败，由 Go 决定重新调度。本地超时报告 `PROCESSING_TIMEOUT`，不会清除外部撤租或取消信号。
+
+正式视频时长上限采用 `MAX_MEDIA_DURATION_MS`。奇数宽高的播放代理仅在右侧/底部补最多 1 像素黑边，原画面不缩放、时间轴不变；返回宽高仍指原录像。CSV 导出把可能被当作公式的文本加上文本前缀，JSON 的复核原文保持原样。
+
 一次执行一个任务，心跳使用独立控制进程。失去租约、取消、硬截止或本地超时会停止媒体子进程并清理其临时目录。下载验证 SHA-256，上传验证回执摘要；重试完成请求保留同一份 JSON 字节。临时目录按任务/租约隔离，启动只清理带有效 UUID 和过期标记的自有目录。
 
 Docker 入口（构建上下文为仓库根目录）：
 
 ```bash
-docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.0 .
-docker run --rm cangjie-video-worker:1.0.0 python -m workers runtime-info
+docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.1 .
+docker run --rm cangjie-video-worker:1.0.1 python -m workers runtime-info
 ```
 
 运行时显式传入前述环境变量及可写临时目录。容器中的 `127.0.0.1` 指容器自身；后端地址使用共同网络中的 Go 服务名。[GitHub 检查](https://github.com/vvvv11112222/cangjie/actions/runs/37630242939)已通过 Linux/Windows 测试、CPU 容器构建、运行信息与容器内测试。共同环境中的真实 Go 和 GPU 样本联调仍待验收。

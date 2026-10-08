@@ -19,6 +19,8 @@ multipart 的 `timestamp_ms`：关键帧使用十进制毫秒；没有时间点�
 
 媒体阶段异常发送 `CONFIG_MISMATCH`、`TIMELINE_INVALID`、`UNSUPPORTED_MEDIA`、`MEDIA_TOO_LARGE`、`INPUT_DIGEST_MISMATCH`、`PROCESSING_TIMEOUT`、`PROCESSING_FAILED` 或 `WORKER_API_ERROR`；retryable 明确给出，由 Go 决定是否重新排队。没有主动重试 ASR 或报告模型。403/409/410/凭据失效会停工；完成与取消竞态的最终状态由 Go 确认。
 
+2026-10-08 修复后版本为 `cangjie-video-worker-1.0.1`。Go 分配 execution 时应固定此版本并核对实际 FFmpeg 摘要。限流或暂时故障按 `Retry-After` 在有效租约内有限重试；媒体本地超时与外部撤租分别处理，超时失败回传只检查仍有效的租约和 Go 硬截止。领取响应丢失或返回 5xx 时没有可用的协议恢复端点，Worker 等待配置的初次租约上限后再开始新的轮询；`JOB_LEASE_SECONDS` 必须与 Go 一致。
+
 ## 人工标注格式与质量测量
 
 本地 JSON，不提交真实标签到仓库。以下是结构说明，不是合格样本：
