@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/config"
 	"github.com/vvvv11112222/cangjie/internal/database"
 	"github.com/vvvv11112222/cangjie/internal/governance"
@@ -66,6 +67,7 @@ func run() error {
 		Readiness:    checks,
 		Identity:     identity.NewService(pool.Pool, cfg.SessionTTL),
 		Academic:     academic.NewService(pool.Pool),
+		Classroom:    classroom.NewService(pool.Pool),
 		PublicOrigin: cfg.PublicOrigin,
 		SecureCookie: origin.Scheme == "https",
 		SessionTTL:   cfg.SessionTTL,

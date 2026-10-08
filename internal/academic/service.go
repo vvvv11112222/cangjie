@@ -146,6 +146,59 @@ type PatchOffering struct {
 	Status       *string `json:"status"`
 }
 
+type Schedule struct {
+	ID           string    `json:"id"`
+	OfferingID   string    `json:"offering_id"`
+	ClassroomID  string    `json:"classroom_id"`
+	StartsAt     time.Time `json:"starts_at"`
+	EndsAt       time.Time `json:"ends_at"`
+	Status       string    `json:"status"`
+	TeacherID    string    `json:"teacher_id"`
+	ClassGroupID string    `json:"class_group_id"`
+}
+
+type CreateSchedule struct {
+	OfferingID  string `json:"offering_id"`
+	ClassroomID string `json:"classroom_id"`
+	StartsAt    string `json:"starts_at"`
+	EndsAt      string `json:"ends_at"`
+	Status      string `json:"status"`
+}
+
+type PatchSchedule struct {
+	OfferingID  *string `json:"offering_id"`
+	ClassroomID *string `json:"classroom_id"`
+	StartsAt    *string `json:"starts_at"`
+	EndsAt      *string `json:"ends_at"`
+	Status      *string `json:"status"`
+}
+
+type ImportScheduleRow struct {
+	OfferingID  string `json:"offering_id"`
+	ClassroomID string `json:"classroom_id"`
+	StartsAt    string `json:"starts_at"`
+	EndsAt      string `json:"ends_at"`
+}
+
+type ImportSchedules struct {
+	Rows []ImportScheduleRow `json:"rows"`
+}
+
+type ImportResult struct {
+	Items []Schedule `json:"items"`
+}
+
+type ScheduleQuery struct {
+	After        string
+	Limit        int
+	TeacherID    string
+	ClassroomID  string
+	ClassGroupID string
+	At           *time.Time
+	From         *time.Time
+	To           *time.Time
+}
+
 func requireSystem(p identity.Principal) error {
 	if !p.Has("sys_admin") {
 		return apperror.New(http.StatusForbidden, "FORBIDDEN", "system administrator permission is required")
@@ -1033,6 +1086,249 @@ func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id st
 		return Offering{}, dbError(err)
 	}
 	return v, nil
+}
+
+func scanSchedule(row pgx.Row) (Schedule, error) {
+	var v Schedule
+	err := row.Scan(&v.ID, &v.OfferingID, &v.ClassroomID, &v.StartsAt, &v.EndsAt, &v.Status, &v.TeacherID, &v.ClassGroupID)
+	return v, err
+}
+
+const scheduleColumns = `s.id::text,s.offering_id::text,s.classroom_id::text,s.starts_at,s.ends_at,s.status,s.teacher_id::text,s.class_group_id::text`
+
+func parseRange(startRaw, endRaw string) (time.Time, time.Time, error) {
+	start, err := time.Parse(time.RFC3339, startRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, invalid("starts_at must be an RFC3339 date-time")
+	}
+	end, err := time.Parse(time.RFC3339, endRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, invalid("ends_at must be an RFC3339 date-time")
+	}
+	if !end.After(start) {
+		return time.Time{}, time.Time{}, invalid("ends_at must be after starts_at")
+	}
+	return start, end, nil
+}
+
+func (s *Service) ListSchedules(ctx context.Context, p identity.Principal, q ScheduleQuery) ([]Schedule, string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+scheduleColumns+`
+		FROM teaching.schedule_entries s JOIN teaching.course_offerings o ON o.id=s.offering_id
+		WHERE ($1='' OR s.id>$1::uuid)
+		AND ($2='' OR s.teacher_id=$2::uuid) AND ($3='' OR s.classroom_id=$3::uuid) AND ($4='' OR s.class_group_id=$4::uuid)
+		AND ($5::timestamptz IS NULL OR (s.status='active' AND s.starts_at<=$5 AND s.ends_at>$5))
+		AND ($6::timestamptz IS NULL OR (s.starts_at<$7 AND s.ends_at>$6))
+		AND ($8 OR teaching.college_of(o.org_unit_id)=ANY($9::uuid[]) OR ($11 AND o.teacher_id=$10))
+		ORDER BY s.id LIMIT $12`, q.After, q.TeacherID, q.ClassroomID, q.ClassGroupID, q.At, q.From, q.To,
+		p.Has("sys_admin"), p.CollegeScopes(), p.UserID, p.Has("teacher"), q.Limit+1)
+	if err != nil {
+		return nil, "", dbError(err)
+	}
+	defer rows.Close()
+	items := []Schedule{}
+	for rows.Next() {
+		v, err := scanSchedule(rows)
+		if err != nil {
+			return nil, "", err
+		}
+		items = append(items, v)
+	}
+	items, next := nextID(items, q.Limit, func(v Schedule) string { return v.ID })
+	return items, next, rows.Err()
+}
+
+func (s *Service) GetSchedule(ctx context.Context, p identity.Principal, id string) (Schedule, error) {
+	v, err := scanSchedule(s.pool.QueryRow(ctx, `SELECT `+scheduleColumns+`
+		FROM teaching.schedule_entries s JOIN teaching.course_offerings o ON o.id=s.offering_id
+		WHERE s.id=$1 AND ($2 OR teaching.college_of(o.org_unit_id)=ANY($3::uuid[]) OR ($5 AND o.teacher_id=$4))`,
+		id, p.Has("sys_admin"), p.CollegeScopes(), p.UserID, p.Has("teacher")))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Schedule{}, notFound("schedule")
+	}
+	return v, dbError(err)
+}
+
+func (s *Service) CreateSchedule(ctx context.Context, p identity.Principal, in CreateSchedule) (Schedule, error) {
+	start, end, err := parseRange(in.StartsAt, in.EndsAt)
+	if err != nil {
+		return Schedule{}, err
+	}
+	if in.Status != "active" && in.Status != "cancelled" {
+		return Schedule{}, invalid("invalid schedule status")
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Schedule{}, fmt.Errorf("begin schedule creation: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	v, err := createScheduleTx(ctx, tx, p, in.OfferingID, in.ClassroomID, start, end, in.Status, 0)
+	if err != nil {
+		return Schedule{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Schedule{}, scheduleDBError(err, 0, start, end)
+	}
+	return v, nil
+}
+
+func createScheduleTx(ctx context.Context, tx pgx.Tx, p identity.Principal, offeringID, classroomID string, start, end time.Time, status string, rowNumber int) (Schedule, error) {
+	var org, teacher, group, offeringStatus string
+	err := tx.QueryRow(ctx, `SELECT org_unit_id::text,teacher_id::text,class_group_id::text,status FROM teaching.course_offerings WHERE id=$1 FOR SHARE`, offeringID).Scan(&org, &teacher, &group, &offeringStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Schedule{}, invalid("offering_id does not exist")
+	}
+	if err != nil {
+		return Schedule{}, dbError(err)
+	}
+	if offeringStatus != "active" {
+		return Schedule{}, apperror.New(http.StatusConflict, "INVALID_STATE", "schedules require an active offering")
+	}
+	if err := requireManageOrg(ctx, tx, p, org); err != nil {
+		return Schedule{}, err
+	}
+	if err := lockAcademicResources(ctx, tx, "teacher:"+teacher, "class:"+group, "room:"+classroomID); err != nil {
+		return Schedule{}, err
+	}
+	v, err := scanSchedule(tx.QueryRow(ctx, `INSERT INTO teaching.schedule_entries AS s(offering_id,teacher_id,class_group_id,classroom_id,starts_at,ends_at,status)
+		VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING `+scheduleColumns, offeringID, teacher, group, classroomID, start, end, status))
+	if err != nil {
+		return Schedule{}, scheduleDBError(err, rowNumber, start, end)
+	}
+	return v, nil
+}
+
+func (s *Service) PatchSchedule(ctx context.Context, p identity.Principal, id string, in PatchSchedule) (Schedule, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Schedule{}, fmt.Errorf("begin schedule update: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	current, err := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM teaching.schedule_entries s WHERE s.id=$1 FOR UPDATE`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Schedule{}, notFound("schedule")
+	}
+	if err != nil {
+		return Schedule{}, dbError(err)
+	}
+	offering, classroom, status := current.OfferingID, current.ClassroomID, current.Status
+	start, end := current.StartsAt, current.EndsAt
+	if in.OfferingID != nil {
+		offering = *in.OfferingID
+	}
+	if in.ClassroomID != nil {
+		classroom = *in.ClassroomID
+	}
+	if in.Status != nil {
+		status = *in.Status
+	}
+	if in.StartsAt != nil {
+		start, err = time.Parse(time.RFC3339, *in.StartsAt)
+		if err != nil {
+			return Schedule{}, invalid("starts_at must be an RFC3339 date-time")
+		}
+	}
+	if in.EndsAt != nil {
+		end, err = time.Parse(time.RFC3339, *in.EndsAt)
+		if err != nil {
+			return Schedule{}, invalid("ends_at must be an RFC3339 date-time")
+		}
+	}
+	if !end.After(start) {
+		return Schedule{}, invalid("ends_at must be after starts_at")
+	}
+	if status != "active" && status != "cancelled" {
+		return Schedule{}, invalid("invalid schedule status")
+	}
+	var oldOrg, newOrg, teacher, group string
+	if err := tx.QueryRow(ctx, `SELECT org_unit_id::text FROM teaching.course_offerings WHERE id=$1`, current.OfferingID).Scan(&oldOrg); err != nil {
+		return Schedule{}, dbError(err)
+	}
+	err = tx.QueryRow(ctx, `SELECT org_unit_id::text,teacher_id::text,class_group_id::text FROM teaching.course_offerings WHERE id=$1 FOR SHARE`, offering).Scan(&newOrg, &teacher, &group)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Schedule{}, invalid("offering_id does not exist")
+	}
+	if err != nil {
+		return Schedule{}, dbError(err)
+	}
+	if err := requireManageOrg(ctx, tx, p, oldOrg); err != nil {
+		return Schedule{}, err
+	}
+	if err := requireManageOrg(ctx, tx, p, newOrg); err != nil {
+		return Schedule{}, err
+	}
+	if err := lockAcademicResources(ctx, tx,
+		"teacher:"+current.TeacherID, "class:"+current.ClassGroupID, "room:"+current.ClassroomID,
+		"teacher:"+teacher, "class:"+group, "room:"+classroom); err != nil {
+		return Schedule{}, err
+	}
+	if !sameUUID(offering, current.OfferingID) || !sameUUID(classroom, current.ClassroomID) || !start.Equal(current.StartsAt) || !end.Equal(current.EndsAt) {
+		var frozen bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.lesson_sessions WHERE schedule_entry_id=$1)`, id).Scan(&frozen); err != nil {
+			return Schedule{}, dbError(err)
+		}
+		if frozen {
+			return Schedule{}, apperror.New(http.StatusConflict, "INVALID_STATE", "a schedule linked to a lesson cannot change its assignment or time")
+		}
+	}
+	v, err := scanSchedule(tx.QueryRow(ctx, `UPDATE teaching.schedule_entries AS s SET offering_id=$2,teacher_id=$3,class_group_id=$4,classroom_id=$5,starts_at=$6,ends_at=$7,status=$8 WHERE id=$1 RETURNING `+scheduleColumns,
+		id, offering, teacher, group, classroom, start, end, status))
+	if err != nil {
+		return Schedule{}, scheduleDBError(err, 0, start, end)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Schedule{}, scheduleDBError(err, 0, start, end)
+	}
+	return v, nil
+}
+
+func (s *Service) ImportSchedules(ctx context.Context, p identity.Principal, in ImportSchedules) (ImportResult, error) {
+	if len(in.Rows) < 1 || len(in.Rows) > 1000 {
+		return ImportResult{}, invalid("rows must contain between 1 and 1000 schedules")
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("begin schedule import: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	result := ImportResult{Items: make([]Schedule, 0, len(in.Rows))}
+	for index, row := range in.Rows {
+		start, end, err := parseRange(row.StartsAt, row.EndsAt)
+		if err != nil {
+			return ImportResult{}, apperror.WithDetails(http.StatusBadRequest, "INVALID_ARGUMENT", "schedule import row is invalid", map[string]any{"row_numbers": []int{index + 1}})
+		}
+		v, err := createScheduleTx(ctx, tx, p, row.OfferingID, row.ClassroomID, start, end, "active", index+1)
+		if err != nil {
+			return ImportResult{}, err
+		}
+		result.Items = append(result.Items, v)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ImportResult{}, dbError(err)
+	}
+	return result, nil
+}
+
+func scheduleDBError(err error, rowNumber int, start, end time.Time) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23P01" {
+		resource := "resource"
+		switch pgErr.ConstraintName {
+		case "ex_schedule_teacher":
+			resource = "teacher"
+		case "ex_schedule_class":
+			resource = "class_group"
+		case "ex_schedule_room":
+			resource = "classroom"
+		}
+		details := map[string]any{"resource_type": resource, "conflict_start": start.Format(time.RFC3339), "conflict_end": end.Format(time.RFC3339)}
+		if rowNumber > 0 {
+			details["row_numbers"] = []int{rowNumber}
+		} else {
+			details["row_numbers"] = []int{}
+		}
+		return apperror.WithDetails(http.StatusConflict, "SCHEDULE_CONFLICT", "schedule conflicts with an existing resource booking", details)
+	}
+	return dbError(err)
 }
 
 func sameUUID(a, b string) bool {

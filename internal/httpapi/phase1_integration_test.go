@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/database"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 )
@@ -63,7 +64,7 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), PublicOrigin: "http://frontend.test"})
+	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), PublicOrigin: "http://frontend.test"})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	admin := newTestClient(t)
@@ -114,11 +115,40 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 	classroom := requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/classrooms", map[string]any{"code": "ROOM-1", "name": "Room 1", "capacity": nil}, adminCSRF, http.StatusCreated)
 	requestJSON(t, admin, http.MethodPatch, server.URL+"/api/v1/classrooms/"+classroom["id"].(string), map[string]any{"capacity": 40}, adminCSRF, http.StatusOK)
 	offering := requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/offerings", map[string]any{"org_unit_id": collegeA, "term_id": term["id"], "course_id": course["id"], "teacher_id": teacherID, "class_group_id": group["id"], "code": "OWN-101-1", "status": "active"}, academicCSRF, http.StatusCreated)
-	requestJSON(t, academicClient, http.MethodPatch, server.URL+"/api/v1/offerings/"+offering["id"].(string), map[string]any{"status": "archived"}, academicCSRF, http.StatusOK)
 
 	teacherClient := newTestClient(t)
 	teacherCSRF := loginTestUser(t, teacherClient, server.URL, "teacher")
-	_ = teacherCSRF
+	secondRoom := requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/classrooms", map[string]any{"code": "ROOM-2", "name": "Room 2", "capacity": 40}, adminCSRF, http.StatusCreated)
+	schedule := requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/schedules", map[string]any{"offering_id": offering["id"], "classroom_id": classroom["id"], "starts_at": "2026-10-10T09:00:00+08:00", "ends_at": "2026-10-10T10:00:00+08:00", "status": "active"}, academicCSRF, http.StatusCreated)
+	requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/schedules", map[string]any{"offering_id": offering["id"], "classroom_id": classroom["id"], "starts_at": "2026-10-10T10:00:00+08:00", "ends_at": "2026-10-10T11:00:00+08:00", "status": "active"}, academicCSRF, http.StatusCreated)
+	atPage := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/schedules?teacher_id="+teacherID+"&at=2026-10-10T09%3A30%3A00%2B08%3A00", nil, "", http.StatusOK)
+	if got := atPage["items"].([]any); len(got) != 1 || got[0].(map[string]any)["id"] != schedule["id"] {
+		t.Fatalf("schedule point query=%#v", got)
+	}
+	requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/schedules", map[string]any{"offering_id": offering["id"], "classroom_id": secondRoom["id"], "starts_at": "2026-10-10T09:30:00+08:00", "ends_at": "2026-10-10T10:30:00+08:00", "status": "active"}, academicCSRF, http.StatusConflict)
+	requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/schedules/import", map[string]any{"rows": []any{
+		map[string]any{"offering_id": offering["id"], "classroom_id": classroom["id"], "starts_at": "2026-10-10T11:00:00+08:00", "ends_at": "2026-10-10T12:00:00+08:00"},
+		map[string]any{"offering_id": offering["id"], "classroom_id": secondRoom["id"], "starts_at": "2026-10-10T11:30:00+08:00", "ends_at": "2026-10-10T12:30:00+08:00"},
+	}}, academicCSRF, http.StatusConflict)
+	var imported int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM teaching.schedule_entries WHERE starts_at='2026-10-10 11:00+08'`).Scan(&imported); err != nil || imported != 0 {
+		t.Fatalf("failed schedule import left %d rows: %v", imported, err)
+	}
+	session := requestJSON(t, teacherClient, http.MethodPost, server.URL+"/api/v1/sessions", map[string]any{"offering_id": offering["id"], "schedule_entry_id": schedule["id"], "title": "Lesson 1", "planned_start_at": "2026-10-10T09:00:00+08:00", "planned_end_at": "2026-10-10T10:00:00+08:00", "is_demo": false}, teacherCSRF, http.StatusCreated)
+	requestJSON(t, teacherClient, http.MethodPost, server.URL+"/api/v1/sessions", map[string]any{"offering_id": offering["id"], "schedule_entry_id": schedule["id"], "title": "Wrong time", "planned_start_at": "2026-10-10T09:01:00+08:00", "planned_end_at": "2026-10-10T10:00:00+08:00", "is_demo": false}, teacherCSRF, http.StatusBadRequest)
+	requestJSON(t, academicClient, http.MethodPatch, server.URL+"/api/v1/schedules/"+schedule["id"].(string), map[string]any{"ends_at": "2026-10-10T09:59:00+08:00"}, academicCSRF, http.StatusConflict)
+	visibleSessions := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/sessions?enrollment_year=2026&teacher_id="+teacherID, nil, "", http.StatusOK)
+	if got := visibleSessions["items"].([]any); len(got) != 1 || got[0].(map[string]any)["id"] != session["id"] {
+		t.Fatalf("teacher session directory=%#v", got)
+	}
+	requestJSON(t, academicClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"status": "archived"}, academicCSRF, http.StatusOK)
+	if got := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/sessions", nil, "", http.StatusOK)["items"].([]any); len(got) != 0 {
+		t.Fatalf("default directory includes archived=%#v", got)
+	}
+	if got := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/sessions?status=archived", nil, "", http.StatusOK)["items"].([]any); len(got) != 1 {
+		t.Fatalf("archived directory=%#v", got)
+	}
+	requestJSON(t, academicClient, http.MethodPatch, server.URL+"/api/v1/offerings/"+offering["id"].(string), map[string]any{"status": "archived"}, academicCSRF, http.StatusOK)
 	page := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/courses", nil, "", http.StatusOK)
 	items := page["items"].([]any)
 	if len(items) != 1 || items[0].(map[string]any)["id"] != course["id"] {

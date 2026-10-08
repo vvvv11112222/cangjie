@@ -12,8 +12,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
+	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 )
 
@@ -40,6 +43,225 @@ func (s *server) registerBusinessRoutes(mux *http.ServeMux) {
 	registerResource(s, mux, "class-groups", s.academic.ListClassGroups, s.academic.GetClassGroup, s.academic.CreateClassGroup, s.academic.PatchClassGroup)
 	registerResource(s, mux, "classrooms", s.academic.ListClassrooms, s.academic.GetClassroom, s.academic.CreateClassroom, s.academic.PatchClassroom)
 	registerResource(s, mux, "offerings", s.academic.ListOfferings, s.academic.GetOffering, s.academic.CreateOffering, s.academic.PatchOffering)
+	s.registerScheduleRoutes(mux)
+	if s.classroom != nil {
+		s.registerSessionRoutes(mux)
+	}
+}
+
+func (s *server) registerScheduleRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/schedules", s.listSchedules)
+	mux.HandleFunc("GET /api/v1/schedules/{id}", s.getSchedule)
+	mux.HandleFunc("POST /api/v1/schedules", s.createSchedule)
+	mux.HandleFunc("PATCH /api/v1/schedules/{id}", s.patchSchedule)
+	mux.HandleFunc("POST /api/v1/schedules/import", s.importSchedules)
+}
+
+func (s *server) registerSessionRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/sessions", s.listSessions)
+	mux.HandleFunc("POST /api/v1/sessions", s.createSession)
+	mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.patchSession)
+}
+
+func (s *server) listSchedules(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	after, limit, ok := s.pageAllowed(w, r, "teacher_id", "classroom_id", "class_group_id", "at", "from", "to")
+	if !ok {
+		return
+	}
+	query := academic.ScheduleQuery{After: after, Limit: limit}
+	if query.TeacherID, ok = queryUUID(w, r, "teacher_id"); !ok {
+		return
+	}
+	if query.ClassroomID, ok = queryUUID(w, r, "classroom_id"); !ok {
+		return
+	}
+	if query.ClassGroupID, ok = queryUUID(w, r, "class_group_id"); !ok {
+		return
+	}
+	if query.At, ok = queryTime(w, r, "at"); !ok {
+		return
+	}
+	if query.From, ok = queryTime(w, r, "from"); !ok {
+		return
+	}
+	if query.To, ok = queryTime(w, r, "to"); !ok {
+		return
+	}
+	if query.At != nil && (query.From != nil || query.To != nil) || (query.From == nil) != (query.To == nil) || query.From != nil && !query.To.After(*query.From) {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "at is exclusive with a valid from/to pair", map[string]any{})
+		return
+	}
+	items, next, err := s.academic.ListSchedules(r.Context(), p, query)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, page(items, next))
+}
+
+func (s *server) getSchedule(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	v, err := s.academic.GetSchedule(r.Context(), p, id)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, v)
+}
+
+func (s *server) createSchedule(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.writePrincipal(w, r)
+	if !ok {
+		return
+	}
+	var in academic.CreateSchedule
+	if !s.decode(w, r, &in, false) {
+		return
+	}
+	v, err := s.academic.CreateSchedule(r.Context(), p, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusCreated, v)
+}
+
+func (s *server) patchSchedule(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.writePrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in academic.PatchSchedule
+	if !s.decode(w, r, &in, true) {
+		return
+	}
+	v, err := s.academic.PatchSchedule(r.Context(), p, id, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, v)
+}
+
+func (s *server) importSchedules(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.writePrincipal(w, r)
+	if !ok {
+		return
+	}
+	var in academic.ImportSchedules
+	if !s.decode(w, r, &in, false) {
+		return
+	}
+	v, err := s.academic.ImportSchedules(r.Context(), p, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusCreated, v)
+}
+
+func (s *server) listSessions(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	after, limit, ok := s.pageAllowed(w, r, "college_id", "enrollment_year", "class_group_id", "teacher_id", "from", "to", "status")
+	if !ok {
+		return
+	}
+	query := classroom.SessionQuery{After: after, Limit: limit, Status: r.URL.Query().Get("status")}
+	if query.CollegeID, ok = queryUUID(w, r, "college_id"); !ok {
+		return
+	}
+	if query.ClassGroupID, ok = queryUUID(w, r, "class_group_id"); !ok {
+		return
+	}
+	if query.TeacherID, ok = queryUUID(w, r, "teacher_id"); !ok {
+		return
+	}
+	if query.From, ok = queryTime(w, r, "from"); !ok {
+		return
+	}
+	if query.To, ok = queryTime(w, r, "to"); !ok {
+		return
+	}
+	if (query.From == nil) != (query.To == nil) || query.From != nil && !query.To.After(*query.From) {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "from/to must be a valid pair", map[string]any{})
+		return
+	}
+	if raw := r.URL.Query().Get("enrollment_year"); raw != "" {
+		if raw == "unknown" {
+			query.UnknownYear = true
+		} else if year, err := strconv.Atoi(raw); err != nil || year < 1900 || year > 2200 {
+			writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "enrollment_year is invalid", map[string]any{})
+			return
+		} else {
+			query.EnrollmentYear = &year
+		}
+	}
+	if query.Status != "" && query.Status != "planned" && query.Status != "ready" && query.Status != "archived" && query.Status != "deleting" && query.Status != "deleted" {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "status is invalid", map[string]any{})
+		return
+	}
+	items, next, err := s.classroom.List(r.Context(), p, query)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, page(items, next))
+}
+
+func (s *server) createSession(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.writePrincipal(w, r)
+	if !ok {
+		return
+	}
+	var in classroom.CreateSession
+	if !s.decode(w, r, &in, false) {
+		return
+	}
+	v, err := s.classroom.Create(r.Context(), p, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusCreated, v)
+}
+
+func (s *server) patchSession(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.writePrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in classroom.PatchSession
+	if !s.decode(w, r, &in, true) {
+		return
+	}
+	v, err := s.classroom.Patch(r.Context(), p, id, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, v)
 }
 
 func registerResource[C, P, V any](s *server, mux *http.ServeMux, name string, list func(context.Context, identity.Principal, string, int) ([]V, string, error), get func(context.Context, identity.Principal, string) (V, error), create func(context.Context, identity.Principal, C) (V, error), patch func(context.Context, identity.Principal, string, P) (V, error)) {
@@ -382,8 +604,15 @@ func (s *server) decode(w http.ResponseWriter, r *http.Request, target any, nonE
 	return true
 }
 func (s *server) page(w http.ResponseWriter, r *http.Request) (string, int, bool) {
+	return s.pageAllowed(w, r)
+}
+func (s *server) pageAllowed(w http.ResponseWriter, r *http.Request, extra ...string) (string, int, bool) {
+	allowed := map[string]bool{"cursor": true, "limit": true}
+	for _, key := range extra {
+		allowed[key] = true
+	}
 	for key, values := range r.URL.Query() {
-		if (key != "cursor" && key != "limit") || len(values) != 1 {
+		if !allowed[key] || len(values) != 1 {
 			writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "unknown or repeated query parameter", map[string]any{})
 			return "", 0, false
 		}
@@ -407,6 +636,28 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) (string, int, bool
 		after = string(decoded)
 	}
 	return after, limit, true
+}
+
+func queryUUID(w http.ResponseWriter, r *http.Request, name string) (string, bool) {
+	value := r.URL.Query().Get(name)
+	if value != "" && !validUUID(value) {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", name+" must be a UUID", map[string]any{})
+		return "", false
+	}
+	return value, true
+}
+
+func queryTime(w http.ResponseWriter, r *http.Request, name string) (*time.Time, bool) {
+	value := r.URL.Query().Get(name)
+	if value == "" {
+		return nil, true
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", name+" must be an RFC3339 date-time", map[string]any{})
+		return nil, false
+	}
+	return &parsed, true
 }
 func page[T any](items []T, next string) listData[T] {
 	var cursor *string
