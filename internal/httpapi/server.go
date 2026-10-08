@@ -17,31 +17,38 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/identity"
+	"github.com/vvvv11112222/cangjie/internal/media"
 )
 
 type CheckFunc func(context.Context) error
 type ReadinessChecks map[string]CheckFunc
 
 type Options struct {
-	Logger       *slog.Logger
-	Readiness    ReadinessChecks
-	Identity     *identity.Service
-	Academic     *academic.Service
-	Classroom    *classroom.Service
-	PublicOrigin string
-	SecureCookie bool
-	SessionTTL   time.Duration
+	Logger         *slog.Logger
+	Readiness      ReadinessChecks
+	Identity       *identity.Service
+	Academic       *academic.Service
+	Classroom      *classroom.Service
+	Media          *media.Service
+	PublicOrigin   string
+	SecureCookie   bool
+	SessionTTL     time.Duration
+	MaxUploadBytes int64
+	UploadTimeout  time.Duration
 }
 
 type server struct {
-	logger       *slog.Logger
-	readiness    ReadinessChecks
-	identity     *identity.Service
-	academic     *academic.Service
-	classroom    *classroom.Service
-	origin       string
-	secureCookie bool
-	sessionTTL   time.Duration
+	logger         *slog.Logger
+	readiness      ReadinessChecks
+	identity       *identity.Service
+	academic       *academic.Service
+	classroom      *classroom.Service
+	media          *media.Service
+	origin         string
+	secureCookie   bool
+	sessionTTL     time.Duration
+	maxUploadBytes int64
+	uploadTimeout  time.Duration
 }
 
 type contextKey string
@@ -57,12 +64,19 @@ func New(options Options) http.Handler {
 	}
 	s := &server{
 		logger: logger, readiness: options.Readiness,
-		identity: options.Identity, academic: options.Academic, classroom: options.Classroom,
+		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media,
 		origin:       strings.TrimRight(options.PublicOrigin, "/"),
 		secureCookie: options.SecureCookie, sessionTTL: options.SessionTTL,
+		maxUploadBytes: options.MaxUploadBytes, uploadTimeout: options.UploadTimeout,
 	}
 	if s.sessionTTL <= 0 {
 		s.sessionTTL = 8 * time.Hour
+	}
+	if s.maxUploadBytes <= 0 {
+		s.maxUploadBytes = 4 << 30
+	}
+	if s.uploadTimeout <= 0 {
+		s.uploadTimeout = 30 * time.Minute
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", requireGet(s.live))

@@ -13,6 +13,9 @@ func TestFromLookupValidMinimum(t *testing.T) {
 	if cfg.ReportEnabled {
 		t.Fatal("reporting must be disabled for the default zero budget")
 	}
+	if cfg.MaxUploadBytes != 4294967296 || cfg.UploadTimeout.String() != "30m0s" || cfg.MediaRetention.Hours() != 14*24 {
+		t.Fatalf("unexpected media defaults: bytes=%d timeout=%s retention=%s", cfg.MaxUploadBytes, cfg.UploadTimeout, cfg.MediaRetention)
+	}
 }
 
 func TestFromLookupRequiresDatabaseURL(t *testing.T) {
@@ -73,6 +76,17 @@ func TestFromLookupRejectsInvalidSessionTTL(t *testing.T) {
 	}))
 	if err == nil || !strings.Contains(err.Error(), "SESSION_TTL_SECONDS") {
 		t.Fatalf("expected session TTL error, got %v", err)
+	}
+}
+
+func TestFromLookupRejectsInvalidMediaLimits(t *testing.T) {
+	for _, key := range []string{"MAX_UPLOAD_BYTES", "UPLOAD_TIMEOUT_SECONDS", "MEDIA_RETENTION_DAYS"} {
+		t.Run(key, func(t *testing.T) {
+			_, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching", key: "0"}))
+			if err == nil || !strings.Contains(err.Error(), key) {
+				t.Fatalf("expected %s error, got %v", key, err)
+			}
+		})
 	}
 }
 

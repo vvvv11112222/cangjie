@@ -243,6 +243,60 @@ func (s *Service) Patch(ctx context.Context, p identity.Principal, id string, in
 	return v, nil
 }
 
+func (s *Service) SelectPrimaryMedia(ctx context.Context, p identity.Principal, sessionID, mediaID string) (Session, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Session{}, fmt.Errorf("begin primary media selection: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var org, teacher, status string
+	var expires time.Time
+	err = tx.QueryRow(ctx, `SELECT teaching.college_of(o.org_unit_id)::text,o.teacher_id::text,ls.status,ls.content_expires_at
+		FROM teaching.lesson_sessions ls JOIN teaching.course_offerings o ON o.id=ls.offering_id WHERE ls.id=$1 FOR UPDATE OF ls`, sessionID).
+		Scan(&org, &teacher, &status, &expires)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, notFound()
+	}
+	if err != nil {
+		return Session{}, storageError(err)
+	}
+	if !canSelectPrimary(p, teacher) {
+		return Session{}, apperror.New(http.StatusForbidden, "FORBIDDEN", "primary media selection is outside your role and scope")
+	}
+	if status == "deleting" || status == "deleted" || !expires.After(time.Now()) {
+		return Session{}, apperror.New(http.StatusConflict, "INVALID_STATE", "the lesson cannot change primary media")
+	}
+	var valid bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.media_assets source
+		JOIN teaching.media_assets playback ON playback.id=source.playback_asset_id AND playback.session_id=source.session_id
+		WHERE source.id=$1 AND source.session_id=$2 AND source.kind='source' AND source.status='ready' AND source.expires_at>now()
+		AND playback.status='ready' AND playback.expires_at>now())`, mediaID, sessionID).Scan(&valid); err != nil {
+		return Session{}, storageError(err)
+	}
+	if !valid {
+		return Session{}, apperror.New(http.StatusConflict, "INVALID_STATE", "primary media must be a ready source asset in the lesson")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teaching.media_assets SET is_primary=false WHERE session_id=$1 AND is_primary`, sessionID); err != nil {
+		return Session{}, storageError(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teaching.media_assets SET is_primary=true WHERE id=$1 AND session_id=$2`, mediaID, sessionID); err != nil {
+		return Session{}, storageError(err)
+	}
+	result, err := scanSession(tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM teaching.lesson_sessions ls WHERE ls.id=$1`, sessionID))
+	if err != nil {
+		return Session{}, storageError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Session{}, storageError(err)
+	}
+	result.AllowedActions = allowedActions(p, org, teacher, result.Status)
+	return result, nil
+}
+
+func canSelectPrimary(p identity.Principal, teacher string) bool {
+	return p.Has("sys_admin") || (p.Has("teacher") && p.UserID == teacher)
+}
+
 func canCreate(p identity.Principal, college, teacher string) bool {
 	return p.Has("sys_admin") || p.Scoped("academic_admin", college) || (p.Has("teacher") && p.UserID == teacher)
 }
