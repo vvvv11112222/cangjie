@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/analysis"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/media"
@@ -24,31 +25,41 @@ type CheckFunc func(context.Context) error
 type ReadinessChecks map[string]CheckFunc
 
 type Options struct {
-	Logger         *slog.Logger
-	Readiness      ReadinessChecks
-	Identity       *identity.Service
-	Academic       *academic.Service
-	Classroom      *classroom.Service
-	Media          *media.Service
-	PublicOrigin   string
-	SecureCookie   bool
-	SessionTTL     time.Duration
-	MaxUploadBytes int64
-	UploadTimeout  time.Duration
+	Logger             *slog.Logger
+	Readiness          ReadinessChecks
+	Identity           *identity.Service
+	Academic           *academic.Service
+	Classroom          *classroom.Service
+	Media              *media.Service
+	Analysis           *analysis.Service
+	WorkerToken        string
+	WorkerID           string
+	WorkerCapabilities []string
+	MaxArtifactBytes   int64
+	PublicOrigin       string
+	SecureCookie       bool
+	SessionTTL         time.Duration
+	MaxUploadBytes     int64
+	UploadTimeout      time.Duration
 }
 
 type server struct {
-	logger         *slog.Logger
-	readiness      ReadinessChecks
-	identity       *identity.Service
-	academic       *academic.Service
-	classroom      *classroom.Service
-	media          *media.Service
-	origin         string
-	secureCookie   bool
-	sessionTTL     time.Duration
-	maxUploadBytes int64
-	uploadTimeout  time.Duration
+	logger             *slog.Logger
+	readiness          ReadinessChecks
+	identity           *identity.Service
+	academic           *academic.Service
+	classroom          *classroom.Service
+	media              *media.Service
+	analysis           *analysis.Service
+	workerToken        string
+	workerID           string
+	workerCapabilities map[string]bool
+	maxArtifactBytes   int64
+	origin             string
+	secureCookie       bool
+	sessionTTL         time.Duration
+	maxUploadBytes     int64
+	uploadTimeout      time.Duration
 }
 
 type contextKey string
@@ -64,10 +75,15 @@ func New(options Options) http.Handler {
 	}
 	s := &server{
 		logger: logger, readiness: options.Readiness,
-		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media,
+		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media, analysis: options.Analysis,
+		workerToken: options.WorkerToken, workerID: options.WorkerID, maxArtifactBytes: options.MaxArtifactBytes,
 		origin:       strings.TrimRight(options.PublicOrigin, "/"),
 		secureCookie: options.SecureCookie, sessionTTL: options.SessionTTL,
 		maxUploadBytes: options.MaxUploadBytes, uploadTimeout: options.UploadTimeout,
+	}
+	s.workerCapabilities = map[string]bool{}
+	for _, capability := range options.WorkerCapabilities {
+		s.workerCapabilities[capability] = true
 	}
 	if s.sessionTTL <= 0 {
 		s.sessionTTL = 8 * time.Hour
@@ -78,11 +94,17 @@ func New(options Options) http.Handler {
 	if s.uploadTimeout <= 0 {
 		s.uploadTimeout = 30 * time.Minute
 	}
+	if s.maxArtifactBytes <= 0 {
+		s.maxArtifactBytes = 4 << 30
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/live", requireGet(s.live))
 	mux.HandleFunc("/health/ready", requireGet(s.ready))
 	if s.identity != nil && s.academic != nil {
 		s.registerBusinessRoutes(mux)
+	}
+	if s.analysis != nil {
+		s.registerWorkerRoutes(mux)
 	}
 	mux.HandleFunc("/", s.notFound)
 	return s.requestID(s.recoverPanic(s.accessLog(mux)))

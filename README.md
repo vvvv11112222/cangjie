@@ -30,13 +30,14 @@
 后端使用 Go 1.26 系列和 PostgreSQL 17。当前已提供：
 
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
-- `cmd/migrate`：按文件名顺序执行 `database/001`～`003`，记录并校验迁移摘要；
+- `cmd/migrate`：按文件名顺序执行 `database/001`～`004`，记录并校验迁移摘要；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；
 - `internal/academic`：学院、学期、课程、班级、教室和开课实例的范围化读写；
 - `internal/classroom`：课表关联的课堂目录、筛选、归档和主媒体选择；
 - `internal/media` 与 `internal/storage`：来源核验、流式上传、本地对象存储适配、媒体目录及授权 Range 回放；
+- `internal/analysis`：分析批次、Worker 领取/心跳/输入/产物/完成/失败接口，以及租约、取消、有限重试、过期回收和重复回调幂等；
 - 本地媒体目录和独立删除日志的 readiness 检查；
 - `Dockerfile` 与 `compose.yaml` 共同开发入口。
 
@@ -49,10 +50,15 @@
 Copy-Item .env.example .env
 ```
 
-3. 在 `.env` 中至少填写 `DATABASE_URL`，例如：
+3. 在 `.env` 中填写数据库与 Worker 执行版本。`WORKER_TOKEN` 使用至少 32 位的本地随机值；固定 JSON 联调也必须填写明确版本，不使用 `latest`：
 
 ```text
 DATABASE_URL=postgres://teaching:本地密码@127.0.0.1:5432/teaching?sslmode=disable
+WORKER_TOKEN=<至少32位本地随机值>
+WORKER_PROCESSOR_VERSION=fixed-json-v1
+FFMPEG_BUILD_SHA256=<64位小写十六进制摘要>
+ASR_MODEL_NAME=fixed-json-asr
+ASR_MODEL_REVISION=p0-v1
 ```
 
 4. 依次迁移、初始化管理员并启动 API：
@@ -76,7 +82,7 @@ Invoke-RestMethod http://127.0.0.1:8080/health/ready
 
 浏览器业务接口使用 `/api/v1` 前缀。先请求 `GET /api/v1/auth/csrf`，再以返回的 token 作为 `X-CSRF-Token` 调用登录；所有写请求还须携带与 `PUBLIC_ORIGIN` 完全一致的 `Origin`。登录成功后服务端轮换为 HttpOnly、SameSite=Lax 的会话 Cookie，HTTPS 环境自动启用 Secure。会话有效期由 `SESSION_TTL_SECONDS` 控制，禁用账号会在同一事务撤销其活动会话。
 
-为支持 M0 环境复现和后续 M1 固定样例联调，Go 后端已实现协议中的 `/auth/*`、`/users*`、基础教务资料、`/schedules`（含批量导入）、课堂目录 `/sessions`，以及 `/sources`、`/media` 的来源、上传、目录、主媒体和回放接口。系统管理员维护全校基础资料；学院教务只能维护本学院课程、班级、开课与课表，以及安全范围内的教师和督导账号；教师的基础资料、课表、课堂与录像操作由本人开课关联决定。排课支持教师、班级、教室冲突检查和整批导入回滚，课堂目录支持学院、入学年份、班级、教师、时间及状态筛选。上传完成的原媒体保持 `pending`，待后续 `probe/media_prepare` 成功后才进入 `ready`；只有当前来源已核验并允许 playback、媒体与课堂均未到期且请求者具内容权限时，回放接口才返回 200/206。
+为支持 M0 环境复现和 M1 固定样例联调，Go 后端已实现协议中的身份、基础教务、课表、课堂目录、来源、媒体与分析任务接口。上传完成的原媒体保持 `pending`；`media_prepare` 的 probe 成功后进入 `ready`。Worker 使用独立 Bearer 凭据，经 `/internal/v1/jobs/*` 领取任务、续租、读取输入、上传产物并提交固定 JSON 结果；所有任务输入和结果都绑定当前租约、课堂存储代次及固定执行版本。服务启动和周期扫描会回收过期租约，旧 token 不能写入，重复完成只接受完全相同的原始 JSON。阶段 5 尚未实现的 evidence/report/validate 会明确标记为 `skipped`，full 批次以 `partial` 收口，不会伪装成完整报告链路。
 
 需要四种角色的本地联调账号时，在 development/test 环境运行：
 
@@ -116,6 +122,7 @@ go build ./cmd/...
 $env:TEST_DATABASE_URL = 'postgres://teaching:测试密码@127.0.0.1:测试端口/teaching?sslmode=disable'
 go test ./internal/httpapi -run TestPhaseOneAuthorizationFlow -v
 go test ./internal/httpapi -run TestPhaseThreeSourceUploadPlaybackAndAuthorization -v
+go test ./internal/httpapi -run TestPhaseFourAnalysisWorkerLeaseAndRecovery -v
 Remove-Item Env:TEST_DATABASE_URL
 ```
 
@@ -133,7 +140,7 @@ node tools/check_prototype.mjs
 
 数据库验证命令见[数据库设计第6节](docs/数据库设计.md#6-执行与验证)。
 
-真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无可启动的 Worker 服务；当前 Go 服务已具备 M0 后端环境、身份与基础资料，以及 M1 所需的课表、课堂、来源、上传和授权回放前置能力，React 前端已具备数据访问层，但媒体 probe/代理、分析和报告的固定样例纵向联调尚未完成。检查通过仅说明相应契约、SQL、已实现接口或度量工具通过，不能代替后续音视频与模型验收。
+真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无音视频成员交付的可启动 Worker；当前 Go 服务已具备 M0 后端环境，以及 M1 所需的身份、教务、课表、课堂、媒体和分析任务前置能力，固定 JSON 可通过内部接口联调。真实 probe/代理、ASR、关键帧、证据和报告仍待跨模块接入与验收，不能把后端任务链路或固定结果误报为 M1/M2 整体完成。
 
 ## 前端（M1 数据访问层）
 

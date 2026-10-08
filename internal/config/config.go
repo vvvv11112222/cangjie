@@ -34,6 +34,20 @@ type Config struct {
 	MaxUploadBytes     int64
 	UploadTimeout      time.Duration
 	MediaRetention     time.Duration
+	WorkerToken        string
+	WorkerID           string
+	WorkerCapabilities []string
+	ProcessorVersion   string
+	FFmpegSHA256       string
+	ASRModelName       string
+	ASRModelRevision   string
+	ASRDevice          string
+	MediaJobAttempts   int
+	MaxArtifactBytes   int64
+	MaxMediaDurationMS int64
+	MaxVideoHeight     int
+	KeyframeIntervalMS int
+	MaxKeyframes       int
 }
 
 func Load() (Config, error) {
@@ -95,6 +109,30 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	maxArtifactBytes, err := positiveInt64(value("MAX_ARTIFACT_BYTES", "4294967296"), "MAX_ARTIFACT_BYTES")
+	if err != nil {
+		return Config{}, err
+	}
+	maxDuration, err := positiveInt64(value("MAX_MEDIA_DURATION_MS", "7200000"), "MAX_MEDIA_DURATION_MS")
+	if err != nil {
+		return Config{}, err
+	}
+	mediaAttempts, err := positiveInt(value("MEDIA_JOB_MAX_ATTEMPTS", "3"), "MEDIA_JOB_MAX_ATTEMPTS")
+	if err != nil {
+		return Config{}, err
+	}
+	maxVideoHeight, err := positiveInt(value("MAX_VIDEO_HEIGHT", "1080"), "MAX_VIDEO_HEIGHT")
+	if err != nil {
+		return Config{}, err
+	}
+	keyframeInterval, err := positiveInt(value("KEYFRAME_INTERVAL_MS", "30000"), "KEYFRAME_INTERVAL_MS")
+	if err != nil {
+		return Config{}, err
+	}
+	maxKeyframes, err := positiveInt(value("MAX_KEYFRAMES", "240"), "MAX_KEYFRAMES")
+	if err != nil {
+		return Config{}, err
+	}
 
 	budget, err := nonNegativeFloat(value("MODEL_MONTHLY_BUDGET", "0"), "MODEL_MONTHLY_BUDGET")
 	if err != nil {
@@ -120,6 +158,20 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		MaxUploadBytes:     maxUploadBytes,
 		UploadTimeout:      uploadTimeout,
 		MediaRetention:     time.Duration(retentionDays) * 24 * time.Hour,
+		WorkerToken:        value("WORKER_TOKEN", ""),
+		WorkerID:           value("WORKER_ID", "worker-01"),
+		WorkerCapabilities: splitCSV(value("WORKER_CAPABILITIES", "probe,audio_analysis,video_analysis")),
+		ProcessorVersion:   value("WORKER_PROCESSOR_VERSION", ""),
+		FFmpegSHA256:       value("FFMPEG_BUILD_SHA256", ""),
+		ASRModelName:       value("ASR_MODEL_NAME", ""),
+		ASRModelRevision:   value("ASR_MODEL_REVISION", ""),
+		ASRDevice:          value("ASR_DEVICE", "cpu"),
+		MediaJobAttempts:   mediaAttempts,
+		MaxArtifactBytes:   maxArtifactBytes,
+		MaxMediaDurationMS: maxDuration,
+		MaxVideoHeight:     maxVideoHeight,
+		KeyframeIntervalMS: keyframeInterval,
+		MaxKeyframes:       maxKeyframes,
 	}
 	if err := validate(cfg, value, budget); err != nil {
 		return Config{}, err
@@ -190,6 +242,36 @@ func validate(cfg Config, value func(string, string) string, budget float64) err
 	return nil
 }
 
+func (cfg Config) ValidateWorkerRuntime() error {
+	if len(cfg.WorkerToken) < 32 {
+		return fmt.Errorf("WORKER_TOKEN must contain at least 32 characters")
+	}
+	if cfg.WorkerID == "" || len(cfg.WorkerCapabilities) == 0 {
+		return fmt.Errorf("WORKER_ID and WORKER_CAPABILITIES are required")
+	}
+	allowedCapabilities := map[string]bool{"probe": true, "audio_analysis": true, "video_analysis": true}
+	for _, capability := range cfg.WorkerCapabilities {
+		if !allowedCapabilities[capability] {
+			return fmt.Errorf("WORKER_CAPABILITIES contains an invalid stage")
+		}
+	}
+	for _, required := range []string{"probe", "audio_analysis", "video_analysis"} {
+		if !contains(cfg.WorkerCapabilities, required) {
+			return fmt.Errorf("WORKER_CAPABILITIES must include probe, audio_analysis, and video_analysis")
+		}
+	}
+	if cfg.ProcessorVersion == "" || !isSHA256(cfg.FFmpegSHA256) {
+		return fmt.Errorf("WORKER_PROCESSOR_VERSION and a SHA-256 FFMPEG_BUILD_SHA256 are required")
+	}
+	if cfg.ASRDevice != "cpu" && cfg.ASRDevice != "cuda" {
+		return fmt.Errorf("ASR_DEVICE must be cpu or cuda")
+	}
+	if contains(cfg.WorkerCapabilities, "audio_analysis") && (cfg.ASRModelName == "" || cfg.ASRModelRevision == "") {
+		return fmt.Errorf("ASR_MODEL_NAME and ASR_MODEL_REVISION are required for audio_analysis")
+	}
+	return nil
+}
+
 func seconds(raw, key string) (time.Duration, error) {
 	n, err := strconv.Atoi(raw)
 	if err != nil || n <= 0 {
@@ -212,4 +294,46 @@ func positiveInt64(raw, key string) (int64, error) {
 		return 0, fmt.Errorf("%s must be a positive integer", key)
 	}
 	return n, nil
+}
+
+func positiveInt(raw, key string) (int, error) {
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return n, nil
+}
+
+func splitCSV(raw string) []string {
+	seen := map[string]bool{}
+	var values []string
+	for _, value := range strings.Split(raw, ",") {
+		value = strings.TrimSpace(value)
+		if value != "" && !seen[value] {
+			seen[value] = true
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func contains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func isSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, c := range value {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }

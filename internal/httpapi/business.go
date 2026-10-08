@@ -50,6 +50,9 @@ func (s *server) registerBusinessRoutes(mux *http.ServeMux) {
 	if s.media != nil && s.classroom != nil {
 		s.registerMediaRoutes(mux)
 	}
+	if s.analysis != nil && s.classroom != nil {
+		s.registerAnalysisRoutes(mux)
+	}
 }
 
 func (s *server) registerScheduleRoutes(mux *http.ServeMux) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/analysis"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/config"
 	"github.com/vvvv11112222/cangjie/internal/database"
@@ -34,6 +35,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := cfg.ValidateWorkerRuntime(); err != nil {
+		return err
+	}
 
 	logger := newLogger(cfg.AppEnv)
 	slog.SetDefault(logger)
@@ -52,6 +56,13 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
+	analysisService := analysis.NewService(pool.Pool, mediaStore, analysis.Config{
+		Lease: cfg.JobLease, ProbeTimeout: cfg.ProbeTimeout, ASRTimeout: cfg.ASRTimeout, VideoTimeout: cfg.VideoTimeout,
+		MediaJobAttempts: cfg.MediaJobAttempts, ProcessorVersion: cfg.ProcessorVersion, FFmpegSHA256: cfg.FFmpegSHA256,
+		ASRModelName: cfg.ASRModelName, ASRModelRevision: cfg.ASRModelRevision, ASRDevice: cfg.ASRDevice,
+		KeyframeIntervalMS: cfg.KeyframeIntervalMS, MaxKeyframes: cfg.MaxKeyframes, MaxVideoHeight: cfg.MaxVideoHeight,
+		MaxMediaDurationMS: cfg.MaxMediaDurationMS, MaxArtifactBytes: cfg.MaxArtifactBytes,
+	})
 
 	checks := httpapi.ReadinessChecks{
 		"database": pool.Ping,
@@ -64,17 +75,22 @@ func run() error {
 	}
 	origin, _ := url.Parse(cfg.PublicOrigin)
 	handler := httpapi.New(httpapi.Options{
-		Logger:         logger,
-		Readiness:      checks,
-		Identity:       identity.NewService(pool.Pool, cfg.SessionTTL),
-		Academic:       academic.NewService(pool.Pool),
-		Classroom:      classroom.NewService(pool.Pool),
-		Media:          media.NewService(pool.Pool, mediaStore, cfg.MaxUploadBytes, cfg.MediaRetention),
-		PublicOrigin:   cfg.PublicOrigin,
-		SecureCookie:   origin.Scheme == "https",
-		SessionTTL:     cfg.SessionTTL,
-		MaxUploadBytes: cfg.MaxUploadBytes,
-		UploadTimeout:  cfg.UploadTimeout,
+		Logger:             logger,
+		Readiness:          checks,
+		Identity:           identity.NewService(pool.Pool, cfg.SessionTTL),
+		Academic:           academic.NewService(pool.Pool),
+		Classroom:          classroom.NewService(pool.Pool),
+		Media:              media.NewService(pool.Pool, mediaStore, cfg.MaxUploadBytes, cfg.MediaRetention),
+		Analysis:           analysisService,
+		WorkerToken:        cfg.WorkerToken,
+		WorkerID:           cfg.WorkerID,
+		WorkerCapabilities: cfg.WorkerCapabilities,
+		MaxArtifactBytes:   cfg.MaxArtifactBytes,
+		PublicOrigin:       cfg.PublicOrigin,
+		SecureCookie:       origin.Scheme == "https",
+		SessionTTL:         cfg.SessionTTL,
+		MaxUploadBytes:     cfg.MaxUploadBytes,
+		UploadTimeout:      cfg.UploadTimeout,
 	})
 	server := &http.Server{
 		Addr:              cfg.APIListenAddr,
@@ -85,6 +101,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go analysisService.RunReaper(ctx, cfg.JobReaper)
 
 	errCh := make(chan error, 1)
 	go func() {
