@@ -304,3 +304,47 @@ type Revision struct {
 	TranscriptLockVersion int       `json:"transcript_lock_version"`
 	Segments              []Segment `json:"segments"`
 }
+
+type CreateRevision struct {
+	MediaAssetID          string    `json:"media_asset_id"`
+	BaseRevisionID        string    `json:"base_revision_id"`
+	TranscriptLockVersion int       `json:"transcript_lock_version"`
+	Reason                string    `json:"reason"`
+	Segments              []Segment `json:"segments"`
+}
+
+type VersionReason struct {
+	LockVersion int    `json:"lock_version"`
+	Reason      string `json:"reason"`
+}
+
+type WritableObservation struct {
+	ID              *string  `json:"id"`
+	DimensionCode   string   `json:"dimension_code"`
+	ObservationType string   `json:"observation_type"`
+	ObservationText string   `json:"observation_text"`
+	Suggestion      string   `json:"suggestion"`
+	EvidenceIDs     []string `json:"evidence_ids"`
+}
+
+type PatchReport struct {
+	LockVersion        int                   `json:"lock_version"`
+	Summary            string                `json:"summary"`
+	SummaryEvidenceIDs []string              `json:"summary_evidence_ids"`
+	Dimensions         []Dimension           `json:"dimensions"`
+	Observations       []WritableObservation `json:"observations"`
+	Reason             string                `json:"reason"`
+}
+
+type ReviewReport struct {
+	LockVersion   int     `json:"lock_version"`
+	Action        string  `json:"action"`
+	ObservationID *string `json:"observation_id"`
+	ContentSHA256 *string `json:"content_sha256"`
+	Reason        string  `json:"reason"`
+}
+
+type PublishReport struct {
+	LockVersion             int     `json:"lock_version"`
+	ExpectedCurrentReportID *string `json:"expected_current_report_id"`
+}

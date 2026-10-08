@@ -69,10 +69,28 @@ func (s *Service) GetReport(ctx context.Context, p identity.Principal, id string
 	if out.SummaryEvidenceIDs == nil {
 		out.SummaryEvidenceIDs = []string{}
 	}
-	if out.Status == "draft" && canAnalyze(p, teacher) {
-		out.AllowedActions = []string{"edit", "submit"}
-	} else {
-		out.AllowedActions = []string{}
+	out.AllowedActions = []string{}
+	if out.Status == "draft" && canEdit(p, teacher, college) {
+		out.AllowedActions = append(out.AllowedActions, "edit", "submit")
+	}
+	if out.Status == "in_review" {
+		if canEdit(p, teacher, college) {
+			out.AllowedActions = append(out.AllowedActions, "edit")
+		}
+		if canReview(p, college) {
+			out.AllowedActions = append(out.AllowedActions, "review", "confirm_report", "publish")
+		}
+	}
+	if out.Status == "published" {
+		if canEdit(p, teacher, college) {
+			out.AllowedActions = append(out.AllowedActions, "revise")
+		}
+		if canReview(p, college) {
+			out.AllowedActions = append(out.AllowedActions, "withdraw")
+		}
+	}
+	if (out.Status == "superseded" || out.Status == "withdrawn") && canEdit(p, teacher, college) {
+		out.AllowedActions = append(out.AllowedActions, "revise")
 	}
 	return out, nil
 }

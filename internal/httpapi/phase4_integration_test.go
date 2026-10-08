@@ -191,6 +191,92 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	if len(report["dimensions"].([]any)) != 6 || len(report["observations"].([]any)) != 1 {
 		t.Fatalf("validated report=%#v", report)
 	}
+	manualRevision := requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/transcript-revisions", map[string]any{
+		"media_asset_id": mediaID, "base_revision_id": revision["id"], "transcript_lock_version": revision["transcript_lock_version"],
+		"reason": "纠正固定转写", "segments": []map[string]any{{"segment_no": 0, "start_ms": 1000, "end_ms": 3000, "text_content": "修订后的课堂文本", "speaker_label": "teacher"}},
+	}, csrf, http.StatusCreated)
+	requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/transcript-revisions", map[string]any{
+		"media_asset_id": mediaID, "base_revision_id": revision["id"], "transcript_lock_version": revision["transcript_lock_version"],
+		"reason": "陈旧写入", "segments": []map[string]any{{"segment_no": 0, "start_ms": 1000, "end_ms": 3000, "text_content": "不应保存", "speaker_label": "teacher"}},
+	}, csrf, http.StatusConflict)
+	reportOnly := map[string]any{"media_asset_id": mediaID, "mode": "report_only", "input_transcript_revision_id": manualRevision["id"], "config_profile": "p0-v1"}
+	reportOnlyRun := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs", reportOnly, csrf, map[string]string{"Idempotency-Key": "report-only-1"}, http.StatusAccepted)
+	for _, stage := range []string{"evidence", "report", "validate"} {
+		if processed, processErr := analysisService.ProcessNextGoJob(ctx); processErr != nil || !processed {
+			t.Fatalf("process report_only %s: processed=%v err=%v", stage, processed, processErr)
+		}
+	}
+	revisedResults := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+reportOnlyRun["id"].(string)+"/results", nil, "", http.StatusOK)
+	if revisedResults["transcript_revision_id"] != manualRevision["id"] || revisedResults["segments"].([]any)[0].(map[string]any)["text_content"] != "修订后的课堂文本" {
+		t.Fatalf("report_only did not use fixed revision: %#v", revisedResults)
+	}
+	oldReport := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/reports/"+reportID, nil, "", http.StatusOK)
+	if oldReport["summary"] != report["summary"] || oldReport["lock_version"] != report["lock_version"] {
+		t.Fatalf("old report changed after transcript revision: %#v", oldReport)
+	}
+	revisedRun := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+reportOnlyRun["id"].(string), nil, "", http.StatusOK)
+	revisedReportID := revisedRun["report_id"].(string)
+	revisedReport := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/reports/"+revisedReportID, nil, "", http.StatusOK)
+	revisedReport = requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/review", map[string]any{
+		"lock_version": revisedReport["lock_version"], "action": "submit", "observation_id": nil, "content_sha256": nil, "reason": "提交复核",
+	}, csrf, http.StatusOK)
+	requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/publish", map[string]any{
+		"lock_version": revisedReport["lock_version"], "expected_current_report_id": nil,
+	}, supervisorCSRF, http.StatusUnprocessableEntity)
+	observationID := revisedReport["observations"].([]any)[0].(map[string]any)["id"]
+	revisedReport = requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/review", map[string]any{
+		"lock_version": revisedReport["lock_version"], "action": "accept", "observation_id": observationID, "content_sha256": nil, "reason": "证据匹配",
+	}, supervisorCSRF, http.StatusOK)
+	revisedReport = requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/review", map[string]any{
+		"lock_version": revisedReport["lock_version"], "action": "confirm_report", "observation_id": nil, "content_sha256": revisedReport["content_sha256"], "reason": "整篇确认",
+	}, supervisorCSRF, http.StatusOK)
+	requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/publish", map[string]any{
+		"lock_version": revisedReport["lock_version"], "expected_current_report_id": nil,
+	}, csrf, http.StatusForbidden)
+	published := requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/publish", map[string]any{
+		"lock_version": revisedReport["lock_version"], "expected_current_report_id": nil,
+	}, supervisorCSRF, http.StatusOK)
+	if published["status"] != "published" {
+		t.Fatalf("published report=%#v", published)
+	}
+	draftA := requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/revisions", map[string]any{"lock_version": published["lock_version"], "reason": "候选 A"}, csrf, http.StatusCreated)
+	draftB := requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+revisedReportID+"/revisions", map[string]any{"lock_version": published["lock_version"], "reason": "候选 B"}, csrf, http.StatusCreated)
+	patchObservations := make([]map[string]any, 0, len(draftA["observations"].([]any)))
+	for _, raw := range draftA["observations"].([]any) {
+		o := raw.(map[string]any)
+		patchObservations = append(patchObservations, map[string]any{"id": o["id"], "dimension_code": o["dimension_code"], "observation_type": o["observation_type"], "observation_text": o["observation_text"], "suggestion": o["suggestion"], "evidence_ids": o["evidence_ids"]})
+	}
+	draftA = requestJSON(t, teacher, http.MethodPatch, server.URL+"/api/v1/reports/"+draftA["id"].(string), map[string]any{
+		"lock_version": draftA["lock_version"], "summary": "人工编辑后的摘要", "summary_evidence_ids": draftA["summary_evidence_ids"],
+		"dimensions": draftA["dimensions"], "observations": patchObservations, "reason": "人工修正文案",
+	}, csrf, http.StatusOK)
+	prepareForPublish := func(value map[string]any, client *http.Client, token string) map[string]any {
+		value = requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+value["id"].(string)+"/review", map[string]any{"lock_version": value["lock_version"], "action": "submit", "observation_id": nil, "content_sha256": nil, "reason": "提交"}, csrf, http.StatusOK)
+		obsID := value["observations"].([]any)[0].(map[string]any)["id"]
+		value = requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/reports/"+value["id"].(string)+"/review", map[string]any{"lock_version": value["lock_version"], "action": "accept", "observation_id": obsID, "content_sha256": nil, "reason": "确认"}, token, http.StatusOK)
+		return requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/reports/"+value["id"].(string)+"/review", map[string]any{"lock_version": value["lock_version"], "action": "confirm_report", "observation_id": nil, "content_sha256": value["content_sha256"], "reason": "整篇确认"}, token, http.StatusOK)
+	}
+	draftA = prepareForPublish(draftA, supervisor, supervisorCSRF)
+	draftB = prepareForPublish(draftB, supervisor, supervisorCSRF)
+	confirmedObservations := make([]map[string]any, 0, len(draftA["observations"].([]any)))
+	for _, raw := range draftA["observations"].([]any) {
+		o := raw.(map[string]any)
+		confirmedObservations = append(confirmedObservations, map[string]any{"id": o["id"], "dimension_code": o["dimension_code"], "observation_type": o["observation_type"], "observation_text": o["observation_text"], "suggestion": o["suggestion"], "evidence_ids": o["evidence_ids"]})
+	}
+	draftA = requestJSON(t, teacher, http.MethodPatch, server.URL+"/api/v1/reports/"+draftA["id"].(string), map[string]any{
+		"lock_version": draftA["lock_version"], "summary": draftA["summary"].(string) + "（复核后修订）", "summary_evidence_ids": draftA["summary_evidence_ids"],
+		"dimensions": draftA["dimensions"], "observations": confirmedObservations, "reason": "确认后修改正文",
+	}, csrf, http.StatusOK)
+	if draftA["status"] != "draft" || draftA["reviewed_content_sha256"] != nil {
+		t.Fatalf("editing confirmed content did not clear attestation: %#v", draftA)
+	}
+	draftA = prepareForPublish(draftA, supervisor, supervisorCSRF)
+	publishedA := requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+draftA["id"].(string)+"/publish", map[string]any{"lock_version": draftA["lock_version"], "expected_current_report_id": revisedReportID}, supervisorCSRF, http.StatusOK)
+	requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+draftB["id"].(string)+"/publish", map[string]any{"lock_version": draftB["lock_version"], "expected_current_report_id": revisedReportID}, supervisorCSRF, http.StatusConflict)
+	withdrawn := requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+publishedA["id"].(string)+"/withdraw", map[string]any{"lock_version": publishedA["lock_version"], "reason": "撤回竞争发布结果"}, supervisorCSRF, http.StatusOK)
+	if withdrawn["status"] != "withdrawn" {
+		t.Fatalf("withdrawn report=%#v", withdrawn)
+	}
 
 	cancelRun := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs", create, csrf, map[string]string{"Idempotency-Key": "cancel-1"}, http.StatusAccepted)
 	cancelClaim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"probe"}}, workerToken, "", http.StatusOK)
