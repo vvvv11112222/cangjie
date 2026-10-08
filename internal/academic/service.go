@@ -167,6 +167,43 @@ func invalid(message string) error {
 	return apperror.New(http.StatusBadRequest, "INVALID_ARGUMENT", message)
 }
 
+func validUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for i, c := range value {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+			continue
+		}
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func validatePatchOfferingUUIDs(in PatchOffering) error {
+	fields := []struct {
+		name  string
+		value *string
+	}{
+		{"org_unit_id", in.OrgUnitID},
+		{"term_id", in.TermID},
+		{"course_id", in.CourseID},
+		{"teacher_id", in.TeacherID},
+		{"class_group_id", in.ClassGroupID},
+	}
+	for _, field := range fields {
+		if field.value != nil && !validUUID(*field.value) {
+			return invalid(field.name + " must be a UUID")
+		}
+	}
+	return nil
+}
+
 type rowGetter interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
@@ -856,6 +893,9 @@ func (s *Service) CreateOffering(ctx context.Context, p identity.Principal, in C
 	return v, nil
 }
 func (s *Service) PatchOffering(ctx context.Context, p identity.Principal, id string, in PatchOffering) (Offering, error) {
+	if err := validatePatchOfferingUUIDs(in); err != nil {
+		return Offering{}, err
+	}
 	if _, err := s.GetOffering(ctx, p, id); err != nil {
 		return Offering{}, err
 	}
