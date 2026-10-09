@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/media"
 )
@@ -142,6 +144,12 @@ func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 		s.writeServiceError(w, r, err)
 		return
 	}
+	controller := http.NewResponseController(w)
+	if err := controller.SetReadDeadline(time.Now().Add(s.uploadTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	defer controller.SetReadDeadline(time.Time{}) //nolint:errcheck
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
 		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "Content-Type must be multipart/form-data", map[string]any{})
@@ -152,6 +160,11 @@ func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
 			writeError(w, r, http.StatusRequestEntityTooLarge, "UPLOAD_TOO_LARGE", "media exceeds MAX_UPLOAD_BYTES", map[string]any{})
+			return
+		}
+		var timeoutErr net.Error
+		if errors.As(err, &timeoutErr) && timeoutErr.Timeout() {
+			writeError(w, r, http.StatusRequestTimeout, "INVALID_ARGUMENT", "upload timed out", map[string]any{})
 			return
 		}
 		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "multipart body is invalid", map[string]any{})
