@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
 	"github.com/vvvv11112222/cangjie/internal/identity"
@@ -176,7 +177,7 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, in CreateSes
 		if err != nil {
 			return Session{}, storageError(err)
 		}
-		if scheduledOffering != in.OfferingID || !scheduledStart.Equal(start) || !scheduledEnd.Equal(end) {
+		if !sameUUID(scheduledOffering, in.OfferingID) || !scheduledStart.Equal(start) || !scheduledEnd.Equal(end) {
 			return Session{}, invalid("scheduled lessons must use the schedule offering and planned time")
 		}
 		if scheduleStatus != "active" {
@@ -212,6 +213,12 @@ func (s *Service) Patch(ctx context.Context, p identity.Principal, id string, in
 	if err := tx.QueryRow(ctx, `SELECT teaching.college_of(org_unit_id)::text,teacher_id::text FROM teaching.course_offerings WHERE id=$1`, v.OfferingID).Scan(&org, &teacher); err != nil {
 		return Session{}, storageError(err)
 	}
+	if in.Title == nil && in.Status == nil {
+		if !canCreate(p, org, teacher) && !canArchive(p, org) {
+			return Session{}, apperror.New(http.StatusForbidden, "FORBIDDEN", "lesson editing is outside your role and scope")
+		}
+		return Session{}, invalid("at least one editable field is required")
+	}
 	title := v.Title
 	if in.Title != nil {
 		title = strings.TrimSpace(*in.Title)
@@ -241,6 +248,11 @@ func (s *Service) Patch(ctx context.Context, p identity.Principal, id string, in
 	}
 	v.AllowedActions = allowedActions(p, org, teacher, v.Status)
 	return v, nil
+}
+
+func sameUUID(a, b string) bool {
+	var left, right pgtype.UUID
+	return left.Scan(a) == nil && right.Scan(b) == nil && left == right
 }
 
 func canCreate(p identity.Principal, college, teacher string) bool {
