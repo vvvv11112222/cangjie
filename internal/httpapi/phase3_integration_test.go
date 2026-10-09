@@ -69,7 +69,7 @@ func TestPhaseThreeSourceUploadPlaybackAndAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	mediaService := mediaservice.NewService(pool, store, 1<<20, 14*24*time.Hour)
-	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: mediaService, PublicOrigin: "http://frontend.test", MaxUploadBytes: 1 << 20, UploadTimeout: time.Minute})
+	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: mediaService, PublicOrigin: "http://frontend.test", MaxUploadBytes: 1 << 20, UploadTimeout: 500 * time.Millisecond})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	teacher, academic, supervisor := newTestClient(t), newTestClient(t), newTestClient(t)
@@ -81,6 +81,39 @@ func TestPhaseThreeSourceUploadPlaybackAndAuthorization(t *testing.T) {
 	sourceID := source["id"].(string)
 	requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/sources/"+sourceID+"/verify", map[string]any{"rights_status": "verified", "allowed_uses": []string{"playback"}, "external_processing_allowed": false, "reason": "checked"}, teacherCSRF, http.StatusForbidden)
 	requestJSON(t, academic, http.MethodPost, server.URL+"/api/v1/sources/"+sourceID+"/verify", map[string]any{"rights_status": "verified", "allowed_uses": []string{"playback"}, "external_processing_allowed": false, "reason": "checked"}, academicCSRF, http.StatusOK)
+
+	slowBody, slowWriter := io.Pipe()
+	slowMultipart := multipart.NewWriter(slowWriter)
+	slowStarted := make(chan struct{})
+	slowRelease := make(chan struct{})
+	go func() {
+		defer slowWriter.Close() //nolint:errcheck
+		close(slowStarted)
+		_ = slowMultipart.WriteField("source_record_id", sourceID)
+		part, createErr := slowMultipart.CreateFormFile("file", "slow.mp4")
+		if createErr == nil {
+			_, _ = part.Write([]byte{0, 0, 0, 20, 'f', 't', 'y', 'p'})
+		}
+		<-slowRelease
+		_ = slowMultipart.Close()
+	}()
+	<-slowStarted
+	slowRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/media", slowBody)
+	slowRequest.Header.Set("Content-Type", slowMultipart.FormDataContentType())
+	slowRequest.Header.Set("Origin", "http://frontend.test")
+	slowRequest.Header.Set("X-CSRF-Token", teacherCSRF)
+	slowClient := *teacher
+	slowClient.Timeout = 5 * time.Second
+	slowResponse, slowErr := slowClient.Do(slowRequest)
+	close(slowRelease)
+	if slowErr != nil {
+		t.Fatalf("slow upload did not receive a timeout response: %v", slowErr)
+	}
+	slowRaw, _ := io.ReadAll(slowResponse.Body)
+	slowResponse.Body.Close()
+	if slowResponse.StatusCode != http.StatusRequestTimeout {
+		t.Fatalf("slow upload status=%d body=%s", slowResponse.StatusCode, slowRaw)
+	}
 
 	video := []byte{0, 0, 0, 20, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 0, 0, 'i', 's', 'o', 'm', 'a', 'v', 'c', '1'}
 	requestMultipart(t, academic, server.URL+"/api/v1/sessions/"+sessionID+"/media", sourceID, video, academicCSRF, http.StatusForbidden)

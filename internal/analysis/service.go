@@ -29,6 +29,28 @@ type snapshot struct {
 	Executions              map[string]Execution `json:"executions"`
 	InputTranscriptRevision *string              `json:"input_transcript_revision_id,omitempty"`
 	InputTranscriptSHA256   *string              `json:"input_transcript_sha256,omitempty"`
+	MediaLimits             mediaLimits          `json:"media_limits"`
+	Report                  reportSnapshot       `json:"report"`
+}
+
+type mediaLimits struct {
+	MaxDurationMS  int64 `json:"max_duration_ms"`
+	MaxVideoHeight int   `json:"max_video_height"`
+}
+
+type reportSnapshot struct {
+	Enabled           bool   `json:"enabled"`
+	Model             Model  `json:"model"`
+	PromptVersion     string `json:"prompt_version"`
+	PromptSHA256      string `json:"prompt_sha256"`
+	SelectionVersion  string `json:"selection_version"`
+	SystemPrompt      string `json:"system_prompt"`
+	MaxInputTokens    int    `json:"max_input_tokens"`
+	MaxOutputTokens   int    `json:"max_output_tokens"`
+	PriceVersion      string `json:"price_version"`
+	Currency          string `json:"currency"`
+	InputPriceMicros  int64  `json:"input_price_micros"`
+	OutputPriceMicros int64  `json:"output_price_micros"`
 }
 
 func NewService(pool *pgxpool.Pool, store storage.Backend, cfg Config) *Service {
@@ -113,6 +135,16 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, false, err
+	}
+	if in.Mode == "full" || in.Mode == "report_only" {
+		var unresolved bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls mc JOIN teaching.analysis_runs r ON r.id=mc.run_id
+			WHERE r.session_id=$1 AND mc.dispatch_started_at IS NOT NULL AND mc.status IN('reserved','unknown'))`, sessionID).Scan(&unresolved); err != nil {
+			return Run{}, false, err
+		}
+		if unresolved {
+			return Run{}, false, apperror.New(http.StatusConflict, "INVALID_STATE", "classroom has an unresolved model call requiring administrator reconciliation")
+		}
 	}
 
 	var revisionSHA *string
@@ -441,6 +473,7 @@ type lockedJob struct {
 	Deadline                                      time.Time
 	Generation                                    int64
 	SourceID                                      string
+	Snapshot                                      snapshot
 }
 
 func (s *Service) lockActiveJob(ctx context.Context, tx pgx.Tx, jobID, token string) (lockedJob, error) {
@@ -448,16 +481,20 @@ func (s *Service) lockActiveJob(ctx context.Context, tx pgx.Tx, jobID, token str
 	var status, runStatus, sessionStatus, rights string
 	var lease, timeContent, timeMedia time.Time
 	var uses []byte
+	var snapshotJSON []byte
 	err := tx.QueryRow(ctx, `SELECT r.id::text,r.session_id::text,r.media_asset_id::text,j.stage,r.mode,j.status,r.status,ls.status,
-		j.lease_expires_at,j.execution_deadline_at,ls.content_expires_at,m.expires_at,ls.storage_generation,src.id::text,src.rights_status,src.allowed_uses
+		j.lease_expires_at,j.execution_deadline_at,ls.content_expires_at,m.expires_at,ls.storage_generation,src.id::text,src.rights_status,src.allowed_uses,r.config_snapshot
 		FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
 		JOIN teaching.media_assets m ON m.id=r.media_asset_id JOIN teaching.source_records src ON src.id=m.source_record_id
 		WHERE j.id=$1 AND j.lease_token=$2::uuid FOR UPDATE OF ls,r,j`, jobID, token).
-		Scan(&v.RunID, &v.SessionID, &v.MediaID, &v.Stage, &v.Mode, &status, &runStatus, &sessionStatus, &lease, &v.Deadline, &timeContent, &timeMedia, &v.Generation, &v.SourceID, &rights, &uses)
+		Scan(&v.RunID, &v.SessionID, &v.MediaID, &v.Stage, &v.Mode, &status, &runStatus, &sessionStatus, &lease, &v.Deadline, &timeContent, &timeMedia, &v.Generation, &v.SourceID, &rights, &uses, &snapshotJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, leaseLost()
 	}
 	if err != nil {
+		return v, err
+	}
+	if err = json.Unmarshal(snapshotJSON, &v.Snapshot); err != nil {
 		return v, err
 	}
 	needed := "analysis"
@@ -538,10 +575,12 @@ func (s *Service) UploadArtifact(ctx context.Context, jobID, token string, in Ar
 	if err != nil {
 		return Artifact{}, false, err
 	}
+	// Once COMMIT starts its outcome can be uncertain. Preserve the object on a
+	// commit error so a committed row never points at a file we deleted.
+	committed = false
 	if err = tx.Commit(ctx); err != nil {
 		return Artifact{}, false, err
 	}
-	committed = false
 	return Artifact{AssetID: assetID, SHA256: staged.SHA256, ByteSize: staged.Size}, false, nil
 }
 
@@ -552,24 +591,12 @@ func (s *Service) Complete(ctx context.Context, jobID, token string, raw []byte)
 		return CompleteResult{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var status string
-	var lastToken, lastDigest *string
-	err = tx.QueryRow(ctx, `SELECT status,last_completed_token::text,completion_digest FROM teaching.analysis_jobs WHERE id=$1`, jobID).Scan(&status, &lastToken, &lastDigest)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return CompleteResult{}, notFound()
-	}
+	state, duplicate, err := s.lockJobForCompletion(ctx, tx, jobID, token, digest)
 	if err != nil {
 		return CompleteResult{}, err
 	}
-	if status == "succeeded" {
-		if lastToken != nil && lastDigest != nil && *lastToken == token && *lastDigest == digest {
-			return CompleteResult{JobID: jobID, Status: "succeeded", Duplicate: true}, nil
-		}
-		return CompleteResult{}, apperror.New(http.StatusConflict, "COMPLETION_CONFLICT", "completed job has different content or token")
-	}
-	state, err := s.lockActiveJob(ctx, tx, jobID, token)
-	if err != nil {
-		return CompleteResult{}, err
+	if duplicate {
+		return CompleteResult{JobID: jobID, Status: "succeeded", Duplicate: true}, nil
 	}
 	var expected string
 	if err = tx.QueryRow(ctx, `SELECT expected_execution_sha256 FROM teaching.analysis_jobs WHERE id=$1`, jobID).Scan(&expected); err != nil {
@@ -589,8 +616,14 @@ func (s *Service) Complete(ctx context.Context, jobID, token string, raw []byte)
 			return CompleteResult{}, err
 		}
 	}
-	if _, err = tx.Exec(ctx, `UPDATE teaching.media_assets SET status='ready' WHERE id IN
-		(SELECT media_asset_id FROM teaching.job_artifacts WHERE job_id=$1 AND lease_token=$2::uuid AND media_asset_id IS NOT NULL)`, jobID, token); err != nil {
+	referenced := resultArtifactIDs(state, result)
+	if len(referenced) > 0 {
+		if _, err = tx.Exec(ctx, `UPDATE teaching.media_assets SET status='ready' WHERE id=ANY($1::uuid[])`, referenced); err != nil {
+			return CompleteResult{}, err
+		}
+	}
+	unusedKeys, err := s.removeUnreferencedLeaseArtifacts(ctx, tx, jobID, token, referenced)
+	if err != nil {
 		return CompleteResult{}, err
 	}
 	_, err = tx.Exec(ctx, `UPDATE teaching.analysis_jobs SET status='succeeded',progress=100,last_completed_token=$2::uuid,completion_digest=$3,
@@ -604,7 +637,126 @@ func (s *Service) Complete(ctx context.Context, jobID, token string, raw []byte)
 	if err = tx.Commit(ctx); err != nil {
 		return CompleteResult{}, err
 	}
+	for _, key := range unusedKeys {
+		_ = s.store.Remove(key)
+	}
 	return CompleteResult{JobID: jobID, Status: "succeeded", Duplicate: false}, nil
+}
+
+func (s *Service) lockJobForCompletion(ctx context.Context, tx pgx.Tx, jobID, token, digest string) (lockedJob, bool, error) {
+	v := lockedJob{Token: token}
+	var jobStatus, runStatus, sessionStatus, rights string
+	var leaseToken, lastToken, lastDigest *string
+	var leaseExpires, deadline, contentExpires, mediaExpires *time.Time
+	var uses, snapshotJSON []byte
+	err := tx.QueryRow(ctx, `SELECT r.id::text,r.session_id::text,m.source_record_id::text
+		FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id
+		JOIN teaching.media_assets m ON m.id=r.media_asset_id WHERE j.id=$1`, jobID).
+		Scan(&v.RunID, &v.SessionID, &v.SourceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, false, notFound()
+	}
+	if err != nil {
+		return v, false, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT status,content_expires_at,storage_generation FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, v.SessionID).
+		Scan(&sessionStatus, &contentExpires, &v.Generation); err != nil {
+		return v, false, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT rights_status,allowed_uses FROM teaching.source_records WHERE id=$1 FOR UPDATE`, v.SourceID).
+		Scan(&rights, &uses); err != nil {
+		return v, false, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT r.media_asset_id::text,r.mode,r.status,r.config_snapshot,m.expires_at
+		FROM teaching.analysis_runs r JOIN teaching.media_assets m ON m.id=r.media_asset_id
+		WHERE r.id=$1 AND r.session_id=$2 AND m.source_record_id=$3 FOR UPDATE OF r`, v.RunID, v.SessionID, v.SourceID).
+		Scan(&v.MediaID, &v.Mode, &runStatus, &snapshotJSON, &mediaExpires); err != nil {
+		return v, false, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT stage,status,lease_token::text,last_completed_token::text,completion_digest,lease_expires_at,execution_deadline_at
+		FROM teaching.analysis_jobs WHERE id=$1 AND run_id=$2 FOR UPDATE`, jobID, v.RunID).
+		Scan(&v.Stage, &jobStatus, &leaseToken, &lastToken, &lastDigest, &leaseExpires, &deadline); err != nil {
+		return v, false, err
+	}
+	if err = json.Unmarshal(snapshotJSON, &v.Snapshot); err != nil {
+		return v, false, err
+	}
+	if v.Snapshot.MediaLimits.MaxDurationMS <= 0 || v.Snapshot.MediaLimits.MaxVideoHeight <= 0 {
+		return v, false, state("analysis run is missing pinned media limits")
+	}
+	needed := "analysis"
+	if v.Mode == "media_prepare" {
+		needed = "playback"
+	}
+	now := time.Now()
+	if sessionStatus == "deleting" || sessionStatus == "deleted" || contentExpires == nil || mediaExpires == nil || now.After(*contentExpires) || now.After(*mediaExpires) || rights != "verified" || !jsonArrayContains(uses, needed) {
+		return v, false, leaseLost()
+	}
+	if jobStatus == "succeeded" {
+		if runStatus == "cancelled" || runStatus == "failed" {
+			return v, false, leaseLost()
+		}
+		if lastToken != nil && lastDigest != nil && *lastToken == token && *lastDigest == digest {
+			return v, true, nil
+		}
+		return v, false, apperror.New(http.StatusConflict, "COMPLETION_CONFLICT", "completed job has different content or token")
+	}
+	if runStatus != "running" || jobStatus != "running" || leaseToken == nil || *leaseToken != token || leaseExpires == nil || deadline == nil || now.After(*leaseExpires) || now.After(*deadline) {
+		return v, false, leaseLost()
+	}
+	v.Deadline = *deadline
+	return v, false, nil
+}
+
+func resultArtifactIDs(state lockedJob, result any) []string {
+	ids := []string{}
+	switch value := result.(type) {
+	case ProbeResult:
+		if value.PlaybackAssetID != state.MediaID {
+			ids = append(ids, value.PlaybackAssetID)
+		}
+	case AudioResult:
+		if value.AudioAssetID != nil {
+			ids = append(ids, *value.AudioAssetID)
+		}
+	case VideoResult:
+		for _, frame := range value.Frames {
+			ids = append(ids, frame.AssetID)
+		}
+	}
+	return ids
+}
+
+func (s *Service) removeUnreferencedLeaseArtifacts(ctx context.Context, tx pgx.Tx, jobID, token string, referenced []string) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT m.id::text,m.object_key FROM teaching.job_artifacts ja JOIN teaching.media_assets m ON m.id=ja.media_asset_id
+		WHERE ja.job_id=$1 AND ja.lease_token=$2::uuid AND ja.media_asset_id IS NOT NULL
+		AND NOT (ja.media_asset_id=ANY($3::uuid[]))`, jobID, token, referenced)
+	if err != nil {
+		return nil, err
+	}
+	var ids, keys []string
+	for rows.Next() {
+		var id, key string
+		if err = rows.Scan(&id, &key); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+		keys = append(keys, key)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) > 0 {
+		if _, err = tx.Exec(ctx, `DELETE FROM teaching.job_artifacts WHERE job_id=$1 AND media_asset_id=ANY($2::uuid[])`, jobID, ids); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM teaching.media_assets WHERE id=ANY($1::uuid[])`, ids); err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
 }
 
 func (s *Service) Fail(ctx context.Context, jobID, token string, in Fail) (FailResult, error) {
@@ -664,6 +816,9 @@ func (s *Service) Fail(ctx context.Context, jobID, token string, in Fail) (FailR
 func (s *Service) Results(ctx context.Context, p identity.Principal, runID string) (Results, error) {
 	run, err := s.Get(ctx, p, runID)
 	if err != nil {
+		return Results{}, err
+	}
+	if err = s.requireRunContentReadable(ctx, runID, true); err != nil {
 		return Results{}, err
 	}
 	out := Results{Segments: []Segment{}, Evidence: []json.RawMessage{}, Frames: []Frame{}, Events: []json.RawMessage{}, Limitations: nonNilStrings(run.Limitations), RunStatus: run.Status}
@@ -743,6 +898,53 @@ func (s *Service) Results(ctx context.Context, p identity.Principal, runID strin
 		out.Evidence = append(out.Evidence, raw)
 	}
 	return out, evidenceRows.Err()
+}
+
+func (s *Service) requireRunContentReadable(ctx context.Context, runID string, requireMediaCurrent bool) error {
+	var sessionStatus, rights string
+	var contentExpires, mediaExpires time.Time
+	var uses []byte
+	err := s.pool.QueryRow(ctx, `SELECT ls.status,ls.content_expires_at,m.expires_at,src.rights_status,src.allowed_uses
+		FROM teaching.analysis_runs r JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
+		JOIN teaching.media_assets m ON m.id=r.media_asset_id JOIN teaching.source_records src ON src.id=m.source_record_id
+		WHERE r.id=$1`, runID).Scan(&sessionStatus, &contentExpires, &mediaExpires, &rights, &uses)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err != nil {
+		return err
+	}
+	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requireMediaCurrent)
+}
+
+func (s *Service) requireSessionMediaContentReadable(ctx context.Context, sessionID, mediaID string, requireMediaCurrent bool) error {
+	var sessionStatus, rights string
+	var contentExpires, mediaExpires time.Time
+	var uses []byte
+	err := s.pool.QueryRow(ctx, `SELECT ls.status,ls.content_expires_at,m.expires_at,src.rights_status,src.allowed_uses
+		FROM teaching.lesson_sessions ls JOIN teaching.media_assets m ON m.session_id=ls.id AND m.id=$2
+		JOIN teaching.source_records src ON src.id=m.source_record_id WHERE ls.id=$1`, sessionID, mediaID).
+		Scan(&sessionStatus, &contentExpires, &mediaExpires, &rights, &uses)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err != nil {
+		return err
+	}
+	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requireMediaCurrent)
+}
+
+func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires time.Time, rights string, uses []byte, requireMediaCurrent bool) error {
+	if sessionStatus == "deleting" || sessionStatus == "deleted" {
+		return state("classroom content is unavailable")
+	}
+	if !contentExpires.After(time.Now()) || requireMediaCurrent && !mediaExpires.After(time.Now()) {
+		return expired()
+	}
+	if rights != "verified" || !jsonArrayContains(uses, "analysis") {
+		return apperror.New(http.StatusForbidden, "SOURCE_NOT_VERIFIED", "source no longer permits analysis content access")
+	}
+	return nil
 }
 
 func (s *Service) ReapExpired(ctx context.Context) (int, error) {
@@ -874,7 +1076,9 @@ func (s *Service) reapOne(ctx context.Context, jobID, token string) error {
 	var status string
 	err = tx.QueryRow(ctx, `SELECT r.id::text,r.session_id::text,r.media_asset_id::text,j.stage,r.mode,j.attempts,j.max_attempts,j.status
 		FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
-		WHERE j.id=$1 AND j.lease_token=$2::uuid AND j.status='running' FOR UPDATE OF ls,r,j`, jobID, token).Scan(&state.RunID, &state.SessionID, &state.MediaID, &state.Stage, &state.Mode, &attempts, &max, &status)
+		WHERE j.id=$1 AND j.lease_token=$2::uuid AND j.status='running'
+		AND (j.lease_expires_at<=now() OR j.execution_deadline_at<=now())
+		FOR UPDATE OF ls,r,j`, jobID, token).Scan(&state.RunID, &state.SessionID, &state.MediaID, &state.Stage, &state.Mode, &attempts, &max, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return leaseLost()
 	}
@@ -1023,7 +1227,7 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 		if err := decodeStrict(raw, &v); err != nil {
 			return envelope, nil, invalidResult("probe result is invalid")
 		}
-		if v.DurationMS < 1 || v.DurationMS > s.cfg.MaxMediaDurationMS || v.Width < 1 || v.Height < 1 || v.Height > s.cfg.MaxVideoHeight || (v.VideoCodec != "h264" && v.VideoCodec != "hevc") || v.OriginOffsetMS != 0 {
+		if v.DurationMS < 1 || v.DurationMS > state.Snapshot.MediaLimits.MaxDurationMS || v.Width < 1 || v.Height < 1 || v.Height > state.Snapshot.MediaLimits.MaxVideoHeight || (v.VideoCodec != "h264" && v.VideoCodec != "hevc") || v.OriginOffsetMS != 0 {
 			return envelope, nil, invalidResult("probe values are outside configured limits")
 		}
 		if err := s.requireArtifact(ctx, tx, state, jobID, v.PlaybackAssetID, "proxy", true); err != nil {
@@ -1035,7 +1239,8 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 		if err := decodeStrict(raw, &v); err != nil {
 			return envelope, nil, invalidResult("audio result is invalid")
 		}
-		if v.Model.Name != s.cfg.ASRModelName || v.Model.Revision != s.cfg.ASRModelRevision {
+		expectedModel := state.Snapshot.Executions["audio_analysis"].ASRModel
+		if expectedModel == nil || v.Model.Name != expectedModel.Name || v.Model.Revision != expectedModel.Revision {
 			return envelope, nil, invalidResult("ASR model does not match the claim")
 		}
 		duration, err := s.mediaDuration(ctx, tx, state.MediaID)
@@ -1045,10 +1250,12 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 		if err := validateIntervals(v.Coverage, duration); err != nil {
 			return envelope, nil, err
 		}
+		var previousStart int64 = -1
 		for i, seg := range v.Segments {
-			if seg.SegmentNo != i || strings.TrimSpace(seg.Text) == "" || strings.TrimSpace(seg.Speaker) == "" || seg.StartMS < 0 || seg.EndMS <= seg.StartMS || seg.EndMS > duration || !covered(seg.StartMS, seg.EndMS, v.Coverage) {
+			if seg.SegmentNo != i || strings.TrimSpace(seg.Text) == "" || strings.TrimSpace(seg.Speaker) == "" || seg.StartMS < previousStart || seg.StartMS < 0 || seg.EndMS <= seg.StartMS || seg.EndMS > duration || !covered(seg.StartMS, seg.EndMS, v.Coverage) {
 				return envelope, nil, invalidResult("audio segment timeline is invalid")
 			}
+			previousStart = seg.StartMS
 		}
 		if v.AudioAssetID != nil {
 			if err := s.requireArtifact(ctx, tx, state, jobID, *v.AudioAssetID, "audio", false); err != nil {
@@ -1061,7 +1268,8 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 		if err := decodeStrict(raw, &v); err != nil {
 			return envelope, nil, invalidResult("video result is invalid")
 		}
-		if len(v.Events) != 0 || v.Model != nil || v.Sampling.IntervalMS != s.cfg.KeyframeIntervalMS || v.Sampling.MaxFrames != s.cfg.MaxKeyframes || len(v.Frames) > s.cfg.MaxKeyframes {
+		params := state.Snapshot.Parameters
+		if len(v.Events) != 0 || v.Model != nil || v.Sampling.IntervalMS != params.KeyframeIntervalMS || v.Sampling.MaxFrames != params.MaxKeyframes || len(v.Frames) > params.MaxKeyframes {
 			return envelope, nil, invalidResult("video result does not match P0 sampling")
 		}
 		duration, err := s.mediaDuration(ctx, tx, state.MediaID)
@@ -1201,7 +1409,28 @@ func (s *Service) newSnapshot(mode string) snapshot {
 	if mode == "media_prepare" {
 		plan = []string{"probe"}
 	}
-	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video}}
+	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
+		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},
+		Report: reportSnapshot{Enabled: s.cfg.ReportEnabled, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision},
+			PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion,
+			SystemPrompt: reportSystemPrompt, MaxInputTokens: s.cfg.ReportMaxInputTokens, MaxOutputTokens: s.cfg.ReportMaxOutputTokens,
+			PriceVersion: s.cfg.ReportPriceVersion, Currency: s.cfg.ReportBudgetCurrency,
+			InputPriceMicros: s.cfg.ReportInputPriceMicros, OutputPriceMicros: s.cfg.ReportOutputPriceMicros}}
+}
+
+func (s *Service) reportConfigForRun(ctx context.Context, runID string) (reportSnapshot, error) {
+	var raw []byte
+	if err := s.pool.QueryRow(ctx, `SELECT config_snapshot FROM teaching.analysis_runs WHERE id=$1`, runID).Scan(&raw); err != nil {
+		return reportSnapshot{}, err
+	}
+	var snap snapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return reportSnapshot{}, err
+	}
+	if snap.Report.Enabled && (snap.Report.Model.Name == "" || snap.Report.Model.Revision == "" || snap.Report.SystemPrompt == "" || snap.Report.MaxInputTokens <= 0 || snap.Report.MaxOutputTokens <= 0) {
+		return reportSnapshot{}, fmt.Errorf("analysis run is missing pinned report configuration")
+	}
+	return snap.Report, nil
 }
 
 func (s *Service) timeout(stage string) time.Duration {

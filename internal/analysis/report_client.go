@@ -32,55 +32,80 @@ type modelInput struct {
 	SelectionVersion     string            `json:"selection_version"`
 	CourseContext        map[string]string `json:"course_context"`
 	Coverage             []Interval        `json:"coverage"`
+	Limitations          []string          `json:"limitations"`
 	Evidence             []modelEvidence   `json:"evidence"`
 }
 
-func (s *Service) callReportModel(ctx context.Context, input modelInput) (ReportCandidate, error) {
+const reportSystemPrompt = "Return one strict JSON ReportCandidate. Use only supplied evidence IDs. Include exactly the six dimension codes content, pace, thinking, expression, management, technology. Unsupported dimensions must be insufficient with a non-empty limitation and no factual summary."
+
+type modelCallResult struct {
+	Candidate         ReportCandidate
+	ProviderRequestID string
+	InputTokens       int64
+	OutputTokens      int64
+	UsageKnown        bool
+}
+
+func buildReportRequest(input modelInput, config reportSnapshot) ([]byte, error) {
 	payload := map[string]any{
-		"model":           s.cfg.ReportModel,
+		"model":           config.Model.Name,
 		"temperature":     0,
-		"max_tokens":      s.cfg.ReportMaxOutputTokens,
+		"max_tokens":      config.MaxOutputTokens,
 		"response_format": map[string]string{"type": "json_object"},
 		"messages": []map[string]string{
-			{"role": "system", "content": "Return one strict JSON ReportCandidate. Use only supplied evidence IDs. Include exactly the six dimension codes content, pace, thinking, expression, management, technology. Unsupported dimensions must be insufficient with a non-empty limitation and no factual summary."},
+			{"role": "system", "content": config.SystemPrompt},
 			{"role": "user", "content": mustJSON(input)},
 		},
 	}
-	body, _ := json.Marshal(payload)
+	return json.Marshal(payload)
+}
+
+func (s *Service) callReportModel(ctx context.Context, body []byte) (modelCallResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.ReportAPIBase, "/")+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return ReportCandidate{}, err
+		return modelCallResult{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.cfg.ReportAPIKey)
 	client := &http.Client{Timeout: s.cfg.ReportTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return ReportCandidate{}, err
+		return modelCallResult{}, err
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return ReportCandidate{}, err
+		return modelCallResult{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return ReportCandidate{}, fmt.Errorf("report provider returned status %d", resp.StatusCode)
+		return modelCallResult{}, fmt.Errorf("report provider returned status %d", resp.StatusCode)
 	}
 	var envelope struct {
+		ID      string `json:"id"`
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     *int64 `json:"prompt_tokens"`
+			CompletionTokens *int64 `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) != 1 {
-		return ReportCandidate{}, fmt.Errorf("report provider response is invalid")
+		return modelCallResult{}, fmt.Errorf("report provider response is invalid")
 	}
 	var candidate ReportCandidate
 	if err := decodeStrict([]byte(envelope.Choices[0].Message.Content), &candidate); err != nil {
-		return ReportCandidate{}, fmt.Errorf("report candidate is invalid: %w", err)
+		return modelCallResult{}, fmt.Errorf("report candidate is invalid: %w", err)
 	}
-	return candidate, nil
+	result := modelCallResult{Candidate: candidate, ProviderRequestID: envelope.ID}
+	if envelope.Usage.PromptTokens != nil && envelope.Usage.CompletionTokens != nil && *envelope.Usage.PromptTokens >= 0 && *envelope.Usage.CompletionTokens >= 0 {
+		result.InputTokens = *envelope.Usage.PromptTokens
+		result.OutputTokens = *envelope.Usage.CompletionTokens
+		result.UsageKnown = true
+	}
+	return result, nil
 }
 
 func mustJSON(v any) string { raw, _ := json.Marshal(v); return string(raw) }

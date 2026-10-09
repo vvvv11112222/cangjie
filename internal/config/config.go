@@ -15,50 +15,55 @@ import (
 )
 
 type Config struct {
-	AppEnv                 string
-	APIListenAddr          string
-	PublicOrigin           string
-	DatabaseURL            string
-	MediaRoot              string
-	WorkerTempRoot         string
-	DeletionLedgerPath     string
-	JobLease               time.Duration
-	JobHeartbeat           time.Duration
-	JobReaper              time.Duration
-	ProbeTimeout           time.Duration
-	ASRTimeout             time.Duration
-	VideoTimeout           time.Duration
-	GoStageTimeout         time.Duration
-	ReportEnabled          bool
-	ReportAPIBase          string
-	ReportAPIKey           string
-	ReportModel            string
-	ReportModelRevision    string
-	ReportPromptVersion    string
-	ReportPromptSHA256     string
-	ReportSelectionVersion string
-	ReportPriceVersion     string
-	ReportTimeout          time.Duration
-	ReportMaxInputTokens   int
-	ReportMaxOutputTokens  int
-	SessionTTL             time.Duration
-	MaxUploadBytes         int64
-	UploadTimeout          time.Duration
-	MediaRetention         time.Duration
-	WorkerToken            string
-	WorkerID               string
-	WorkerCapabilities     []string
-	ProcessorVersion       string
-	FFmpegSHA256           string
-	ASRModelName           string
-	ASRModelRevision       string
-	ASRDevice              string
-	MediaJobAttempts       int
-	MaxArtifactBytes       int64
-	MaxMediaDurationMS     int64
-	MaxVideoHeight         int
-	KeyframeIntervalMS     int
-	MaxKeyframes           int
+	AppEnv                    string
+	APIListenAddr             string
+	PublicOrigin              string
+	DatabaseURL               string
+	MediaRoot                 string
+	WorkerTempRoot            string
+	DeletionLedgerPath        string
+	JobLease                  time.Duration
+	JobHeartbeat              time.Duration
+	JobReaper                 time.Duration
+	ProbeTimeout              time.Duration
+	ASRTimeout                time.Duration
+	VideoTimeout              time.Duration
+	GoStageTimeout            time.Duration
+	ReportEnabled             bool
+	ReportAPIBase             string
+	ReportAPIKey              string
+	ReportModel               string
+	ReportModelRevision       string
+	ReportPromptVersion       string
+	ReportPromptSHA256        string
+	ReportSelectionVersion    string
+	ReportPriceVersion        string
+	ReportBudgetCurrency      string
+	ReportBudgetTimezone      string
+	ReportMonthlyBudgetMicros int64
+	ReportInputPriceMicros    int64
+	ReportOutputPriceMicros   int64
+	ReportTimeout             time.Duration
+	ReportMaxInputTokens      int
+	ReportMaxOutputTokens     int
+	SessionTTL                time.Duration
+	MaxUploadBytes            int64
+	UploadTimeout             time.Duration
+	MediaRetention            time.Duration
+	WorkerToken               string
+	WorkerID                  string
+	WorkerCapabilities        []string
+	ProcessorVersion          string
+	FFmpegSHA256              string
+	ASRModelName              string
+	ASRModelRevision          string
+	ASRDevice                 string
+	MediaJobAttempts          int
+	MaxArtifactBytes          int64
+	MaxMediaDurationMS        int64
+	MaxVideoHeight            int
+	KeyframeIntervalMS        int
+	MaxKeyframes              int
 }
 
 func Load() (Config, error) {
@@ -157,55 +162,68 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 
-	budget, err := nonNegativeFloat(value("MODEL_MONTHLY_BUDGET", "0"), "MODEL_MONTHLY_BUDGET")
+	budget, err := moneyMicros(value("MODEL_MONTHLY_BUDGET", "0"), "MODEL_MONTHLY_BUDGET")
+	if err != nil {
+		return Config{}, err
+	}
+	inputPrice, err := moneyMicros(value("MODEL_INPUT_PRICE_PER_MILLION", "0"), "MODEL_INPUT_PRICE_PER_MILLION")
+	if err != nil {
+		return Config{}, err
+	}
+	outputPrice, err := moneyMicros(value("MODEL_OUTPUT_PRICE_PER_MILLION", "0"), "MODEL_OUTPUT_PRICE_PER_MILLION")
 	if err != nil {
 		return Config{}, err
 	}
 	cfg := Config{
-		AppEnv:                 value("APP_ENV", "development"),
-		APIListenAddr:          value("API_LISTEN_ADDR", "127.0.0.1:8080"),
-		PublicOrigin:           value("PUBLIC_ORIGIN", "http://localhost:8080"),
-		DatabaseURL:            value("DATABASE_URL", ""),
-		MediaRoot:              value("MEDIA_ROOT", "./var/media"),
-		WorkerTempRoot:         value("WORKER_TEMP_ROOT", "./var/worker-tmp"),
-		DeletionLedgerPath:     value("DELETION_LEDGER_PATH", "./var/governance/deletions.jsonl"),
-		JobLease:               lease,
-		JobHeartbeat:           heartbeat,
-		JobReaper:              reaper,
-		ProbeTimeout:           probe,
-		ASRTimeout:             asr,
-		VideoTimeout:           video,
-		GoStageTimeout:         goStage,
-		ReportEnabled:          budget > 0,
-		ReportAPIBase:          value("REPORT_API_BASE", ""),
-		ReportAPIKey:           value("REPORT_API_KEY", ""),
-		ReportModel:            value("REPORT_MODEL", ""),
-		ReportModelRevision:    value("REPORT_MODEL_REVISION", ""),
-		ReportPromptVersion:    value("REPORT_PROMPT_VERSION", "p0-v1"),
-		ReportPromptSHA256:     value("REPORT_PROMPT_SHA256", ""),
-		ReportSelectionVersion: value("REPORT_SELECTION_VERSION", "time-window-v1"),
-		ReportPriceVersion:     value("MODEL_PRICE_VERSION", ""),
-		ReportTimeout:          reportTimeout,
-		ReportMaxInputTokens:   reportMaxInput,
-		ReportMaxOutputTokens:  reportMaxOutput,
-		SessionTTL:             sessionTTL,
-		MaxUploadBytes:         maxUploadBytes,
-		UploadTimeout:          uploadTimeout,
-		MediaRetention:         time.Duration(retentionDays) * 24 * time.Hour,
-		WorkerToken:            value("WORKER_TOKEN", ""),
-		WorkerID:               value("WORKER_ID", "worker-01"),
-		WorkerCapabilities:     splitCSV(value("WORKER_CAPABILITIES", "probe,audio_analysis,video_analysis")),
-		ProcessorVersion:       value("WORKER_PROCESSOR_VERSION", ""),
-		FFmpegSHA256:           value("FFMPEG_BUILD_SHA256", ""),
-		ASRModelName:           value("ASR_MODEL_NAME", ""),
-		ASRModelRevision:       value("ASR_MODEL_REVISION", ""),
-		ASRDevice:              value("ASR_DEVICE", "cpu"),
-		MediaJobAttempts:       mediaAttempts,
-		MaxArtifactBytes:       maxArtifactBytes,
-		MaxMediaDurationMS:     maxDuration,
-		MaxVideoHeight:         maxVideoHeight,
-		KeyframeIntervalMS:     keyframeInterval,
-		MaxKeyframes:           maxKeyframes,
+		AppEnv:                    value("APP_ENV", "development"),
+		APIListenAddr:             value("API_LISTEN_ADDR", "127.0.0.1:8080"),
+		PublicOrigin:              value("PUBLIC_ORIGIN", "http://localhost:8080"),
+		DatabaseURL:               value("DATABASE_URL", ""),
+		MediaRoot:                 value("MEDIA_ROOT", "./var/media"),
+		WorkerTempRoot:            value("WORKER_TEMP_ROOT", "./var/worker-tmp"),
+		DeletionLedgerPath:        value("DELETION_LEDGER_PATH", "./var/governance/deletions.jsonl"),
+		JobLease:                  lease,
+		JobHeartbeat:              heartbeat,
+		JobReaper:                 reaper,
+		ProbeTimeout:              probe,
+		ASRTimeout:                asr,
+		VideoTimeout:              video,
+		GoStageTimeout:            goStage,
+		ReportEnabled:             budget > 0,
+		ReportAPIBase:             value("REPORT_API_BASE", ""),
+		ReportAPIKey:              value("REPORT_API_KEY", ""),
+		ReportModel:               value("REPORT_MODEL", ""),
+		ReportModelRevision:       value("REPORT_MODEL_REVISION", ""),
+		ReportPromptVersion:       value("REPORT_PROMPT_VERSION", "p0-v1"),
+		ReportPromptSHA256:        value("REPORT_PROMPT_SHA256", ""),
+		ReportSelectionVersion:    value("REPORT_SELECTION_VERSION", "time-window-v1"),
+		ReportPriceVersion:        value("MODEL_PRICE_VERSION", ""),
+		ReportBudgetCurrency:      value("MODEL_BUDGET_CURRENCY", "CNY"),
+		ReportBudgetTimezone:      value("MODEL_BUDGET_TIMEZONE", "Asia/Shanghai"),
+		ReportMonthlyBudgetMicros: budget,
+		ReportInputPriceMicros:    inputPrice,
+		ReportOutputPriceMicros:   outputPrice,
+		ReportTimeout:             reportTimeout,
+		ReportMaxInputTokens:      reportMaxInput,
+		ReportMaxOutputTokens:     reportMaxOutput,
+		SessionTTL:                sessionTTL,
+		MaxUploadBytes:            maxUploadBytes,
+		UploadTimeout:             uploadTimeout,
+		MediaRetention:            time.Duration(retentionDays) * 24 * time.Hour,
+		WorkerToken:               value("WORKER_TOKEN", ""),
+		WorkerID:                  value("WORKER_ID", "worker-01"),
+		WorkerCapabilities:        splitCSV(value("WORKER_CAPABILITIES", "probe,audio_analysis,video_analysis")),
+		ProcessorVersion:          value("WORKER_PROCESSOR_VERSION", ""),
+		FFmpegSHA256:              value("FFMPEG_BUILD_SHA256", ""),
+		ASRModelName:              value("ASR_MODEL_NAME", ""),
+		ASRModelRevision:          value("ASR_MODEL_REVISION", ""),
+		ASRDevice:                 value("ASR_DEVICE", "cpu"),
+		MediaJobAttempts:          mediaAttempts,
+		MaxArtifactBytes:          maxArtifactBytes,
+		MaxMediaDurationMS:        maxDuration,
+		MaxVideoHeight:            maxVideoHeight,
+		KeyframeIntervalMS:        keyframeInterval,
+		MaxKeyframes:              maxKeyframes,
 	}
 	if err := validate(cfg, value, budget); err != nil {
 		return Config{}, err
@@ -213,7 +231,7 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	return cfg, nil
 }
 
-func validate(cfg Config, value func(string, string) string, budget float64) error {
+func validate(cfg Config, value func(string, string) string, budget int64) error {
 	switch cfg.AppEnv {
 	case "development", "test", "production":
 	default:
@@ -266,11 +284,11 @@ func validate(cfg Config, value func(string, string) string, budget float64) err
 				return fmt.Errorf("%s is required when MODEL_MONTHLY_BUDGET is positive", key)
 			}
 		}
-		for _, key := range []string{"MODEL_INPUT_PRICE_PER_MILLION", "MODEL_OUTPUT_PRICE_PER_MILLION"} {
-			price, err := nonNegativeFloat(value(key, ""), key)
-			if err != nil || price == 0 {
-				return fmt.Errorf("%s must be positive when reporting is enabled", key)
-			}
+		if cfg.ReportInputPriceMicros <= 0 || cfg.ReportOutputPriceMicros <= 0 {
+			return fmt.Errorf("MODEL_INPUT_PRICE_PER_MILLION and MODEL_OUTPUT_PRICE_PER_MILLION must be positive when reporting is enabled")
+		}
+		if cfg.ReportBudgetCurrency != "CNY" || cfg.ReportBudgetTimezone != "Asia/Shanghai" {
+			return fmt.Errorf("MODEL_BUDGET_CURRENCY must be CNY and MODEL_BUDGET_TIMEZONE must be Asia/Shanghai")
 		}
 		if !isSHA256(cfg.ReportPromptSHA256) {
 			return fmt.Errorf("REPORT_PROMPT_SHA256 must be a SHA-256 value when reporting is enabled")
@@ -324,12 +342,34 @@ func seconds(raw, key string) (time.Duration, error) {
 	return time.Duration(n) * time.Second, nil
 }
 
-func nonNegativeFloat(raw, key string) (float64, error) {
-	n, err := strconv.ParseFloat(raw, 64)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("%s must be a non-negative number", key)
+func moneyMicros(raw, key string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.HasPrefix(raw, "-") || strings.ContainsAny(raw, "eE+") {
+		return 0, fmt.Errorf("%s must be a non-negative decimal with at most six fractional digits", key)
 	}
-	return n, nil
+	parts := strings.Split(raw, ".")
+	if len(parts) > 2 || parts[0] == "" || len(parts) == 2 && len(parts[1]) > 6 {
+		return 0, fmt.Errorf("%s must be a non-negative decimal with at most six fractional digits", key)
+	}
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || whole > 999999 {
+		return 0, fmt.Errorf("%s is outside the supported monetary range", key)
+	}
+	fraction := ""
+	if len(parts) == 2 {
+		fraction = parts[1]
+	}
+	for len(fraction) < 6 {
+		fraction += "0"
+	}
+	frac := int64(0)
+	if fraction != "" {
+		frac, err = strconv.ParseInt(fraction, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be a decimal number", key)
+		}
+	}
+	return whole*1_000_000 + frac, nil
 }
 
 func positiveInt64(raw, key string) (int64, error) {

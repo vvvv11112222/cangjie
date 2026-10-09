@@ -68,6 +68,9 @@ func run() error {
 		ReportPromptVersion: cfg.ReportPromptVersion, ReportPromptSHA256: cfg.ReportPromptSHA256,
 		ReportSelectionVersion: cfg.ReportSelectionVersion, ReportTimeout: cfg.ReportTimeout,
 		ReportPriceVersion:   cfg.ReportPriceVersion,
+		ReportBudgetCurrency: cfg.ReportBudgetCurrency, ReportBudgetTimezone: cfg.ReportBudgetTimezone,
+		ReportMonthlyBudgetMicros: cfg.ReportMonthlyBudgetMicros,
+		ReportInputPriceMicros:    cfg.ReportInputPriceMicros, ReportOutputPriceMicros: cfg.ReportOutputPriceMicros,
 		ReportMaxInputTokens: cfg.ReportMaxInputTokens, ReportMaxOutputTokens: cfg.ReportMaxOutputTokens,
 	})
 

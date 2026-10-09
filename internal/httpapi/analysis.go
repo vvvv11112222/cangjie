@@ -28,9 +28,49 @@ func (s *server) registerAnalysisRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/reports/{id}/review", s.reviewReport)
 	mux.HandleFunc("POST /api/v1/reports/{id}/publish", s.publishReport)
 	mux.HandleFunc("POST /api/v1/reports/{id}/withdraw", s.withdrawReport)
+	mux.HandleFunc("GET /api/v1/model-calls", s.listModelCalls)
+	mux.HandleFunc("POST /api/v1/model-calls/{id}/reconcile", s.reconcileModelCall)
 	mux.HandleFunc("GET /api/v1/sessions/{id}/transcript-revisions", s.listTranscriptRevisions)
 	mux.HandleFunc("GET /api/v1/transcript-revisions/{id}", s.getTranscriptRevision)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/transcript-revisions", s.createTranscriptRevision)
+}
+
+func (s *server) listModelCalls(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	after, limit, ok := s.page(w, r)
+	if !ok {
+		return
+	}
+	items, next, err := s.analysis.ListModelCalls(r.Context(), p, after, limit)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, page(items, next))
+}
+
+func (s *server) reconcileModelCall(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.writePrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in analysis.ReconcileCall
+	if !s.decode(w, r, &in, false) {
+		return
+	}
+	value, err := s.analysis.ReconcileModelCall(r.Context(), p, id, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, value)
 }
 
 func (s *server) createTranscriptRevision(w http.ResponseWriter, r *http.Request) {
@@ -221,11 +261,15 @@ func (s *server) listTranscriptRevisions(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	after, limit, ok := s.page(w, r)
+	after, limit, ok := s.pageAllowed(w, r, "media_asset_id")
 	if !ok {
 		return
 	}
-	items, next, err := s.analysis.ListRevisions(r.Context(), p, id, r.URL.Query().Get("media_asset_id"), after, limit)
+	mediaID, ok := queryUUID(w, r, "media_asset_id")
+	if !ok {
+		return
+	}
+	items, next, err := s.analysis.ListRevisions(r.Context(), p, id, mediaID, after, limit)
 	if err != nil {
 		s.writeServiceError(w, r, err)
 		return

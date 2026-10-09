@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 )
@@ -17,15 +18,17 @@ type reportScope struct {
 	ID, RunID, SessionID, Status, Teacher, College string
 	LockVersion                                    int
 	Provenance                                     map[string]any
+	Verified                                       bool
 }
 
 func (s *Service) lockReport(ctx context.Context, tx pgx.Tx, id string) (reportScope, error) {
 	var v reportScope
 	err := tx.QueryRow(ctx, `SELECT r.id::text,r.run_id::text,r.session_id::text,r.status,r.lock_version,r.provenance,
+		(r.content_sha256 IS NOT NULL AND r.provenance IS NOT NULL),
 		o.teacher_id::text,teaching.college_of(o.org_unit_id)::text FROM teaching.reports r
 		JOIN teaching.lesson_sessions ls ON ls.id=r.session_id JOIN teaching.course_offerings o ON o.id=ls.offering_id
 		WHERE r.id=$1 FOR UPDATE OF ls,r`, id).
-		Scan(&v.ID, &v.RunID, &v.SessionID, &v.Status, &v.LockVersion, &v.Provenance, &v.Teacher, &v.College)
+		Scan(&v.ID, &v.RunID, &v.SessionID, &v.Status, &v.LockVersion, &v.Provenance, &v.Verified, &v.Teacher, &v.College)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, notFound()
 	}
@@ -47,6 +50,9 @@ func (s *Service) CopyReport(ctx context.Context, p identity.Principal, id strin
 	}
 	if !canEdit(p, v.Teacher, v.College) {
 		return Report{}, forbidden()
+	}
+	if !v.Verified {
+		return Report{}, historicalReportReadOnly()
 	}
 	if v.LockVersion != in.LockVersion {
 		return Report{}, revisionConflict()
@@ -127,6 +133,9 @@ func (s *Service) PatchReport(ctx context.Context, p identity.Principal, id stri
 	}
 	if !canEdit(p, v.Teacher, v.College) {
 		return Report{}, forbidden()
+	}
+	if !v.Verified {
+		return Report{}, historicalReportReadOnly()
 	}
 	if v.LockVersion != in.LockVersion {
 		return Report{}, revisionConflict()
@@ -230,16 +239,24 @@ func (s *Service) Review(ctx context.Context, p identity.Principal, id string, i
 		if !canEdit(p, v.Teacher, v.College) || v.Status != "draft" || in.ObservationID != nil || in.ContentSHA256 != nil {
 			return Report{}, forbiddenOrState(canEdit(p, v.Teacher, v.College), "only a draft can be submitted")
 		}
+		if !v.Verified {
+			return Report{}, historicalReportReadOnly()
+		}
 		_, err = tx.Exec(ctx, `UPDATE teaching.reports SET status='in_review',lock_version=lock_version+1 WHERE id=$1`, id)
 	case "accept", "revise", "reject":
 		if !canReview(p, v.College) {
 			return Report{}, forbidden()
 		}
+		if !v.Verified {
+			return Report{}, historicalReportReadOnly()
+		}
 		if v.Status != "in_review" || in.ObservationID == nil || in.ContentSHA256 != nil {
 			return Report{}, state("observation review requires an in-review report")
 		}
 		status := map[string]string{"accept": "accepted", "revise": "revised", "reject": "rejected"}[in.Action]
-		tag, updateErr := tx.Exec(ctx, `UPDATE teaching.report_observations SET review_status=$3 WHERE id=$1 AND report_id=$2 AND removed_at IS NULL`, *in.ObservationID, id, status)
+		tag, updateErr := tx.Exec(ctx, `UPDATE teaching.report_observations SET review_status=$3,
+			removed_at=CASE WHEN $3='rejected' THEN now() ELSE removed_at END
+			WHERE id=$1 AND report_id=$2 AND removed_at IS NULL`, *in.ObservationID, id, status)
 		if updateErr != nil {
 			return Report{}, updateErr
 		}
@@ -247,12 +264,18 @@ func (s *Service) Review(ctx context.Context, p identity.Principal, id string, i
 			return Report{}, invalid("observation does not belong to this report")
 		}
 		_, err = tx.Exec(ctx, `UPDATE teaching.reports SET reviewed_content_sha256=NULL,reviewed_by=NULL,reviewed_at=NULL,lock_version=lock_version+1 WHERE id=$1`, id)
+		if err == nil && in.Action == "reject" {
+			err = s.refreshReportDigest(ctx, tx, id)
+		}
 		if in.Action == "accept" {
 			dbAction = "confirm"
 		}
 	case "confirm_report":
 		if !canReview(p, v.College) {
 			return Report{}, forbidden()
+		}
+		if !v.Verified {
+			return Report{}, historicalReportReadOnly()
 		}
 		if v.Status != "in_review" || in.ObservationID != nil || in.ContentSHA256 == nil {
 			return Report{}, state("complete confirmation requires an in-review report")
@@ -284,6 +307,15 @@ func (s *Service) Review(ctx context.Context, p identity.Principal, id string, i
 }
 
 func (s *Service) Publish(ctx context.Context, p identity.Principal, id string, in PublishReport) (Report, error) {
+	if in.LockVersion < 1 {
+		return Report{}, invalid("lock_version is required")
+	}
+	if in.ExpectedCurrentReportID != nil {
+		var expected pgtype.UUID
+		if expected.Scan(*in.ExpectedCurrentReportID) != nil {
+			return Report{}, invalid("expected_current_report_id must be a UUID or null")
+		}
+	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Report{}, err
@@ -296,6 +328,9 @@ func (s *Service) Publish(ctx context.Context, p identity.Principal, id string, 
 	if !canReview(p, v.College) {
 		return Report{}, forbidden()
 	}
+	if !v.Verified {
+		return Report{}, historicalReportReadOnly()
+	}
 	if v.LockVersion != in.LockVersion {
 		return Report{}, revisionConflict()
 	}
@@ -306,7 +341,7 @@ func (s *Service) Publish(ctx context.Context, p identity.Principal, id string, 
 	if err = tx.QueryRow(ctx, `SELECT id::text FROM teaching.reports WHERE session_id=$1 AND status='published'`, v.SessionID).Scan(&currentID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Report{}, err
 	}
-	if !sameOptionalString(currentID, in.ExpectedCurrentReportID) {
+	if !sameOptionalUUID(currentID, in.ExpectedCurrentReportID) {
 		return Report{}, revisionConflict()
 	}
 	if err = s.validatePublication(ctx, tx, v); err != nil {
@@ -345,6 +380,9 @@ func (s *Service) Withdraw(ctx context.Context, p identity.Principal, id string,
 	}
 	if !canReview(p, v.College) {
 		return Report{}, forbidden()
+	}
+	if !v.Verified {
+		return Report{}, historicalReportReadOnly()
 	}
 	if v.LockVersion != in.LockVersion {
 		return Report{}, revisionConflict()
@@ -395,8 +433,8 @@ func (s *Service) validateReportContent(ctx context.Context, tx pgx.Tx, v report
 		if d.CoverageStatus != "observed" && d.CoverageStatus != "insufficient" && d.CoverageStatus != "not_applicable" {
 			return invalid("coverage status is invalid")
 		}
-		if d.CoverageStatus != "observed" && strings.TrimSpace(d.Limitation) == "" {
-			return invalid("limited dimensions require a limitation")
+		if d.CoverageStatus != "observed" && (strings.TrimSpace(d.Limitation) == "" || strings.TrimSpace(d.Summary) != "" || len(d.SummaryEvidenceIDs) > 0) {
+			return invalid("limited dimensions require a limitation and cannot contain factual summaries")
 		}
 		if (strings.TrimSpace(d.Summary) != "") != (len(d.SummaryEvidenceIDs) > 0) {
 			return invalid("dimension summary and evidence references must agree")
@@ -550,9 +588,9 @@ func (s *Service) validatePublication(ctx context.Context, tx pgx.Tx, v reportSc
 	var dimensions, invalidDimensions, facts, invalidObservations int
 	err = tx.QueryRow(ctx, `SELECT
 		(SELECT count(*) FROM teaching.report_dimensions WHERE report_id=$1),
-		(SELECT count(*) FROM teaching.report_dimensions d WHERE d.report_id=$1 AND ((d.coverage_status<>'observed' AND btrim(d.limitation)='') OR (btrim(d.summary)<>'')<>(cardinality(d.summary_evidence_ids)>0) OR EXISTS(SELECT 1 FROM unnest(d.summary_evidence_ids) x(id) LEFT JOIN teaching.evidence_items e ON e.id=x.id WHERE e.id IS NULL OR e.run_id=$2::uuid IS NOT TRUE OR e.availability<>'available'))),
+		(SELECT count(*) FROM teaching.report_dimensions d WHERE d.report_id=$1 AND ((d.coverage_status<>'observed' AND (btrim(d.limitation)='' OR btrim(d.summary)<>'' OR cardinality(d.summary_evidence_ids)>0)) OR (btrim(d.summary)<>'')<>(cardinality(d.summary_evidence_ids)>0) OR EXISTS(SELECT 1 FROM unnest(d.summary_evidence_ids) x(id) LEFT JOIN teaching.evidence_items e ON e.id=x.id WHERE e.id IS NULL OR e.run_id=$2::uuid IS NOT TRUE OR e.availability<>'available'))),
 		(SELECT count(*) FROM teaching.report_observations WHERE report_id=$1 AND removed_at IS NULL AND review_status IN('accepted','revised')),
-		(SELECT count(*) FROM teaching.report_observations ro WHERE ro.report_id=$1 AND ro.removed_at IS NULL AND ro.review_status NOT IN('accepted','revised','rejected') OR ro.report_id=$1 AND ro.removed_at IS NULL AND ro.review_status IN('accepted','revised') AND NOT EXISTS(SELECT 1 FROM teaching.observation_evidence oe JOIN teaching.evidence_items e ON e.id=oe.evidence_id WHERE oe.observation_id=ro.id AND e.run_id=$2::uuid AND e.availability='available'))`, v.ID, v.RunID).
+		(SELECT count(*) FROM teaching.report_observations ro WHERE ro.report_id=$1 AND ro.removed_at IS NULL AND ro.review_status NOT IN('accepted','revised','rejected') OR ro.report_id=$1 AND ro.removed_at IS NULL AND ro.review_status IN('accepted','revised') AND (NOT EXISTS(SELECT 1 FROM teaching.observation_evidence oe WHERE oe.observation_id=ro.id) OR EXISTS(SELECT 1 FROM teaching.observation_evidence oe LEFT JOIN teaching.evidence_items e ON e.id=oe.evidence_id WHERE oe.observation_id=ro.id AND (e.id IS NULL OR e.run_id=$2::uuid IS NOT TRUE OR e.availability<>'available'))))`, v.ID, v.RunID).
 		Scan(&dimensions, &invalidDimensions, &facts, &invalidObservations)
 	if err != nil {
 		return err
@@ -575,8 +613,16 @@ func canReview(p identity.Principal, college string) bool {
 	return p.Has("sys_admin") || p.Scoped("supervisor", college)
 }
 
-func sameOptionalString(a, b *string) bool {
-	return a == nil && b == nil || a != nil && b != nil && *a == *b
+func sameOptionalUUID(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	var left, right pgtype.UUID
+	return left.Scan(*a) == nil && right.Scan(*b) == nil && left == right
+}
+
+func historicalReportReadOnly() error {
+	return state("historical report is read-only because verified provenance is unavailable")
 }
 
 func forbiddenOrState(authorized bool, message string) error {

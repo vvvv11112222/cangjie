@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,8 +135,14 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM teaching.schedule_entries WHERE starts_at='2026-10-10 11:00+08'`).Scan(&imported); err != nil || imported != 0 {
 		t.Fatalf("failed schedule import left %d rows: %v", imported, err)
 	}
-	session := requestJSON(t, teacherClient, http.MethodPost, server.URL+"/api/v1/sessions", map[string]any{"offering_id": offering["id"], "schedule_entry_id": schedule["id"], "title": "Lesson 1", "planned_start_at": "2026-10-10T09:00:00+08:00", "planned_end_at": "2026-10-10T10:00:00+08:00", "is_demo": false}, teacherCSRF, http.StatusCreated)
+	session := requestJSON(t, teacherClient, http.MethodPost, server.URL+"/api/v1/sessions", map[string]any{"offering_id": strings.ToUpper(offering["id"].(string)), "schedule_entry_id": schedule["id"], "title": "Lesson 1", "planned_start_at": "2026-10-10T09:00:00+08:00", "planned_end_at": "2026-10-10T10:00:00+08:00", "is_demo": false}, teacherCSRF, http.StatusCreated)
 	requestJSON(t, teacherClient, http.MethodPost, server.URL+"/api/v1/sessions", map[string]any{"offering_id": offering["id"], "schedule_entry_id": schedule["id"], "title": "Wrong time", "planned_start_at": "2026-10-10T09:01:00+08:00", "planned_end_at": "2026-10-10T10:00:00+08:00", "is_demo": false}, teacherCSRF, http.StatusBadRequest)
+	supervisorClient := newTestClient(t)
+	supervisorCSRF := loginTestUser(t, supervisorClient, server.URL, "supervisor")
+	requestJSON(t, supervisorClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"title": nil}, supervisorCSRF, http.StatusForbidden)
+	requestJSON(t, supervisorClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"status": nil}, supervisorCSRF, http.StatusForbidden)
+	requestJSON(t, supervisorClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"title": "unauthorized"}, supervisorCSRF, http.StatusForbidden)
+	requestJSON(t, teacherClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"title": "Authorized title"}, teacherCSRF, http.StatusOK)
 	requestJSON(t, academicClient, http.MethodPatch, server.URL+"/api/v1/schedules/"+schedule["id"].(string), map[string]any{"ends_at": "2026-10-10T09:59:00+08:00"}, academicCSRF, http.StatusConflict)
 	visibleSessions := requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/sessions?enrollment_year=2026&teacher_id="+teacherID, nil, "", http.StatusOK)
 	if got := visibleSessions["items"].([]any); len(got) != 1 || got[0].(map[string]any)["id"] != session["id"] {
@@ -182,8 +189,6 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 	requestJSON(t, admin, http.MethodPatch, server.URL+"/api/v1/users/"+teacherID, map[string]any{"status": "disabled"}, adminCSRF, http.StatusOK)
 	requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/auth/me", nil, "", http.StatusUnauthorized)
 
-	supervisorClient := newTestClient(t)
-	supervisorCSRF := loginTestUser(t, supervisorClient, server.URL, "supervisor")
 	requestJSON(t, supervisorClient, http.MethodPost, server.URL+"/api/v1/auth/logout", map[string]any{}, supervisorCSRF, http.StatusNoContent)
 	requestJSON(t, supervisorClient, http.MethodGet, server.URL+"/api/v1/auth/me", nil, "", http.StatusUnauthorized)
 }
