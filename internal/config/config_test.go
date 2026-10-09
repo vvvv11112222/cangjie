@@ -60,12 +60,19 @@ func TestFromLookupRequiresPinnedReportConfiguration(t *testing.T) {
 }
 
 func TestFromLookupAcceptsPinnedReportConfiguration(t *testing.T) {
-	cfg, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching", "MODEL_MONTHLY_BUDGET": "10", "REPORT_API_BASE": "https://model.example/v1", "REPORT_API_KEY": "fixture", "REPORT_MODEL": "report-model", "REPORT_MODEL_REVISION": "revision-1", "REPORT_PROMPT_VERSION": "p0-v1", "REPORT_PROMPT_SHA256": strings.Repeat("a", 64), "REPORT_SELECTION_VERSION": "time-window-v1", "MODEL_PRICE_VERSION": "price-1", "MODEL_INPUT_PRICE_PER_MILLION": "1", "MODEL_OUTPUT_PRICE_PER_MILLION": "2"}))
+	cfg, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching", "MODEL_MONTHLY_BUDGET": "10.123456", "REPORT_API_BASE": "https://model.example/v1", "REPORT_API_KEY": "fixture", "REPORT_MODEL": "report-model", "REPORT_MODEL_REVISION": "revision-1", "REPORT_PROMPT_VERSION": "p0-v1", "REPORT_PROMPT_SHA256": strings.Repeat("a", 64), "REPORT_SELECTION_VERSION": "time-window-v1", "MODEL_PRICE_VERSION": "price-1", "MODEL_INPUT_PRICE_PER_MILLION": "1.000001", "MODEL_OUTPUT_PRICE_PER_MILLION": "2.5"}))
 	if err != nil {
 		t.Fatalf("valid report configuration rejected: %v", err)
 	}
-	if !cfg.ReportEnabled || cfg.ReportTimeout.String() != "3m0s" {
-		t.Fatalf("unexpected report configuration: enabled=%v timeout=%s", cfg.ReportEnabled, cfg.ReportTimeout)
+	if !cfg.ReportEnabled || cfg.ReportTimeout.String() != "3m0s" || cfg.ReportMonthlyBudgetMicros != 10_123_456 || cfg.ReportInputPriceMicros != 1_000_001 || cfg.ReportOutputPriceMicros != 2_500_000 {
+		t.Fatalf("unexpected report configuration: enabled=%v timeout=%s budget=%d prices=%d/%d", cfg.ReportEnabled, cfg.ReportTimeout, cfg.ReportMonthlyBudgetMicros, cfg.ReportInputPriceMicros, cfg.ReportOutputPriceMicros)
+	}
+}
+
+func TestFromLookupRejectsInexactModelMoney(t *testing.T) {
+	_, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching", "MODEL_MONTHLY_BUDGET": "0.0000001"}))
+	if err == nil || !strings.Contains(err.Error(), "MODEL_MONTHLY_BUDGET") {
+		t.Fatalf("expected fixed-precision money error, got %v", err)
 	}
 }
 

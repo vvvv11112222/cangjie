@@ -18,6 +18,9 @@ func (s *Service) GetRevision(ctx context.Context, p identity.Principal, id stri
 	if err != nil {
 		return Revision{}, err
 	}
+	if err = s.requireSessionMediaContentReadable(ctx, out.SessionID, out.MediaAssetID, true); err != nil {
+		return Revision{}, err
+	}
 	rows, err := s.pool.Query(ctx, `SELECT segment_no,start_ms,end_ms,text_content,speaker_label FROM teaching.transcript_revision_segments WHERE revision_id=$1 ORDER BY segment_no`, id)
 	if err != nil {
 		return Revision{}, err
@@ -46,6 +49,9 @@ func (s *Service) ListRevisions(ctx context.Context, p identity.Principal, sessi
 		return nil, "", notFound()
 	}
 	if err != nil {
+		return nil, "", err
+	}
+	if err = s.requireSessionMediaContentReadable(ctx, sessionID, mediaID, true); err != nil {
 		return nil, "", err
 	}
 	rows, err := s.pool.Query(ctx, `SELECT id::text FROM teaching.transcript_revisions WHERE session_id=$1 AND media_asset_id=$2 AND ($3='' OR (created_at,id)>(SELECT created_at,id FROM teaching.transcript_revisions WHERE id=$3::uuid)) ORDER BY created_at,id LIMIT $4`, sessionID, mediaID, after, limit+1)

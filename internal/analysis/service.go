@@ -28,11 +28,27 @@ type snapshot struct {
 	Parameters  Parameters           `json:"parameters"`
 	Executions  map[string]Execution `json:"executions"`
 	MediaLimits mediaLimits          `json:"media_limits"`
+	Report      reportSnapshot       `json:"report"`
 }
 
 type mediaLimits struct {
 	MaxDurationMS  int64 `json:"max_duration_ms"`
 	MaxVideoHeight int   `json:"max_video_height"`
+}
+
+type reportSnapshot struct {
+	Enabled           bool   `json:"enabled"`
+	Model             Model  `json:"model"`
+	PromptVersion     string `json:"prompt_version"`
+	PromptSHA256      string `json:"prompt_sha256"`
+	SelectionVersion  string `json:"selection_version"`
+	SystemPrompt      string `json:"system_prompt"`
+	MaxInputTokens    int    `json:"max_input_tokens"`
+	MaxOutputTokens   int    `json:"max_output_tokens"`
+	PriceVersion      string `json:"price_version"`
+	Currency          string `json:"currency"`
+	InputPriceMicros  int64  `json:"input_price_micros"`
+	OutputPriceMicros int64  `json:"output_price_micros"`
 }
 
 func NewService(pool *pgxpool.Pool, store storage.Backend, cfg Config) *Service {
@@ -114,6 +130,16 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, false, err
+	}
+	if in.Mode == "full" || in.Mode == "report_only" {
+		var unresolved bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls mc JOIN teaching.analysis_runs r ON r.id=mc.run_id
+			WHERE r.session_id=$1 AND mc.dispatch_started_at IS NOT NULL AND mc.status IN('reserved','unknown'))`, sessionID).Scan(&unresolved); err != nil {
+			return Run{}, false, err
+		}
+		if unresolved {
+			return Run{}, false, apperror.New(http.StatusConflict, "INVALID_STATE", "classroom has an unresolved model call requiring administrator reconciliation")
+		}
 	}
 
 	snap := s.newSnapshot(in.Mode)
@@ -845,6 +871,23 @@ func (s *Service) requireRunContentReadable(ctx context.Context, runID string, r
 	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requireMediaCurrent)
 }
 
+func (s *Service) requireSessionMediaContentReadable(ctx context.Context, sessionID, mediaID string, requireMediaCurrent bool) error {
+	var sessionStatus, rights string
+	var contentExpires, mediaExpires time.Time
+	var uses []byte
+	err := s.pool.QueryRow(ctx, `SELECT ls.status,ls.content_expires_at,m.expires_at,src.rights_status,src.allowed_uses
+		FROM teaching.lesson_sessions ls JOIN teaching.media_assets m ON m.session_id=ls.id AND m.id=$2
+		JOIN teaching.source_records src ON src.id=m.source_record_id WHERE ls.id=$1`, sessionID, mediaID).
+		Scan(&sessionStatus, &contentExpires, &mediaExpires, &rights, &uses)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err != nil {
+		return err
+	}
+	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requireMediaCurrent)
+}
+
 func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires time.Time, rights string, uses []byte, requireMediaCurrent bool) error {
 	if sessionStatus == "deleting" || sessionStatus == "deleted" {
 		return state("classroom content is unavailable")
@@ -1321,7 +1364,27 @@ func (s *Service) newSnapshot(mode string) snapshot {
 		plan = []string{"probe"}
 	}
 	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
-		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight}}
+		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},
+		Report: reportSnapshot{Enabled: s.cfg.ReportEnabled, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision},
+			PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion,
+			SystemPrompt: reportSystemPrompt, MaxInputTokens: s.cfg.ReportMaxInputTokens, MaxOutputTokens: s.cfg.ReportMaxOutputTokens,
+			PriceVersion: s.cfg.ReportPriceVersion, Currency: s.cfg.ReportBudgetCurrency,
+			InputPriceMicros: s.cfg.ReportInputPriceMicros, OutputPriceMicros: s.cfg.ReportOutputPriceMicros}}
+}
+
+func (s *Service) reportConfigForRun(ctx context.Context, runID string) (reportSnapshot, error) {
+	var raw []byte
+	if err := s.pool.QueryRow(ctx, `SELECT config_snapshot FROM teaching.analysis_runs WHERE id=$1`, runID).Scan(&raw); err != nil {
+		return reportSnapshot{}, err
+	}
+	var snap snapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return reportSnapshot{}, err
+	}
+	if snap.Report.Enabled && (snap.Report.Model.Name == "" || snap.Report.Model.Revision == "" || snap.Report.SystemPrompt == "" || snap.Report.MaxInputTokens <= 0 || snap.Report.MaxOutputTokens <= 0) {
+		return reportSnapshot{}, fmt.Errorf("analysis run is missing pinned report configuration")
+	}
+	return snap.Report, nil
 }
 
 func (s *Service) timeout(stage string) time.Duration {

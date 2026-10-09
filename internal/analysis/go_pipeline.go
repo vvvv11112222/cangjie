@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -111,6 +112,9 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 	if err = s.assertGoLease(ctx, tx, j); err != nil {
 		return err
 	}
+	if err = s.createFrameEvidence(ctx, tx, j); err != nil {
+		return err
+	}
 	var raw []byte
 	err = tx.QueryRow(ctx, `SELECT ja.metadata->'result' FROM teaching.analysis_jobs aj JOIN teaching.job_artifacts ja ON ja.job_id=aj.id
 		WHERE aj.run_id=$1 AND aj.stage='audio_analysis' AND aj.status='succeeded' AND ja.artifact_key='__result/audio_analysis'`, j.RunID).Scan(&raw)
@@ -157,22 +161,6 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 			return err
 		}
 	}
-	var videoRaw []byte
-	if err = tx.QueryRow(ctx, `SELECT ja.metadata->'result' FROM teaching.analysis_jobs aj JOIN teaching.job_artifacts ja ON ja.job_id=aj.id
-		WHERE aj.run_id=$1 AND aj.stage='video_analysis' AND aj.status='succeeded' AND ja.artifact_key='__result/video_analysis'`, j.RunID).Scan(&videoRaw); err == nil {
-		var video VideoResult
-		if err = json.Unmarshal(videoRaw, &video); err != nil {
-			return err
-		}
-		for _, frame := range video.Frames {
-			prov := map[string]any{"sampling": video.Sampling, "processor_version": video.Execution.ProcessorVersion}
-			if _, err = tx.Exec(ctx, `INSERT INTO teaching.evidence_items(run_id,session_id,media_asset_id,frame_asset_id,kind,start_ms,end_ms,description,provenance) VALUES($1,$2,$3,$4,'frame',$5,$6,'课堂关键帧',$7)`, j.RunID, j.SessionID, j.MediaID, frame.AssetID, frame.TimestampMS, frame.TimestampMS+1, prov); err != nil {
-				return err
-			}
-		}
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return err
-	}
 	if _, err = tx.Exec(ctx, `UPDATE teaching.lesson_sessions SET transcript_lock_version=transcript_lock_version+1 WHERE id=$1`, j.SessionID); err != nil {
 		return err
 	}
@@ -183,7 +171,11 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 	if err = s.completeGoJob(ctx, tx, j); err != nil {
 		return err
 	}
-	if s.cfg.ReportEnabled {
+	reportConfig, err := s.reportConfigForRun(ctx, j.RunID)
+	if err != nil {
+		return err
+	}
+	if reportConfig.Enabled {
 		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'report',1) ON CONFLICT DO NOTHING`, j.RunID)
 	} else {
 		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code) VALUES($1,'report','skipped',1,'REPORT_DISABLED'),($1,'validate','skipped',$2,'REPORT_DISABLED') ON CONFLICT DO NOTHING`, j.RunID, s.maxAttempts("validate"))
@@ -195,6 +187,29 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Service) createFrameEvidence(ctx context.Context, tx pgx.Tx, j goJob) error {
+	var videoRaw []byte
+	err := tx.QueryRow(ctx, `SELECT ja.metadata->'result' FROM teaching.analysis_jobs aj JOIN teaching.job_artifacts ja ON ja.job_id=aj.id
+		WHERE aj.run_id=$1 AND aj.stage='video_analysis' AND aj.status='succeeded' AND ja.artifact_key='__result/video_analysis'`, j.RunID).Scan(&videoRaw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var video VideoResult
+	if err = json.Unmarshal(videoRaw, &video); err != nil {
+		return err
+	}
+	for _, frame := range video.Frames {
+		prov := map[string]any{"sampling": video.Sampling, "processor_version": video.Execution.ProcessorVersion, "limitations": video.Limitations}
+		if _, err = tx.Exec(ctx, `INSERT INTO teaching.evidence_items(run_id,session_id,media_asset_id,frame_asset_id,kind,start_ms,end_ms,description,provenance) VALUES($1,$2,$3,$4,'frame',$5,$6,'课堂关键帧',$7)`, j.RunID, j.SessionID, j.MediaID, frame.AssetID, frame.TimestampMS, frame.TimestampMS+1, prov); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) finishWithoutReport(ctx context.Context, tx pgx.Tx, j goJob, code string) error {
@@ -218,22 +233,46 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 	}
 	manifestRaw, _ := json.Marshal(input)
 	manifestSHA := digestBytes(manifestRaw)
+	reportConfig, err := s.reportConfigForRun(ctx, j.RunID)
+	if err != nil {
+		return err
+	}
+	requestBody, err := buildReportRequest(input, reportConfig)
+	if err != nil {
+		return err
+	}
+	requestSHA := digestBytes(requestBody)
+	reservedMicros, err := tokenCostMicros(int64(reportConfig.MaxInputTokens), int64(reportConfig.MaxOutputTokens), reportConfig.InputPriceMicros, reportConfig.OutputPriceMicros)
+	if err != nil {
+		return err
+	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err = tx.Exec(ctx, `SELECT 1 FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, j.SessionID); err != nil {
+	if err = s.lockReportDispatch(ctx, tx, j); err != nil {
 		return err
 	}
-	if err = s.assertGoLease(ctx, tx, j); err != nil {
+	period := billingPeriod(time.Now(), s.cfg.ReportBudgetTimezone)
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, reportConfig.Currency+":"+period); err != nil {
 		return err
+	}
+	var usedMicros int64
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(round(sum(CASE WHEN status IN('reserved','unknown') THEN reserved_cost ELSE actual_cost END)*1000000),0)::bigint
+		FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date`, reportConfig.Currency, period).Scan(&usedMicros); err != nil {
+		return err
+	}
+	if s.cfg.ReportMonthlyBudgetMicros <= 0 || usedMicros > s.cfg.ReportMonthlyBudgetMicros-reservedMicros {
+		return fmt.Errorf("monthly model budget is exhausted")
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata) VALUES($1,$2,$3,$4,'__model_input',jsonb_build_object('model_input',$5::jsonb,'manifest_sha256',$6::text))`, j.ID, j.RunID, j.SessionID, j.Token, manifestRaw, manifestSHA)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,status,reserved_cost,price_version,request_sha256,dispatch_started_at) VALUES($1,$2,$3,'openai-compatible',$4,$5,'reserved',0,$6,$7,now())`, j.RunID, j.ID, "report:"+j.ID, s.cfg.ReportModel, s.cfg.ReportPromptVersion, s.cfg.ReportPriceVersion, manifestSHA)
+	_, err = tx.Exec(ctx, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,status,currency,reserved_cost,billing_period,price_version,request_sha256,dispatch_started_at)
+		VALUES($1,$2,$3,'openai-compatible',$4,$5,'reserved',$6,$7::numeric/1000000,$8::date,$9,$10,now())`,
+		j.RunID, j.ID, "report:"+j.ID, reportConfig.Model.Name, reportConfig.PromptVersion, reportConfig.Currency, reservedMicros, period, reportConfig.PriceVersion, requestSHA)
 	if err != nil {
 		return err
 	}
@@ -243,27 +282,37 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 	stopHeartbeat := make(chan struct{})
 	go s.keepGoLease(ctx, j, stopHeartbeat)
 	defer close(stopHeartbeat)
-	candidate, err := s.callReportModel(ctx, input)
+	callResult, err := s.callReportModel(ctx, requestBody)
 	if err != nil {
+		_ = s.markModelCallUnknown(ctx, j.ID)
 		return err
 	}
-	candidateRaw, _ := json.Marshal(candidate)
+	if !callResult.UsageKnown {
+		_ = s.markModelCallUnknown(ctx, j.ID)
+		return fmt.Errorf("report provider omitted billable token usage")
+	}
+	actualMicros, err := tokenCostMicros(callResult.InputTokens, callResult.OutputTokens, reportConfig.InputPriceMicros, reportConfig.OutputPriceMicros)
+	if err != nil {
+		_ = s.markModelCallUnknown(ctx, j.ID)
+		return err
+	}
+	if err = s.settleModelCall(ctx, j.ID, callResult, actualMicros); err != nil {
+		return err
+	}
+	candidateRaw, _ := json.Marshal(callResult.Candidate)
 	tx, err = s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err = tx.Exec(ctx, `SELECT 1 FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, j.SessionID); err != nil {
-		return err
-	}
-	if err = s.assertGoLease(ctx, tx, j); err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata) VALUES($1,$2,$3,$4,'__report_candidate',jsonb_build_object('report_candidate',$5::jsonb))`, j.ID, j.RunID, j.SessionID, j.Token, candidateRaw)
+	active, err := s.lockReportResultAcceptance(ctx, tx, j)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE teaching.model_calls SET status='succeeded',actual_cost=0,input_tokens=0,output_tokens=0,settled_at=now() WHERE job_id=$1`, j.ID)
+	if !active {
+		return nil
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata) VALUES($1,$2,$3,$4,'__report_candidate',jsonb_build_object('report_candidate',$5::jsonb))`, j.ID, j.RunID, j.SessionID, j.Token, candidateRaw)
 	if err != nil {
 		return err
 	}
@@ -277,10 +326,126 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 	return tx.Commit(ctx)
 }
 
+func (s *Service) lockReportDispatch(ctx context.Context, tx pgx.Tx, j goJob) error {
+	var sessionStatus string
+	var contentExpires time.Time
+	if err := tx.QueryRow(ctx, `SELECT status,content_expires_at FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, j.SessionID).Scan(&sessionStatus, &contentExpires); err != nil {
+		return err
+	}
+	var sourceID, runStatus string
+	var mediaExpires time.Time
+	err := tx.QueryRow(ctx, `SELECT m.source_record_id::text,m.expires_at,r.status FROM teaching.analysis_runs r
+		JOIN teaching.media_assets m ON m.id=r.media_asset_id WHERE r.id=$1 AND r.session_id=$2`, j.RunID, j.SessionID).
+		Scan(&sourceID, &mediaExpires, &runStatus)
+	if err != nil {
+		return err
+	}
+	var rights string
+	var uses []byte
+	var external bool
+	if err = tx.QueryRow(ctx, `SELECT rights_status,allowed_uses,external_processing_allowed FROM teaching.source_records WHERE id=$1 FOR UPDATE`, sourceID).Scan(&rights, &uses, &external); err != nil {
+		return err
+	}
+	if err = tx.QueryRow(ctx, `SELECT status FROM teaching.analysis_runs WHERE id=$1 FOR UPDATE`, j.RunID).Scan(&runStatus); err != nil {
+		return err
+	}
+	if sessionStatus == "deleting" || sessionStatus == "deleted" || !contentExpires.After(time.Now()) || !mediaExpires.After(time.Now()) || runStatus != "running" || rights != "verified" || !jsonArrayContains(uses, "analysis") || !external {
+		return fmt.Errorf("source no longer permits external report processing")
+	}
+	if err = s.assertGoLease(ctx, tx, j); err != nil {
+		return err
+	}
+	var unresolved bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls mc JOIN teaching.analysis_runs r ON r.id=mc.run_id
+		WHERE r.session_id=$1 AND mc.job_id<>$2 AND mc.dispatch_started_at IS NOT NULL AND mc.status IN('reserved','unknown'))`, j.SessionID, j.ID).Scan(&unresolved); err != nil {
+		return err
+	}
+	if unresolved {
+		return fmt.Errorf("classroom has an unresolved model call requiring reconciliation")
+	}
+	return nil
+}
+
+func (s *Service) lockReportResultAcceptance(ctx context.Context, tx pgx.Tx, j goJob) (bool, error) {
+	var sessionStatus string
+	var contentExpires time.Time
+	if err := tx.QueryRow(ctx, `SELECT status,content_expires_at FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, j.SessionID).Scan(&sessionStatus, &contentExpires); err != nil {
+		return false, err
+	}
+	var sourceID string
+	var mediaExpires time.Time
+	if err := tx.QueryRow(ctx, `SELECT m.source_record_id::text,m.expires_at FROM teaching.analysis_runs r JOIN teaching.media_assets m ON m.id=r.media_asset_id WHERE r.id=$1`, j.RunID).Scan(&sourceID, &mediaExpires); err != nil {
+		return false, err
+	}
+	var rights string
+	var uses []byte
+	var external bool
+	if err := tx.QueryRow(ctx, `SELECT rights_status,allowed_uses,external_processing_allowed FROM teaching.source_records WHERE id=$1 FOR UPDATE`, sourceID).Scan(&rights, &uses, &external); err != nil {
+		return false, err
+	}
+	var runStatus string
+	if err := tx.QueryRow(ctx, `SELECT status FROM teaching.analysis_runs WHERE id=$1 FOR UPDATE`, j.RunID).Scan(&runStatus); err != nil {
+		return false, err
+	}
+	var jobActive bool
+	if err := tx.QueryRow(ctx, `SELECT status='running' AND lease_token=$2::uuid AND lease_expires_at>now() FROM teaching.analysis_jobs WHERE id=$1 FOR UPDATE`, j.ID, j.Token).Scan(&jobActive); err != nil {
+		return false, err
+	}
+	active := jobActive && runStatus == "running" && sessionStatus != "deleting" && sessionStatus != "deleted" && contentExpires.After(time.Now()) && mediaExpires.After(time.Now()) && rights == "verified" && jsonArrayContains(uses, "analysis") && external
+	return active, nil
+}
+
+func (s *Service) markModelCallUnknown(ctx context.Context, jobID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE teaching.model_calls SET status='unknown' WHERE job_id=$1 AND dispatch_started_at IS NOT NULL AND status='reserved'`, jobID)
+	return err
+}
+
+func (s *Service) settleModelCall(ctx context.Context, jobID string, result modelCallResult, actualMicros int64) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE teaching.model_calls SET status='succeeded',actual_cost=$2::numeric/1000000,
+		input_tokens=$3,output_tokens=$4,provider_request_id=NULLIF($5,''),settled_at=now() WHERE job_id=$1 AND status='reserved'`,
+		jobID, actualMicros, result.InputTokens, result.OutputTokens, result.ProviderRequestID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("model call is no longer reservable")
+	}
+	return nil
+}
+
+func tokenCostMicros(inputTokens, outputTokens, inputPriceMicros, outputPriceMicros int64) (int64, error) {
+	if inputTokens < 0 || outputTokens < 0 || inputPriceMicros < 0 || outputPriceMicros < 0 {
+		return 0, fmt.Errorf("invalid model price or usage")
+	}
+	total := new(big.Int).Mul(big.NewInt(inputTokens), big.NewInt(inputPriceMicros))
+	total.Add(total, new(big.Int).Mul(big.NewInt(outputTokens), big.NewInt(outputPriceMicros)))
+	total.Add(total, big.NewInt(999_999))
+	total.Div(total, big.NewInt(1_000_000))
+	if !total.IsInt64() {
+		return 0, fmt.Errorf("model cost exceeds supported range")
+	}
+	return total.Int64(), nil
+}
+
+func billingPeriod(now time.Time, timezone string) string {
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		location = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	local := now.In(location)
+	return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, location).Format("2006-01-02")
+}
+
 func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, error) {
-	input := modelInput{SchemaVersion: SchemaVersion, RunID: j.RunID, SessionID: j.SessionID, MediaAssetID: j.MediaID, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision}, PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion}
+	reportConfig, err := s.reportConfigForRun(ctx, j.RunID)
+	if err != nil {
+		return modelInput{}, err
+	}
+	input := modelInput{SchemaVersion: SchemaVersion, RunID: j.RunID, SessionID: j.SessionID, MediaAssetID: j.MediaID,
+		Model: reportConfig.Model, PromptVersion: reportConfig.PromptVersion, PromptSHA256: reportConfig.PromptSHA256,
+		SelectionVersion: reportConfig.SelectionVersion, Limitations: []string{}}
 	var revision, course, title string
-	err := s.pool.QueryRow(ctx, `SELECT r.input_sha256,c.name,ls.title,(SELECT metadata->>'transcript_revision_id' FROM teaching.job_artifacts WHERE run_id=r.id AND artifact_key='__result/evidence')
+	err = s.pool.QueryRow(ctx, `SELECT r.input_sha256,c.name,ls.title,(SELECT metadata->>'transcript_revision_id' FROM teaching.job_artifacts WHERE run_id=r.id AND artifact_key='__result/evidence')
 		FROM teaching.analysis_runs r JOIN teaching.lesson_sessions ls ON ls.id=r.session_id JOIN teaching.course_offerings o ON o.id=ls.offering_id JOIN teaching.courses c ON c.id=o.course_id
 		JOIN teaching.media_assets m ON m.id=r.media_asset_id JOIN teaching.source_records src ON src.id=m.source_record_id
 		WHERE r.id=$1 AND ls.status NOT IN('deleting','deleted') AND ls.content_expires_at>now() AND m.expires_at>now()
@@ -295,7 +460,7 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 		return input, err
 	}
 	defer rows.Close()
-	maxChars := s.cfg.ReportMaxInputTokens * 2
+	maxChars := reportConfig.MaxInputTokens * 2
 	if maxChars <= 0 {
 		maxChars = 16000
 	}
@@ -306,8 +471,15 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 			return input, err
 		}
 		chars := utf8.RuneCountInString(e.TextContent)
-		if len(input.Evidence) > 0 && usedChars+chars > maxChars {
+		remaining := maxChars - usedChars
+		if remaining <= 0 {
+			input.Limitations = append(input.Limitations, "MODEL_INPUT_SKIPPED:"+e.ID)
 			continue
+		}
+		if chars > remaining {
+			e.TextContent = truncateRunes(e.TextContent, remaining)
+			chars = remaining
+			input.Limitations = append(input.Limitations, "MODEL_INPUT_TRUNCATED:"+e.ID)
 		}
 		e.TextSHA256 = digestBytes([]byte(e.TextContent))
 		usedChars += chars
@@ -319,8 +491,59 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 	if len(input.Evidence) == 0 {
 		return input, fmt.Errorf("no reportable evidence")
 	}
-	input.Coverage = []Interval{{StartMS: input.Evidence[0].StartMS, EndMS: input.Evidence[len(input.Evidence)-1].EndMS}}
+	for _, evidence := range input.Evidence {
+		window := Interval{StartMS: evidence.StartMS, EndMS: evidence.EndMS}
+		if len(input.Coverage) == 0 || window.StartMS > input.Coverage[len(input.Coverage)-1].EndMS {
+			input.Coverage = append(input.Coverage, window)
+			continue
+		}
+		if window.EndMS > input.Coverage[len(input.Coverage)-1].EndMS {
+			input.Coverage[len(input.Coverage)-1].EndMS = window.EndMS
+		}
+	}
+	workerLimitations, limitErr := s.workerLimitations(ctx, j.RunID)
+	if limitErr != nil {
+		return input, limitErr
+	}
+	input.Limitations = appendUniqueAll(input.Limitations, workerLimitations)
 	return input, nil
+}
+
+func truncateRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
+func (s *Service) workerLimitations(ctx context.Context, runID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT j.stage,ja.metadata->'result' FROM teaching.analysis_jobs j JOIN teaching.job_artifacts ja ON ja.job_id=j.id
+		WHERE j.run_id=$1 AND j.stage IN('probe','audio_analysis','video_analysis') AND ja.artifact_key='__result/'||j.stage`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	limitations := []string{}
+	for rows.Next() {
+		var stage string
+		var raw []byte
+		if err = rows.Scan(&stage, &raw); err != nil {
+			return nil, err
+		}
+		var envelope struct {
+			Limitations []string `json:"limitations"`
+		}
+		if json.Unmarshal(raw, &envelope) == nil {
+			for _, limitation := range envelope.Limitations {
+				limitations = appendUnique(limitations, stage+":"+limitation)
+			}
+		}
+	}
+	return limitations, rows.Err()
 }
 
 func (s *Service) executeValidate(ctx context.Context, j goJob) error {
@@ -368,7 +591,7 @@ func (s *Service) executeValidate(ctx context.Context, j goJob) error {
 	if err != nil {
 		return err
 	}
-	prov := map[string]any{"media_asset_id": j.MediaID, "input_sha256": input.InputSHA256, "transcript_revision_id": input.TranscriptRevisionID, "model": input.Model, "prompt_version": input.PromptVersion, "prompt_sha256": input.PromptSHA256, "manifest_sha256": manifestSHA, "coverage": input.Coverage, "limitations": []string{}, "source": map[string]any{"id": sourceID, "title": title, "attribution": attribution, "source_url": sourceURL, "rights_version": rightsVersion}}
+	prov := map[string]any{"media_asset_id": j.MediaID, "input_sha256": input.InputSHA256, "transcript_revision_id": input.TranscriptRevisionID, "model": input.Model, "prompt_version": input.PromptVersion, "prompt_sha256": input.PromptSHA256, "selection_version": input.SelectionVersion, "manifest_sha256": manifestSHA, "coverage": input.Coverage, "limitations": input.Limitations, "source": map[string]any{"id": sourceID, "title": title, "attribution": attribution, "source_url": sourceURL, "rights_version": rightsVersion}}
 	plannedObservations := make([]Observation, 0, len(candidate.Observations))
 	digestObservations := make([]map[string]any, 0, len(candidate.Observations))
 	for _, o := range candidate.Observations {
@@ -407,11 +630,54 @@ func (s *Service) executeValidate(ctx context.Context, j goJob) error {
 	if err = s.completeGoJob(ctx, tx, j); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='succeeded',error_code=NULL,finished_at=now() WHERE id=$1`, j.RunID)
-	if err != nil {
+	if err = s.finalizeValidatedRun(ctx, tx, j.RunID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Service) finalizeValidatedRun(ctx context.Context, tx pgx.Tx, runID string) error {
+	var mode string
+	if err := tx.QueryRow(ctx, `SELECT mode FROM teaching.analysis_runs WHERE id=$1`, runID).Scan(&mode); err != nil {
+		return err
+	}
+	required := []string{"evidence", "report", "validate"}
+	if mode == "full" {
+		required = []string{"probe", "audio_analysis", "video_analysis", "evidence", "report", "validate"}
+	}
+	rows, err := tx.Query(ctx, `SELECT stage,status,error_code FROM teaching.analysis_jobs WHERE run_id=$1 AND stage=ANY($2::text[]) ORDER BY created_at`, runID, required)
+	if err != nil {
+		return err
+	}
+	incomplete := 0
+	errorCode := ""
+	for rows.Next() {
+		var stage, status string
+		var code *string
+		if err = rows.Scan(&stage, &status, &code); err != nil {
+			rows.Close()
+			return err
+		}
+		if status != "succeeded" {
+			incomplete++
+			if errorCode == "" && code != nil {
+				errorCode = *code
+			}
+		}
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if incomplete == 0 {
+		_, err = tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='succeeded',error_code=NULL,finished_at=now() WHERE id=$1`, runID)
+		return err
+	}
+	if errorCode == "" {
+		errorCode = "ANALYSIS_INCOMPLETE"
+	}
+	_, err = tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='partial',error_code=$2,finished_at=now() WHERE id=$1`, runID, errorCode)
+	return err
 }
 
 func validateCandidate(c ReportCandidate, input modelInput) error {
@@ -509,6 +775,11 @@ func (s *Service) completeGoJob(ctx context.Context, tx pgx.Tx, j goJob) error {
 	return err
 }
 func (s *Service) failGoJob(ctx context.Context, j goJob, cause error) error {
+	if j.Stage == "report" {
+		if err := s.markModelCallUnknown(ctx, j.ID); err != nil {
+			return err
+		}
+	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -518,12 +789,11 @@ func (s *Service) failGoJob(ctx context.Context, j goJob, cause error) error {
 		return err
 	}
 	if err = s.assertGoLease(ctx, tx, j); err != nil {
-		return err
-	}
-	if j.Stage == "report" {
-		if _, err = tx.Exec(ctx, `UPDATE teaching.model_calls SET status='unknown' WHERE job_id=$1 AND dispatch_started_at IS NOT NULL AND status='reserved'`, j.ID); err != nil {
-			return err
+		var status string
+		if queryErr := tx.QueryRow(ctx, `SELECT status FROM teaching.analysis_jobs WHERE id=$1`, j.ID).Scan(&status); queryErr == nil && status != "running" {
+			return nil
 		}
+		return err
 	}
 	_, err = tx.Exec(ctx, `UPDATE teaching.analysis_jobs SET status='failed',worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,execution_deadline_at=NULL,expected_execution_sha256=NULL,error_code='INVALID_RESULT',error_detail=$2,updated_at=now() WHERE id=$1`, j.ID, cause.Error())
 	if err != nil {

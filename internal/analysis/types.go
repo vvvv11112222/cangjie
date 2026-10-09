@@ -26,6 +26,9 @@ type Config struct {
 	ReportPromptVersion, ReportPromptSHA256          string
 	ReportSelectionVersion                           string
 	ReportPriceVersion                               string
+	ReportBudgetCurrency, ReportBudgetTimezone       string
+	ReportMonthlyBudgetMicros                        int64
+	ReportInputPriceMicros, ReportOutputPriceMicros  int64
 	ReportTimeout                                    time.Duration
 	ReportMaxInputTokens, ReportMaxOutputTokens      int
 }
