@@ -1203,18 +1203,50 @@ func (s *Service) PatchSchedule(ctx context.Context, p identity.Principal, id st
 		return Schedule{}, fmt.Errorf("begin schedule update: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	current, err := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM teaching.schedule_entries s WHERE s.id=$1 FOR UPDATE`, id))
+	// Read the association first, then take offering locks before the schedule row.
+	// Classroom creation uses the same offering -> schedule order. If another
+	// schedule update changes the association before our row lock, reject this
+	// stale attempt instead of acquiring a newly discovered offering out of order.
+	initial, err := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM teaching.schedule_entries s WHERE s.id=$1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Schedule{}, notFound("schedule")
 	}
 	if err != nil {
 		return Schedule{}, dbError(err)
 	}
-	offering, classroom, status := current.OfferingID, current.ClassroomID, current.Status
-	start, end := current.StartsAt, current.EndsAt
+	offering := initial.OfferingID
 	if in.OfferingID != nil {
 		offering = *in.OfferingID
 	}
+	offeringIDs := []string{initial.OfferingID}
+	if !sameUUID(offering, initial.OfferingID) {
+		offeringIDs = append(offeringIDs, offering)
+	}
+	sort.Strings(offeringIDs)
+	rows, err := tx.Query(ctx, `SELECT id::text FROM teaching.course_offerings WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE`, offeringIDs)
+	if err != nil {
+		return Schedule{}, dbError(err)
+	}
+	lockedOfferings := 0
+	for rows.Next() {
+		lockedOfferings++
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return Schedule{}, dbError(err)
+	}
+	if lockedOfferings != len(offeringIDs) {
+		return Schedule{}, invalid("offering_id does not exist")
+	}
+	current, err := scanSchedule(tx.QueryRow(ctx, `SELECT `+scheduleColumns+` FROM teaching.schedule_entries s WHERE s.id=$1 FOR UPDATE`, id))
+	if err != nil {
+		return Schedule{}, dbError(err)
+	}
+	if !sameUUID(current.OfferingID, initial.OfferingID) {
+		return Schedule{}, apperror.New(http.StatusConflict, "REVISION_CONFLICT", "schedule association changed concurrently")
+	}
+	classroom, status := current.ClassroomID, current.Status
+	start, end := current.StartsAt, current.EndsAt
 	if in.ClassroomID != nil {
 		classroom = *in.ClassroomID
 	}
@@ -1243,7 +1275,7 @@ func (s *Service) PatchSchedule(ctx context.Context, p identity.Principal, id st
 	if err := tx.QueryRow(ctx, `SELECT org_unit_id::text FROM teaching.course_offerings WHERE id=$1`, current.OfferingID).Scan(&oldOrg); err != nil {
 		return Schedule{}, dbError(err)
 	}
-	err = tx.QueryRow(ctx, `SELECT org_unit_id::text,teacher_id::text,class_group_id::text FROM teaching.course_offerings WHERE id=$1 FOR SHARE`, offering).Scan(&newOrg, &teacher, &group)
+	err = tx.QueryRow(ctx, `SELECT org_unit_id::text,teacher_id::text,class_group_id::text FROM teaching.course_offerings WHERE id=$1`, offering).Scan(&newOrg, &teacher, &group)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Schedule{}, invalid("offering_id does not exist")
 	}

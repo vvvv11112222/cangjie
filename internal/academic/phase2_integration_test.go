@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/apperror"
 	"github.com/vvvv11112222/cangjie/internal/identity"
@@ -45,6 +46,49 @@ func TestScheduleConflictsIdentifyTeacherClassAndRoom(t *testing.T) {
 				t.Fatalf("error=%#v", err)
 			}
 		})
+	}
+}
+
+func TestPatchScheduleLocksOfferingBeforeSchedule(t *testing.T) {
+	f := newReviewFixture(t)
+	ctx := context.Background()
+	svc := NewService(f.pool)
+	admin := identity.Principal{Roles: []identity.RoleBinding{{RoleCode: "sys_admin"}}}
+	schedule, err := svc.CreateSchedule(ctx, admin, CreateSchedule{OfferingID: f.offeringB, ClassroomID: f.room, StartsAt: "2026-10-22T09:00:00+08:00", EndsAt: "2026-10-22T10:00:00+08:00", Status: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocker, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback(context.Background()) //nolint:errcheck
+	if _, err = blocker.Exec(ctx, `SELECT 1 FROM teaching.course_offerings WHERE id=$1 FOR UPDATE`, f.offeringB); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		cancelled := "cancelled"
+		_, patchErr := svc.PatchSchedule(context.Background(), admin, schedule.ID, PatchSchedule{Status: &cancelled})
+		done <- patchErr
+	}()
+	time.Sleep(100 * time.Millisecond)
+	if _, err = blocker.Exec(ctx, `SET LOCAL statement_timeout='1s'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = blocker.Exec(ctx, `SELECT 1 FROM teaching.schedule_entries WHERE id=$1 FOR UPDATE`, schedule.ID); err != nil {
+		t.Fatalf("schedule updater locked the schedule before the offering: %v", err)
+	}
+	if err = blocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-done:
+		if err != nil {
+			t.Fatalf("patch after offering lock release: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("schedule patch did not finish after offering lock release")
 	}
 }
 
