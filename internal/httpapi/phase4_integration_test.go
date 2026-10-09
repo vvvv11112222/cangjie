@@ -124,15 +124,44 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	probeClaim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"probe"}}, workerToken, "", http.StatusOK)
 	probePayload := map[string]any{"schema_version": "1.1", "job_id": probeClaim["job_id"], "run_id": fullID, "session_id": sessionID, "media_asset_id": mediaID, "stage": "probe", "duration_ms": 60000, "has_audio": true, "width": 1280, "height": 720, "video_codec": "h264", "playback_asset_id": mediaID, "origin_offset_ms": 0, "limitations": []string{}, "execution": probeClaim["execution"]}
 	requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+probeClaim["job_id"].(string)+"/complete", probePayload, workerToken, probeClaim["lease_token"].(string), http.StatusOK)
+	duplicateStatuses := make(chan int, 2)
+	for range 2 {
+		go func() {
+			duplicateStatuses <- rawStatus(http.DefaultClient, http.MethodPost, server.URL+"/internal/v1/jobs/"+probeClaim["job_id"].(string)+"/complete", probePayload, map[string]string{"Authorization": "Bearer " + workerToken, "X-Lease-Token": probeClaim["lease_token"].(string)})
+		}()
+	}
+	if firstDuplicate, secondDuplicate := <-duplicateStatuses, <-duplicateStatuses; firstDuplicate != http.StatusOK || secondDuplicate != http.StatusOK {
+		t.Fatalf("identical complete replays=%d,%d", firstDuplicate, secondDuplicate)
+	}
 	audioClaim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"audio_analysis"}}, workerToken, "", http.StatusOK)
 	audioPayload := map[string]any{"schema_version": "1.1", "job_id": audioClaim["job_id"], "run_id": fullID, "session_id": sessionID, "media_asset_id": mediaID, "stage": "audio_analysis", "segments": []map[string]any{{"segment_no": 0, "start_ms": 1000, "end_ms": 3000, "text_content": "固定转写", "speaker_label": "unknown"}}, "audio_asset_id": nil, "model": map[string]any{"name": "fixed-json-asr", "revision": "p0-v1"}, "coverage": []map[string]any{{"start_ms": 0, "end_ms": 60001}}, "limitations": []string{}, "execution": audioClaim["execution"]}
 	requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+audioClaim["job_id"].(string)+"/complete", audioPayload, workerToken, audioClaim["lease_token"].(string), http.StatusUnprocessableEntity)
 	audioPayload["coverage"] = []map[string]any{{"start_ms": 0, "end_ms": 60000}}
-	requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+audioClaim["job_id"].(string)+"/complete", audioPayload, workerToken, audioClaim["lease_token"].(string), http.StatusOK)
+	audioPayload["segments"] = []map[string]any{{"segment_no": 0, "start_ms": 2000, "end_ms": 3000, "text_content": "后段", "speaker_label": "unknown"}, {"segment_no": 1, "start_ms": 1000, "end_ms": 1500, "text_content": "倒序", "speaker_label": "unknown"}}
+	requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+audioClaim["job_id"].(string)+"/complete", audioPayload, workerToken, audioClaim["lease_token"].(string), http.StatusUnprocessableEntity)
+	audioPayload["segments"] = []map[string]any{{"segment_no": 0, "start_ms": 1000, "end_ms": 3000, "text_content": "固定转写", "speaker_label": "unknown"}}
+	restartedCfg := cfg
+	restartedCfg.ASRModelName = "changed-asr"
+	restartedCfg.ASRModelRevision = "changed-revision"
+	restartedCfg.KeyframeIntervalMS = 1000
+	restartedCfg.MaxKeyframes = 1
+	restartedCfg.MaxMediaDurationMS = 1
+	restartedCfg.MaxVideoHeight = 1
+	restartedService := analysis.NewService(pool, store, restartedCfg)
+	if completedAfterRestart, completeErr := restartedService.Complete(ctx, audioClaim["job_id"].(string), audioClaim["lease_token"].(string), mustJSON(audioPayload)); completeErr != nil || completedAfterRestart.Duplicate {
+		t.Fatalf("pinned audio result after configuration change=%#v err=%v", completedAfterRestart, completeErr)
+	}
 	videoClaim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"video_analysis"}}, workerToken, "", http.StatusOK)
 	frame := uploadWorkerArtifact(t, server.URL+"/internal/v1/jobs/"+videoClaim["job_id"].(string)+"/artifacts", workerToken, videoClaim["lease_token"].(string), []byte("jpeg"), videoClaim["lease_token"].(string)+"/frame-0", "keyframe", "1000", http.StatusCreated)
+	unusedFrame := uploadWorkerArtifact(t, server.URL+"/internal/v1/jobs/"+videoClaim["job_id"].(string)+"/artifacts", workerToken, videoClaim["lease_token"].(string), []byte("unused-jpeg"), videoClaim["lease_token"].(string)+"/frame-unused", "keyframe", "2000", http.StatusCreated)
 	videoPayload := map[string]any{"schema_version": "1.1", "job_id": videoClaim["job_id"], "run_id": fullID, "session_id": sessionID, "media_asset_id": mediaID, "stage": "video_analysis", "frames": []map[string]any{{"asset_id": frame["asset_id"], "timestamp_ms": 1000}}, "events": []any{}, "model": nil, "sampling": map[string]any{"interval_ms": 30000, "max_frames": 240}, "coverage": []map[string]any{{"start_ms": 0, "end_ms": 60000}}, "limitations": []string{}, "execution": videoClaim["execution"]}
-	requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+videoClaim["job_id"].(string)+"/complete", videoPayload, workerToken, videoClaim["lease_token"].(string), http.StatusOK)
+	if completedAfterRestart, completeErr := restartedService.Complete(ctx, videoClaim["job_id"].(string), videoClaim["lease_token"].(string), mustJSON(videoPayload)); completeErr != nil || completedAfterRestart.Duplicate {
+		t.Fatalf("pinned video result after configuration change=%#v err=%v", completedAfterRestart, completeErr)
+	}
+	var unusedCount int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM teaching.media_assets WHERE id=$1`, unusedFrame["asset_id"]).Scan(&unusedCount); err != nil || unusedCount != 0 {
+		t.Fatalf("unreferenced artifact remained visible: count=%d err=%v", unusedCount, err)
+	}
 	finished := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID, nil, "", http.StatusOK)
 	if finished["status"] != "partial" {
 		t.Fatalf("full phase4 status=%v", finished["status"])
@@ -145,6 +174,13 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	results := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID+"/results", nil, "", http.StatusOK)
 	if len(results["segments"].([]any)) != 1 || len(results["frames"].([]any)) != 1 {
 		t.Fatalf("fixed results=%#v", results)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE teaching.media_assets SET expires_at=now()-interval '1 second' WHERE id=$1`, mediaID); err != nil {
+		t.Fatal(err)
+	}
+	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID+"/results", nil, "", http.StatusGone)
+	if _, err = pool.Exec(ctx, `UPDATE teaching.media_assets SET expires_at=now()+interval '14 days' WHERE id=$1`, mediaID); err != nil {
+		t.Fatal(err)
 	}
 
 	cancelRun := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs", create, csrf, map[string]string{"Idempotency-Key": "cancel-1"}, http.StatusAccepted)
@@ -228,6 +264,7 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	if revoked["status"] != "failed" || revoked["error_code"] != "SOURCE_NOT_VERIFIED" {
 		t.Fatalf("revoked run=%#v", revoked)
 	}
+	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID+"/results", nil, "", http.StatusForbidden)
 }
 
 func requestWithHeaders(t *testing.T, c *http.Client, method, target string, body any, csrf string, headers map[string]string, want int) map[string]any {
