@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 )
 
@@ -26,6 +27,7 @@ type Options struct {
 	Readiness    ReadinessChecks
 	Identity     *identity.Service
 	Academic     *academic.Service
+	Classroom    *classroom.Service
 	PublicOrigin string
 	SecureCookie bool
 	SessionTTL   time.Duration
@@ -36,6 +38,7 @@ type server struct {
 	readiness    ReadinessChecks
 	identity     *identity.Service
 	academic     *academic.Service
+	classroom    *classroom.Service
 	origin       string
 	secureCookie bool
 	sessionTTL   time.Duration
@@ -54,7 +57,7 @@ func New(options Options) http.Handler {
 	}
 	s := &server{
 		logger: logger, readiness: options.Readiness,
-		identity: options.Identity, academic: options.Academic,
+		identity: options.Identity, academic: options.Academic, classroom: options.Classroom,
 		origin:       strings.TrimRight(options.PublicOrigin, "/"),
 		secureCookie: options.SecureCookie, sessionTTL: options.SessionTTL,
 	}
