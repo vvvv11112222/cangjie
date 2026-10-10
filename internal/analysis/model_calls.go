@@ -98,7 +98,9 @@ func (s *Service) ReconcileModelCall(ctx context.Context, p identity.Principal, 
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var status string
 	var lockVersion int
-	if err = tx.QueryRow(ctx, `SELECT status,lock_version FROM teaching.model_calls WHERE id=$1 FOR UPDATE`, id).Scan(&status, &lockVersion); errors.Is(err, pgx.ErrNoRows) {
+	var overReservationPending bool
+	if err = tx.QueryRow(ctx, `SELECT status,lock_version,status IN('succeeded','failed') AND actual_cost>reserved_cost AND reconciled_by IS NULL
+		FROM teaching.model_calls WHERE id=$1 FOR UPDATE`, id).Scan(&status, &lockVersion, &overReservationPending); errors.Is(err, pgx.ErrNoRows) {
 		return ModelCall{}, notFound()
 	} else if err != nil {
 		return ModelCall{}, err
@@ -106,8 +108,8 @@ func (s *Service) ReconcileModelCall(ctx context.Context, p identity.Principal, 
 	if lockVersion != in.LockVersion {
 		return ModelCall{}, apperror.New(http.StatusConflict, "REVISION_CONFLICT", "resource was modified concurrently")
 	}
-	if status != "unknown" {
-		return ModelCall{}, apperror.New(http.StatusConflict, "INVALID_STATE", "only unknown model calls can be reconciled")
+	if status != "unknown" && !overReservationPending {
+		return ModelCall{}, apperror.New(http.StatusConflict, "INVALID_STATE", "only unknown or unreviewed over-reservation model calls can be reconciled")
 	}
 	value, err := scanModelCall(tx.QueryRow(ctx, `UPDATE teaching.model_calls SET status=$2,actual_cost=$3::numeric,
 		provider_request_id=$4,reconciled_by=$5,reconciliation_reason=$6,settled_at=now(),lock_version=lock_version+1

@@ -915,6 +915,10 @@ func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires ti
 }
 
 func (s *Service) ReapExpired(ctx context.Context) (int, error) {
+	recovered, err := s.recoverOrphanedModelCalls(ctx)
+	if err != nil {
+		return 0, err
+	}
 	ineligible, err := s.finalizeIneligible(ctx)
 	if err != nil {
 		return 0, err
@@ -936,7 +940,7 @@ func (s *Service) ReapExpired(ctx context.Context) (int, error) {
 	if err = rows.Err(); err != nil {
 		return 0, err
 	}
-	count := ineligible
+	count := ineligible + int(recovered)
 	for _, p := range pairs {
 		if err = s.reapOne(ctx, p[0], p[1]); err != nil {
 			var app *apperror.Error

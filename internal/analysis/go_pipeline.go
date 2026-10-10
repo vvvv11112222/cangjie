@@ -15,6 +15,8 @@ import (
 
 var dimensionCodes = []string{"content", "pace", "thinking", "expression", "management", "technology"}
 
+var errBudgetExhausted = errors.New("model budget is exhausted or requires reconciliation")
+
 type goJob struct{ ID, RunID, SessionID, MediaID, Stage, Token string }
 
 func (s *Service) ProcessNextGoJob(ctx context.Context) (bool, error) {
@@ -55,6 +57,9 @@ func (s *Service) ProcessNextGoJob(ctx context.Context) (bool, error) {
 		err = s.executeValidate(ctx, j)
 	}
 	if err != nil {
+		if errors.Is(err, errBudgetExhausted) {
+			return true, s.skipGoJob(ctx, j, "BUDGET_EXHAUSTED")
+		}
 		return true, s.failGoJob(ctx, j, err)
 	}
 	return true, nil
@@ -263,8 +268,16 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 		FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date`, reportConfig.Currency, period).Scan(&usedMicros); err != nil {
 		return err
 	}
+	var overReservationPending bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date
+		AND status IN('succeeded','failed') AND actual_cost>reserved_cost AND reconciled_by IS NULL)`, reportConfig.Currency, period).Scan(&overReservationPending); err != nil {
+		return err
+	}
+	if overReservationPending {
+		return errBudgetExhausted
+	}
 	if s.cfg.ReportMonthlyBudgetMicros <= 0 || usedMicros > s.cfg.ReportMonthlyBudgetMicros-reservedMicros {
-		return fmt.Errorf("monthly model budget is exhausted")
+		return errBudgetExhausted
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata) VALUES($1,$2,$3,$4,'__model_input',jsonb_build_object('model_input',$5::jsonb,'manifest_sha256',$6::text))`, j.ID, j.RunID, j.SessionID, j.Token, manifestRaw, manifestSHA)
 	if err != nil {
@@ -465,6 +478,7 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 		maxChars = 16000
 	}
 	usedChars := 0
+	skippedEvidence := 0
 	for rows.Next() {
 		var e modelEvidence
 		if err = rows.Scan(&e.ID, &e.Kind, &e.StartMS, &e.EndMS, &e.TextContent); err != nil {
@@ -473,7 +487,7 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 		chars := utf8.RuneCountInString(e.TextContent)
 		remaining := maxChars - usedChars
 		if remaining <= 0 {
-			input.Limitations = append(input.Limitations, "MODEL_INPUT_SKIPPED:"+e.ID)
+			skippedEvidence++
 			continue
 		}
 		if chars > remaining {
@@ -487,6 +501,9 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 	}
 	if err = rows.Err(); err != nil {
 		return input, err
+	}
+	if skippedEvidence > 0 {
+		input.Limitations = append(input.Limitations, fmt.Sprintf("MODEL_INPUT_SKIPPED_COUNT:%d", skippedEvidence))
 	}
 	if len(input.Evidence) == 0 {
 		return input, fmt.Errorf("no reportable evidence")
@@ -505,8 +522,30 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 	if limitErr != nil {
 		return input, limitErr
 	}
-	input.Limitations = appendUniqueAll(input.Limitations, workerLimitations)
+	input.Limitations = boundedModelLimitations(appendUniqueAll(input.Limitations, workerLimitations))
 	return input, nil
+}
+
+func boundedModelLimitations(values []string) []string {
+	const maxItems = 32
+	const maxRunes = 256
+	out := make([]string, 0, min(len(values), maxItems))
+	skipped := 0
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if len(out) >= maxItems-1 {
+			skipped++
+			continue
+		}
+		out = appendUnique(out, truncateRunes(value, maxRunes))
+	}
+	if skipped > 0 {
+		out = append(out, fmt.Sprintf("LIMITATIONS_SKIPPED_COUNT:%d", skipped))
+	}
+	return out
 }
 
 func truncateRunes(value string, limit int) string {
@@ -810,4 +849,51 @@ func (s *Service) failGoJob(ctx context.Context, j goJob, cause error) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Service) skipGoJob(ctx context.Context, j goJob, code string) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err = tx.Exec(ctx, `SELECT 1 FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, j.SessionID); err != nil {
+		return err
+	}
+	if err = s.assertGoLease(ctx, tx, j); err != nil {
+		var status string
+		if queryErr := tx.QueryRow(ctx, `SELECT status FROM teaching.analysis_jobs WHERE id=$1`, j.ID).Scan(&status); queryErr == nil && status != "running" {
+			return nil
+		}
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE teaching.analysis_jobs SET status='skipped',worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,
+		execution_deadline_at=NULL,expected_execution_sha256=NULL,error_code=$2,error_detail=NULL,updated_at=now() WHERE id=$1`, j.ID, code); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code)
+		VALUES($1,'validate','skipped',$2,$3) ON CONFLICT DO NOTHING`, j.RunID, s.maxAttempts("validate"), code); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='partial',error_code=$2,finished_at=now() WHERE id=$1`, j.RunID, code); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Service) recoverOrphanedModelCalls(ctx context.Context) (int64, error) {
+	grace := s.cfg.ReportTimeout
+	if grace <= 0 {
+		grace = 180 * time.Second
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE teaching.model_calls mc SET status='unknown',lock_version=lock_version+1
+		FROM teaching.analysis_jobs j,teaching.analysis_runs r
+		WHERE mc.job_id=j.id AND mc.run_id=r.id AND j.run_id=r.id AND mc.status='reserved' AND mc.dispatch_started_at IS NOT NULL
+		AND mc.dispatch_started_at<=now()-$1::interval
+		AND (j.status<>'running' OR j.lease_token IS NULL OR j.lease_expires_at<=now() OR j.execution_deadline_at<=now()
+			OR r.status NOT IN('queued','running'))`, grace.String())
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
