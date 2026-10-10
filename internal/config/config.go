@@ -31,6 +31,9 @@ type Config struct {
 	GoStageTimeout     time.Duration
 	ReportEnabled      bool
 	SessionTTL         time.Duration
+	MaxUploadBytes     int64
+	UploadTimeout      time.Duration
+	MediaRetention     time.Duration
 }
 
 func Load() (Config, error) {
@@ -80,6 +83,18 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	uploadTimeout, err := seconds(value("UPLOAD_TIMEOUT_SECONDS", "1800"), "UPLOAD_TIMEOUT_SECONDS")
+	if err != nil {
+		return Config{}, err
+	}
+	maxUploadBytes, err := positiveInt64(value("MAX_UPLOAD_BYTES", "4294967296"), "MAX_UPLOAD_BYTES")
+	if err != nil {
+		return Config{}, err
+	}
+	retentionDays, err := positiveInt64(value("MEDIA_RETENTION_DAYS", "14"), "MEDIA_RETENTION_DAYS")
+	if err != nil {
+		return Config{}, err
+	}
 
 	budget, err := nonNegativeFloat(value("MODEL_MONTHLY_BUDGET", "0"), "MODEL_MONTHLY_BUDGET")
 	if err != nil {
@@ -102,6 +117,9 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		GoStageTimeout:     goStage,
 		ReportEnabled:      budget > 0,
 		SessionTTL:         sessionTTL,
+		MaxUploadBytes:     maxUploadBytes,
+		UploadTimeout:      uploadTimeout,
+		MediaRetention:     time.Duration(retentionDays) * 24 * time.Hour,
 	}
 	if err := validate(cfg, value, budget); err != nil {
 		return Config{}, err
@@ -184,6 +202,14 @@ func nonNegativeFloat(raw, key string) (float64, error) {
 	n, err := strconv.ParseFloat(raw, 64)
 	if err != nil || n < 0 {
 		return 0, fmt.Errorf("%s must be a non-negative number", key)
+	}
+	return n, nil
+}
+
+func positiveInt64(raw, key string) (int64, error) {
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
 	}
 	return n, nil
 }

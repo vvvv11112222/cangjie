@@ -1,6 +1,6 @@
 # 教学质量管理系统
 
-文档 v0.6，2026-10-05。当前仓库包含开发文档、接口样例、数据库脚本，以及可运行的 Go 后端。M0 已具备 Go 后端环境、启动入口、身份权限、基础教务资料和角色测试账号等支撑能力；M1～M4 的课堂、媒体、分析、报告与交付能力仍按里程碑逐步实现。
+文档 v0.6，2026-10-05。当前仓库包含开发文档、接口样例、数据库脚本，以及可运行的 Go 后端。M0 已具备 Go 后端环境、启动入口、身份权限、基础教务资料和角色测试账号等支撑能力；M1 已具备课表、课堂目录、来源登记、录像上传及授权回放等后端前置能力，跨模块纵向联调仍未完成；M2～M4 继续按里程碑逐步实现。
 
 ## 从这里开始
 
@@ -35,6 +35,8 @@
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；
 - `internal/academic`：学院、学期、课程、班级、教室和开课实例的范围化读写；
+- `internal/classroom`：课表关联的课堂目录、筛选、归档和主媒体选择；
+- `internal/media` 与 `internal/storage`：来源核验、流式上传、本地对象存储适配、媒体目录及授权 Range 回放；
 - 本地媒体目录和独立删除日志的 readiness 检查；
 - `Dockerfile` 与 `compose.yaml` 共同开发入口。
 
@@ -74,7 +76,7 @@ Invoke-RestMethod http://127.0.0.1:8080/health/ready
 
 浏览器业务接口使用 `/api/v1` 前缀。先请求 `GET /api/v1/auth/csrf`，再以返回的 token 作为 `X-CSRF-Token` 调用登录；所有写请求还须携带与 `PUBLIC_ORIGIN` 完全一致的 `Origin`。登录成功后服务端轮换为 HttpOnly、SameSite=Lax 的会话 Cookie，HTTPS 环境自动启用 Secure。会话有效期由 `SESSION_TTL_SECONDS` 控制，禁用账号会在同一事务撤销其活动会话。
 
-为支持 M0 环境复现和后续 M1 固定样例联调，Go 后端已实现协议中的 `/auth/*`、`/users*`、基础教务资料、`/schedules`（含批量导入）以及课堂目录 `/sessions`。系统管理员维护全校基础资料；学院教务只能维护本学院课程、班级、开课与课表，以及安全范围内的教师和督导账号；教师的基础资料、课表和课堂目录读取由本人开课关联决定。排课支持教师、班级、教室冲突检查和整批导入回滚，课堂目录支持学院、入学年份、班级、教师、时间及状态筛选。
+为支持 M0 环境复现和后续 M1 固定样例联调，Go 后端已实现协议中的 `/auth/*`、`/users*`、基础教务资料、`/schedules`（含批量导入）、课堂目录 `/sessions`，以及 `/sources`、`/media` 的来源、上传、目录、主媒体和回放接口。系统管理员维护全校基础资料；学院教务只能维护本学院课程、班级、开课与课表，以及安全范围内的教师和督导账号；教师的基础资料、课表、课堂与录像操作由本人开课关联决定。排课支持教师、班级、教室冲突检查和整批导入回滚，课堂目录支持学院、入学年份、班级、教师、时间及状态筛选。上传完成的原媒体保持 `pending`，待后续 `probe/media_prepare` 成功后才进入 `ready`；只有当前来源已核验并允许 playback、媒体与课堂均未到期且请求者具内容权限时，回放接口才返回 200/206。
 
 需要四种角色的本地联调账号时，在 development/test 环境运行：
 
@@ -108,11 +110,12 @@ go vet ./...
 go build ./cmd/...
 ```
 
-身份与权限的 PostgreSQL 集成测试只允许指向可清空的独立测试库：
+身份、权限与媒体链路的 PostgreSQL 集成测试只允许指向可清空的独立测试库：
 
 ```powershell
 $env:TEST_DATABASE_URL = 'postgres://teaching:测试密码@127.0.0.1:测试端口/teaching?sslmode=disable'
 go test ./internal/httpapi -run TestPhaseOneAuthorizationFlow -v
+go test ./internal/httpapi -run TestPhaseThreeSourceUploadPlaybackAndAuthorization -v
 Remove-Item Env:TEST_DATABASE_URL
 ```
 
@@ -130,7 +133,7 @@ node tools/check_prototype.mjs
 
 数据库验证命令见[数据库设计第6节](docs/数据库设计.md#6-执行与验证)。
 
-真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无可启动的 Worker 服务；当前 Go 服务已具备 M0 后端环境、身份与基础资料，以及 M1 所需的课表和课堂目录前置能力，React 前端已具备数据访问层，但媒体、分析、报告的固定样例纵向联调尚未完成。检查通过仅说明相应契约、SQL、已实现接口或度量工具通过，不能代替后续音视频与模型验收。
+真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无可启动的 Worker 服务；当前 Go 服务已具备 M0 后端环境、身份与基础资料，以及 M1 所需的课表、课堂、来源、上传和授权回放前置能力，React 前端已具备数据访问层，但媒体 probe/代理、分析和报告的固定样例纵向联调尚未完成。检查通过仅说明相应契约、SQL、已实现接口或度量工具通过，不能代替后续音视频与模型验收。
 
 ## 前端（M1 数据访问层）
 

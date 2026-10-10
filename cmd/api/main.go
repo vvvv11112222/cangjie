@@ -18,6 +18,7 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/httpapi"
 	"github.com/vvvv11112222/cangjie/internal/identity"
+	"github.com/vvvv11112222/cangjie/internal/media"
 	"github.com/vvvv11112222/cangjie/internal/storage"
 )
 
@@ -63,14 +64,17 @@ func run() error {
 	}
 	origin, _ := url.Parse(cfg.PublicOrigin)
 	handler := httpapi.New(httpapi.Options{
-		Logger:       logger,
-		Readiness:    checks,
-		Identity:     identity.NewService(pool.Pool, cfg.SessionTTL),
-		Academic:     academic.NewService(pool.Pool),
-		Classroom:    classroom.NewService(pool.Pool),
-		PublicOrigin: cfg.PublicOrigin,
-		SecureCookie: origin.Scheme == "https",
-		SessionTTL:   cfg.SessionTTL,
+		Logger:         logger,
+		Readiness:      checks,
+		Identity:       identity.NewService(pool.Pool, cfg.SessionTTL),
+		Academic:       academic.NewService(pool.Pool),
+		Classroom:      classroom.NewService(pool.Pool),
+		Media:          media.NewService(pool.Pool, mediaStore, cfg.MaxUploadBytes, cfg.MediaRetention),
+		PublicOrigin:   cfg.PublicOrigin,
+		SecureCookie:   origin.Scheme == "https",
+		SessionTTL:     cfg.SessionTTL,
+		MaxUploadBytes: cfg.MaxUploadBytes,
+		UploadTimeout:  cfg.UploadTimeout,
 	})
 	server := &http.Server{
 		Addr:              cfg.APIListenAddr,
