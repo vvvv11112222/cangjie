@@ -31,7 +31,7 @@
     },
     "models.py": {
       "source_sha256": "5d7f719fd4b606d8bc52883119b9ea962ad928a2839eb9e12a78f60b577b9ce3",
-      "ported_sha256": "845359d70d06aeb935cd024d000969896eb987ae72a9ecb6a4ed764b7c7bc3cd"
+      "ported_sha256": "78b26379406f30c3fc3d1350cf05c0e236b8b8a044a935c06707d79882859e31"
     },
     "pipeline.py": {
       "source_sha256": "730c6c8fb40c9bb26c26db388788342220479e6e68ead9fd17d1704bd7e2c882",
@@ -58,7 +58,10 @@
     "verify weights before creating model sessions",
     "pad odd proxy dimensions without resizing the source image",
     "apply duration limits at the caller boundary",
-    "encode spreadsheet formula prefixes only at the CSV export boundary"
+    "encode spreadsheet formula prefixes only at the CSV export boundary",
+    "separate bounded CPU inference threads from GPU options and disable CPU pool spinning",
+    "lazy-load regular pose session without changing model tensors or behavior rules",
+    "report no active GPU during CPU execution"
   ],
   "unchanged_logic": [
     "analysis.py",

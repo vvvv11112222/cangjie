@@ -169,6 +169,8 @@ python -m workers.tools.check_vision_quality '<受控本地人工标注.json>'
 
 ## 速度交付门槛
 
+2026-10-10 处理器更新为 `cangjie-video-worker-1.0.4`，部署时先执行 `python -m workers runtime-info` 并在 Go 配置中固定新版本。显卡故障后暂停 GPU 推理，CPU 诊断及结果对照见 [CPU 排查记录](CPU_DIAGNOSTICS.md)。`VISION_CPU_THREADS` 独立控制 CPU 推理线程（1～16，运行模板为 4），不会使用集成显卡。两份 CPU 配置关闭空闲线程忙等待，模型及行为规则保持原版；短片段结果一致不代表整课速度和独立人工质量验收通过。
+
 完整行为分析须使用同一台电脑、同一显卡、同一录像、同一参数，并逐项对照原示例程序。完整人数、举手/低头/离座/手机、80 人上限、2 FPS 与证据输出都保持开启；不能通过少分析人、少检查画面、降低分辨率或关闭行为功能充当提速。模型初始化与热运行分别测量。
 
 释放原演示服务的模型缓存后，分别以独立进程执行 `workers.tools.benchmark_analysis` 的 `baseline` 和 `team` 两种 implementation。每种先运行近景，再运行密集课堂；两进程不能同时占用 GPU。程序在 NVIDIA 空闲显存不足 3 GB 时拒绝测量，避免重现双模型争用。结果留在 `var/`，检查 `timing.json` 与对应 report 的人数、人物和行为记录。

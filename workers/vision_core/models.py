@@ -50,9 +50,10 @@ def runtime_status():
     warnings = [r['warning'] for r in records if r.get('warning')]
     if _instance is not None and _instance.provenance.get('batch_fallback'):
         warnings.append('批量加速失败，已改为逐人计算：'+_instance.provenance['batch_fallback'])
-    if selected_device()['error']:
+    if runtime_kind != 'cpu' and selected_device()['error']:
         warnings.append('无法确认加速显卡：' + selected_device()['error'])
-    return {'device': selected_device()['selected'], 'sessions': records, 'warnings': list(dict.fromkeys(warnings))}
+    return {'device': selected_device()['selected'] if runtime_kind != 'cpu' else None,
+            'execution_engine': runtime_kind, 'sessions': records, 'warnings': list(dict.fromkeys(warnings))}
 POSE_MEAN=np.array([123.675,116.28,103.53])
 POSE_STD=np.array([58.395,57.12,57.375])
 POSE_LUT=((np.arange(256,dtype=np.float32)[:,None]-POSE_MEAN)/POSE_STD).astype(np.float32).reshape(256,1,3)
@@ -64,7 +65,15 @@ def session(path, use_gpu=False, batch_override=None):
     options.intra_op_num_threads = 4
     options.inter_op_num_threads = 1
     if batch_override is not None:options.add_free_dimension_override_by_name('batch',batch_override)
-    if use_gpu and int(os.environ.get('VISION_GPU_THREADS',runtime_settings.get('gpu_threads',4)))==1:
+    if runtime_kind == 'cpu':
+        cpu_threads = int(os.environ.get('VISION_CPU_THREADS', runtime_settings.get('cpu_threads', 2)))
+        if not 1 <= cpu_threads <= 16:
+            raise ValueError('VISION_CPU_THREADS 必须在 1 到 16 之间')
+        options.intra_op_num_threads = cpu_threads
+        spinning = str(int(bool(runtime_settings.get('cpu_allow_spinning', False))))
+        options.add_session_config_entry('session.intra_op.allow_spinning', spinning)
+        options.add_session_config_entry('session.inter_op.allow_spinning', spinning)
+    elif use_gpu and int(os.environ.get('VISION_GPU_THREADS',runtime_settings.get('gpu_threads',4)))==1:
         options.intra_op_num_threads=1
         options.add_session_config_entry('session.intra_op.allow_spinning','0')
         options.add_session_config_entry('session.inter_op.allow_spinning','0')
@@ -98,8 +107,23 @@ def session(path, use_gpu=False, batch_override=None):
     if warning:print(warning,flush=True)
     with _records_lock:
         _session_records[(path.name,batch_override)]={'model':path.name,'batch':batch_override,
-            'provider':result.get_providers()[0],'gpu_requested':use_gpu,'warning':warning}
+            'provider':result.get_providers()[0],'gpu_requested':use_gpu and runtime_kind != 'cpu',
+            'intra_op_threads':options.intra_op_num_threads,'warning':warning}
     return result
+
+
+class _LazySession:
+    """Load an optional session only when its existing API is first used."""
+    def __init__(self, factory):
+        self._factory = factory
+        self._session = None
+        self._lock = threading.Lock()
+
+    def __getattr__(self, name):
+        with self._lock:
+            if self._session is None:
+                self._session = self._factory()
+        return getattr(self._session, name)
 
 
 class VisionModels:
@@ -126,7 +150,9 @@ class VisionModels:
         gpu_detection=bool(int(os.environ.get('VISION_GPU_DETECTION',runtime_settings.get('gpu_detection',0))))
         gpu_yolox=bool(int(os.environ.get('VISION_GPU_YOLOX',runtime_settings.get('gpu_yolox',int(gpu_detection)))))
         self.detector = session(MODELS / "yolox_tiny.onnx",use_gpu=gpu_yolox)
-        self.pose = session(MODELS / self.pose_files[False],use_gpu=True,batch_override=1 if self.fixed_pose_batches else None)
+        load_regular_pose = lambda: session(MODELS / self.pose_files[False],use_gpu=True,
+                                            batch_override=1 if self.fixed_pose_batches else None)
+        self.pose = _LazySession(load_regular_pose) if runtime_kind == 'cpu' else load_regular_pose()
         self.classroom_detector = session(MODELS / 'yolov11_phd_s.onnx',use_gpu=gpu_detection)
         self.classroom_pose = session(MODELS / self.pose_files[True],use_gpu=True,batch_override=1 if self.fixed_pose_batches else None)
         self.door_detector=session(MODELS/'doorway.onnx') if (MODELS/'doorway.onnx').exists() else None
