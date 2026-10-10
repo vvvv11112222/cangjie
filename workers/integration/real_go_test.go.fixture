@@ -1,0 +1,144 @@
+// Copy into the backend checkout's internal/httpapi as real_video_worker_test.go.
+// This fixture runs the real Python Worker against Go HTTP + PostgreSQL + filesystem storage.
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vvvv11112222/cangjie/internal/analysis"
+	"github.com/vvvv11112222/cangjie/internal/database"
+	"github.com/vvvv11112222/cangjie/internal/identity"
+	mediaservice "github.com/vvvv11112222/cangjie/internal/media"
+	"github.com/vvvv11112222/cangjie/internal/storage"
+)
+
+func TestRealVideoWorkerIntegration(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	dbURL, err := url.Parse(dsn)
+	if err != nil || dbURL.Path != "/cangjie_worker_integration" || os.Getenv("WORKER_INTEGRATION_ALLOW_DATABASE_RESET") != "1" {
+		t.Fatal("requires disposable cangjie_worker_integration DB and WORKER_INTEGRATION_ALLOW_DATABASE_RESET=1")
+	}
+	ctx := context.Background()
+	migrationDir, _ := filepath.Abs(filepath.Join("..", "..", "database"))
+	if err := database.RunMigrations(ctx, dsn, migrationDir); err != nil { t.Fatal(err) }
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil { t.Fatal(err) }
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, `TRUNCATE teaching.academic_terms,teaching.classrooms,teaching.org_units CASCADE`); err != nil { t.Fatal(err) }
+	if _, err := identity.BootstrapAdmin(ctx, pool, identity.BootstrapRequest{SchoolCode:"SCHOOL",SchoolName:"School",Username:"admin",DisplayName:"Admin",Password:integrationPassword}); err != nil { t.Fatal(err) }
+	if _, err := identity.BootstrapDevelopmentUsers(ctx, pool, identity.DevelopmentUsersRequest{SchoolCode:"SCHOOL",SchoolName:"School",CollegeCode:"COL-A",CollegeName:"College A",AcademicUsername:"academic",AcademicDisplayName:"Academic",SupervisorUsername:"supervisor",SupervisorDisplayName:"Supervisor",TeacherUsername:"teacher",TeacherDisplayName:"Teacher",Password:integrationPassword}); err != nil { t.Fatal(err) }
+	college := queryID(t,pool,`SELECT id::text FROM teaching.org_units WHERE code='COL-A'`)
+	teacherID := queryID(t,pool,`SELECT id::text FROM teaching.user_accounts WHERE username='teacher'`)
+	term := queryID(t,pool,`INSERT INTO teaching.academic_terms(code,name,start_date,end_date) VALUES('REAL-T','Real','2026-09-01','2027-01-01') RETURNING id::text`)
+	course := queryID(t,pool,`INSERT INTO teaching.courses(org_unit_id,code,name) VALUES('`+college+`','REAL-C','Real') RETURNING id::text`)
+	group := queryID(t,pool,`INSERT INTO teaching.class_groups(org_unit_id,code,name,enrollment_year) VALUES('`+college+`','REAL-G','Real',2026) RETURNING id::text`)
+	offering := queryID(t,pool,`INSERT INTO teaching.course_offerings(org_unit_id,code,term_id,course_id,teacher_id,class_group_id) VALUES('`+college+`','REAL-O','`+term+`','`+course+`','`+teacherID+`','`+group+`') RETURNING id::text`)
+	for _, odd := range []bool{false,true} {
+		name := "even"
+		if odd { name = "odd" }
+		t.Run(name,func(t *testing.T) {
+			tmp := t.TempDir()
+			args := []string{"prepare","--output",filepath.Join(tmp,"generated")}
+			if odd { args = append(args,"--odd") }
+			meta := realWorkerBridge(t,"",args...)
+			video, err := os.ReadFile(meta["video"].(string))
+			if err != nil { t.Fatal(err) }
+			sessionID := queryID(t,pool,`INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by) VALUES('`+offering+`','Real',now(),now()+interval '1 hour','`+teacherID+`') RETURNING id::text`)
+			sourceID := queryID(t,pool,`INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,registered_by,verified_by,verified_at) VALUES('`+sessionID+`','self_recorded','Generated test pattern','FFmpeg synthetic fixture','verified','["playback","analysis"]','`+teacherID+`','`+teacherID+`',now()) RETURNING id::text`)
+			store, err := storage.NewLocal(filepath.Join(tmp,"media"))
+			if err != nil { t.Fatal(err) }
+			token := "synthetic-worker-integration-credential-only"
+			cfg := analysis.Config{Lease:120*time.Second,ProbeTimeout:3*time.Minute,ASRTimeout:3*time.Minute,VideoTimeout:3*time.Minute,MediaJobAttempts:3,ProcessorVersion:meta["processor_version"].(string),FFmpegSHA256:meta["ffmpeg_sha256"].(string),ASRModelName:"unused-no-audio",ASRModelRevision:"unused-no-audio",ASRDevice:"cpu",KeyframeIntervalMS:1000,MaxKeyframes:8,MaxVideoHeight:1080,MaxMediaDurationMS:7200000,MaxArtifactBytes:10<<20}
+			svc := analysis.NewService(pool,store,cfg)
+			server := httptest.NewServer(New(Options{Logger:slog.New(slog.NewTextHandler(io.Discard,nil)),Identity:identity.NewService(pool,8*time.Hour),Media:mediaservice.NewService(pool,store,10<<20,14*24*time.Hour),Analysis:svc,PublicOrigin:"http://frontend.test",WorkerToken:token,WorkerID:"worker-01",WorkerCapabilities:[]string{"probe","audio_analysis","video_analysis"},MaxArtifactBytes:10<<20,MaxUploadBytes:10<<20,UploadTimeout:time.Minute}))
+			defer server.Close()
+			teacher := newTestClient(t)
+			csrf := loginTestUser(t,teacher,server.URL,"teacher")
+			upload := requestMultipart(t,teacher,server.URL+"/api/v1/sessions/"+sessionID+"/media",sourceID,video,csrf,http.StatusCreated)
+			mediaID := upload["id"].(string)
+			create := func(mode,key string) string {
+				run := requestWithHeaders(t,teacher,http.MethodPost,server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs",map[string]any{"media_asset_id":mediaID,"mode":mode,"input_transcript_revision_id":nil,"config_profile":"p0-v1"},csrf,map[string]string{"Idempotency-Key":name+"-"+key},http.StatusAccepted)
+				return run["id"].(string)
+			}
+			work := func(stage,run string) map[string]any {
+				return realWorkerBridge(t,token,"work","--api-base",server.URL+"/internal/v1","--stage",stage,"--run-id",run,"--scratch",filepath.Join(tmp,"scratch"))
+			}
+			prepareID := create("media_prepare","prepare")
+			prepareResult := work("probe",prepareID)
+			prepared := requestJSON(t,teacher,http.MethodGet,server.URL+"/api/v1/analysis-runs/"+prepareID,nil,"",http.StatusOK)
+			if prepared["status"] != "succeeded" { t.Fatalf("prepare status = %v",prepared["status"]) }
+			var raw []byte
+			if err := pool.QueryRow(ctx,`SELECT metadata->'result' FROM teaching.job_artifacts WHERE job_id=$1 AND artifact_key='__result/probe'`,prepareResult["job_id"]).Scan(&raw); err != nil { t.Fatal(err) }
+			var probe map[string]any
+			if err := json.Unmarshal(raw,&probe); err != nil { t.Fatal(err) }
+			if probe["duration_ms"] != meta["duration_ms"] || probe["width"] != meta["width"] || probe["height"] != meta["height"] || probe["has_audio"] != false { t.Fatalf("probe metadata = %v",probe) }
+			proxyID := probe["playback_asset_id"].(string)
+			var proxyKey,proxySHA string
+			if err := pool.QueryRow(ctx,`SELECT object_key,sha256 FROM teaching.media_assets WHERE id=$1 AND status='ready'`,proxyID).Scan(&proxyKey,&proxySHA); err != nil { t.Fatal(err) }
+			if len(proxySHA) != 64 { t.Fatal("proxy digest missing") }
+			requestContent(t,teacher,server.URL+"/api/v1/media/"+mediaID+"/content","bytes=4-7",http.StatusPartialContent,[]byte("ftyp"))
+			if status := rawStatus(http.DefaultClient,http.MethodGet,server.URL+"/api/v1/media/"+mediaID+"/content",nil,nil); status != http.StatusUnauthorized { t.Fatalf("anonymous playback = %d",status) }
+			fullID := create("full","full")
+			fullProbe := work("probe",fullID)
+			videoResult := work("video_analysis",fullID)
+			finished := requestJSON(t,teacher,http.MethodGet,server.URL+"/api/v1/analysis-runs/"+fullID,nil,"",http.StatusOK)
+			if finished["status"] != "partial" { t.Fatalf("phase4 full status = %v",finished["status"]) }
+			for _, job := range finished["jobs"].([]any) {
+				j := job.(map[string]any)
+				if j["stage"] == "audio_analysis" && (j["status"] != "skipped" || j["error_code"] != "NO_AUDIO") { t.Fatalf("no-audio stage = %v",j) }
+				if j["status"] == "running" || j["status"] == "queued" { t.Fatalf("unfinished job = %v",j) }
+			}
+			results := requestJSON(t,teacher,http.MethodGet,server.URL+"/api/v1/analysis-runs/"+fullID+"/results",nil,"",http.StatusOK)
+			frames := results["frames"].([]any)
+			if len(frames) != 4 || len(results["segments"].([]any)) != 0 { t.Fatalf("unexpected frame/segment counts = %v",results) }
+			for i, frame := range frames {
+				f := frame.(map[string]any)
+				if f["timestamp_ms"] != float64(i*1000) { t.Fatalf("timestamp = %v",f) }
+				var kind string
+				var size int64
+				if err := pool.QueryRow(ctx,`SELECT kind,byte_size FROM teaching.media_assets WHERE id=$1 AND session_id=$2 AND status='ready'`,f["asset_id"],sessionID).Scan(&kind,&size); err != nil { t.Fatal(err) }
+				if kind != "keyframe" || size <= 0 { t.Fatalf("invalid frame artifact: %s %d",kind,size) }
+			}
+			markers,_ := filepath.Glob(filepath.Join(tmp,"scratch","*","*","lease.deadline"))
+			if len(markers) != 0 { t.Fatal("Worker did not clean up its lease directory") }
+			summary,_ := json.Marshal(map[string]any{"case":name,"media_prepare":prepareResult,"full_probe":fullProbe,"video_analysis":videoResult,"frames":len(frames),"real_go_integration":true,"backend_scope":"phase4; ASR/evidence/report not exercised"})
+			t.Log(string(summary))
+		})
+	}
+}
+
+func realWorkerBridge(t *testing.T,token string,args ...string) map[string]any {
+	t.Helper()
+	python := os.Getenv("WORKER_INTEGRATION_PYTHON")
+	root := os.Getenv("WORKER_INTEGRATION_ROOT")
+	if python == "" || root == "" { t.Fatal("WORKER_INTEGRATION_PYTHON and WORKER_INTEGRATION_ROOT are required") }
+	ctx,cancel := context.WithTimeout(context.Background(),4*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx,python,append([]string{"-m","workers.tools.check_real_go"},args...)...)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),"WORKER_TOKEN="+token,"PYTHONUTF8=1")
+	var diagnostics safeBridgeLog
+	cmd.Stderr = &diagnostics
+	raw,err := cmd.Output()
+	if err != nil { t.Fatalf("Python bridge failed: %v\n%s",err,diagnostics.String()) }
+	var result map[string]any
+	if err := json.Unmarshal(raw,&result); err != nil { t.Fatal(err) }
+	return result
+}
+
+// Python logs do not contain the credential; keep stderr separate from JSON stdout.
+type safeBridgeLog struct{ data []byte }
+func (l *safeBridgeLog) Write(p []byte) (int,error) { l.data=append(l.data,p...);return len(p),nil }
+func (l *safeBridgeLog) String() string { return string(l.data) }
