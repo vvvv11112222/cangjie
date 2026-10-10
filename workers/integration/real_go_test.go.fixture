@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -17,7 +18,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/analysis"
+	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/database"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	mediaservice "github.com/vvvv11112222/cangjie/internal/media"
@@ -62,7 +65,7 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 			token := "synthetic-worker-integration-credential-only"
 			cfg := analysis.Config{Lease:120*time.Second,ProbeTimeout:3*time.Minute,ASRTimeout:3*time.Minute,VideoTimeout:3*time.Minute,MediaJobAttempts:3,ProcessorVersion:meta["processor_version"].(string),FFmpegSHA256:meta["ffmpeg_sha256"].(string),ASRModelName:"unused-no-audio",ASRModelRevision:"unused-no-audio",ASRDevice:"cpu",KeyframeIntervalMS:1000,MaxKeyframes:8,MaxVideoHeight:1080,MaxMediaDurationMS:7200000,MaxArtifactBytes:10<<20}
 			svc := analysis.NewService(pool,store,cfg)
-			server := httptest.NewServer(New(Options{Logger:slog.New(slog.NewTextHandler(io.Discard,nil)),Identity:identity.NewService(pool,8*time.Hour),Media:mediaservice.NewService(pool,store,10<<20,14*24*time.Hour),Analysis:svc,PublicOrigin:"http://frontend.test",WorkerToken:token,WorkerID:"worker-01",WorkerCapabilities:[]string{"probe","audio_analysis","video_analysis"},MaxArtifactBytes:10<<20,MaxUploadBytes:10<<20,UploadTimeout:time.Minute}))
+			server := httptest.NewServer(New(Options{Logger:slog.New(slog.NewTextHandler(io.Discard,nil)),Identity:identity.NewService(pool,8*time.Hour),Academic:academic.NewService(pool),Classroom:classroom.NewService(pool),Media:mediaservice.NewService(pool,store,10<<20,14*24*time.Hour),Analysis:svc,PublicOrigin:"http://frontend.test",WorkerToken:token,WorkerID:"worker-01",WorkerCapabilities:[]string{"probe","audio_analysis","video_analysis"},MaxArtifactBytes:10<<20,MaxUploadBytes:10<<20,UploadTimeout:time.Minute}))
 			defer server.Close()
 			teacher := newTestClient(t)
 			csrf := loginTestUser(t,teacher,server.URL,"teacher")
@@ -152,7 +155,7 @@ func realWorkerBridge(t *testing.T,token string,args ...string) map[string]any {
 	cmd := exec.CommandContext(ctx,python,append([]string{"-m","workers.tools.check_real_go"},args...)...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(),"WORKER_TOKEN="+token,"PYTHONUTF8=1")
-	var diagnostics safeBridgeLog
+	var diagnostics bytes.Buffer
 	cmd.Stderr = &diagnostics
 	raw,err := cmd.Output()
 	if err != nil { t.Fatalf("Python bridge failed: %v\n%s",err,diagnostics.String()) }
@@ -161,7 +164,3 @@ func realWorkerBridge(t *testing.T,token string,args ...string) map[string]any {
 	return result
 }
 
-// Python logs do not contain the credential; keep stderr separate from JSON stdout.
-type safeBridgeLog struct{ data []byte }
-func (l *safeBridgeLog) Write(p []byte) (int,error) { l.data=append(l.data,p...);return len(p),nil }
-func (l *safeBridgeLog) String() string { return string(l.data) }
