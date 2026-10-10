@@ -1,14 +1,18 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -113,6 +117,42 @@ func TestPhaseThreeSourceUploadPlaybackAndAuthorization(t *testing.T) {
 	slowResponse.Body.Close()
 	if slowResponse.StatusCode != http.StatusRequestTimeout {
 		t.Fatalf("slow upload status=%d body=%s", slowResponse.StatusCode, slowRaw)
+	}
+
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookies := teacher.Jar.Cookies(serverURL)
+	if len(cookies) == 0 {
+		t.Fatal("authenticated client has no session cookie")
+	}
+	const boundary = "cangjie-stalled-upload"
+	partialBody := fmt.Sprintf("--%s\r\nContent-Disposition: form-data; name=\"source_record_id\"\r\n\r\n%s\r\n--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"stalled.mp4\"\r\nContent-Type: video/mp4\r\n\r\n", boundary, sourceID, boundary)
+	connection, err := net.Dial("tcp", server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if err = connection.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	requestHead := fmt.Sprintf("POST /api/v1/sessions/%s/media HTTP/1.1\r\nHost: %s\r\nContent-Type: multipart/form-data; boundary=%s\r\nContent-Length: %d\r\nOrigin: http://frontend.test\r\nX-CSRF-Token: %s\r\nCookie: %s\r\n\r\n", sessionID, serverURL.Host, boundary, len(partialBody)+1024, teacherCSRF, cookies[0].String())
+	startedAt := time.Now()
+	if _, err = io.WriteString(connection, requestHead+partialBody); err != nil {
+		t.Fatal(err)
+	}
+	rawRequest := &http.Request{Method: http.MethodPost}
+	stalledResponse, err := http.ReadResponse(bufio.NewReader(connection), rawRequest)
+	if err != nil {
+		t.Fatalf("stalled Content-Length upload did not receive a response: %v", err)
+	}
+	stalledResponse.Body.Close()
+	if stalledResponse.StatusCode != http.StatusRequestTimeout {
+		t.Fatalf("stalled Content-Length upload status=%d", stalledResponse.StatusCode)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 1500*time.Millisecond {
+		t.Fatalf("stalled Content-Length upload response took %v", elapsed)
 	}
 
 	video := []byte{0, 0, 0, 20, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm', 0, 0, 0, 0, 'i', 's', 'o', 'm', 'a', 'v', 'c', '1'}
