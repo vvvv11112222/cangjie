@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -83,5 +84,32 @@ func TestOptionalUUIDComparisonUsesIdentity(t *testing.T) {
 	invalid := "not-a-uuid"
 	if !sameOptionalUUID(&lower, &upper) || sameOptionalUUID(&lower, &different) || sameOptionalUUID(&lower, &invalid) || sameOptionalUUID(nil, &lower) || !sameOptionalUUID(nil, nil) {
 		t.Fatal("UUID identity comparison returned an unexpected result")
+	}
+}
+
+func TestModelLimitationsAndCompletePromptAreBounded(t *testing.T) {
+	values := make([]string, 10_000)
+	for index := range values {
+		values[index] = fmt.Sprintf("MODEL_INPUT_SKIPPED:%036d", index)
+	}
+	limitations := boundedModelLimitations(values)
+	if len(limitations) != 32 || limitations[len(limitations)-1] != "LIMITATIONS_SKIPPED_COUNT:9969" {
+		t.Fatalf("bounded limitations=%d tail=%q", len(limitations), limitations[len(limitations)-1])
+	}
+	input := modelInput{
+		SchemaVersion: SchemaVersion, RunID: "run", SessionID: "session", MediaAssetID: "media", InputSHA256: strings.Repeat("a", 64),
+		Model: Model{Name: "fixture", Revision: "1"}, PromptVersion: "p0-v1", PromptSHA256: strings.Repeat("b", 64),
+		SelectionVersion: "time-window-v1", CourseContext: map[string]string{"course_name": "course", "session_title": "lesson"},
+		Coverage: []Interval{{StartMS: 0, EndMS: 1}}, Limitations: limitations,
+		Evidence: []modelEvidence{{ID: "evidence", Kind: "transcript", StartMS: 0, EndMS: 1, TextContent: "正文", TextSHA256: digestBytes([]byte("正文"))}},
+	}
+	config := reportSnapshot{Model: input.Model, SystemPrompt: reportSystemPrompt, MaxInputTokens: 8000, MaxOutputTokens: 100}
+	body, err := buildReportRequest(input, config)
+	if err != nil || len(body) > config.MaxInputTokens*8 {
+		t.Fatalf("bounded request bytes=%d err=%v", len(body), err)
+	}
+	config.MaxInputTokens = 1
+	if _, err = buildReportRequest(input, config); err == nil {
+		t.Fatal("complete prompt limit did not reject an oversized request")
 	}
 }

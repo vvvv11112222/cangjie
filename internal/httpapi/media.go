@@ -149,7 +149,6 @@ func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 		s.writeServiceError(w, r, err)
 		return
 	}
-	defer controller.SetReadDeadline(time.Time{}) //nolint:errcheck
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
 		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "Content-Type must be multipart/form-data", map[string]any{})

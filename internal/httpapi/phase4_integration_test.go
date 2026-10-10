@@ -169,6 +169,9 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	claim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"probe"}}, workerToken, "", http.StatusOK)
 	jobID := claim["job_id"].(string)
 	lease := claim["lease_token"].(string)
+	if _, err = pool.Exec(ctx, `UPDATE teaching.analysis_runs SET config_snapshot=config_snapshot-'media_limits' WHERE id=$1`, runID); err != nil {
+		t.Fatal(err)
+	}
 	requestWorkerContent(t, server.URL+claim["input_url"].(string), workerToken, lease, "bytes=4-7", http.StatusPartialContent, []byte("ftyp"))
 	probe := map[string]any{"schema_version": "1.1", "job_id": jobID, "run_id": runID, "session_id": sessionID, "media_asset_id": mediaID, "stage": "probe", "duration_ms": 60000, "has_audio": true, "width": 1280, "height": 720, "video_codec": "h264", "playback_asset_id": mediaID, "origin_offset_ms": 0, "limitations": []string{}, "execution": claim["execution"]}
 	completed := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+jobID+"/complete", probe, workerToken, lease, http.StatusOK)
@@ -183,6 +186,10 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	ready := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+runID, nil, "", http.StatusOK)
 	if ready["status"] != "succeeded" {
 		t.Fatalf("prepare status=%v", ready["status"])
+	}
+	prepareResults := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+runID+"/results", nil, "", http.StatusOK)
+	if prepareResults["run_status"] != "succeeded" {
+		t.Fatalf("playback-only prepare results=%#v", prepareResults)
 	}
 
 	full := map[string]any{"media_asset_id": mediaID, "mode": "full", "input_transcript_revision_id": nil, "config_profile": "p0-v1"}
@@ -723,6 +730,54 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var overageCallID string
+	var overageLock int
+	if err = pool.QueryRow(ctx, `UPDATE teaching.model_calls SET reserved_cost=0.000161,actual_cost=0.000280,reconciled_by=NULL,reconciliation_reason=NULL
+		WHERE run_id=$1 RETURNING id::text,lock_version`, fullID).Scan(&overageCallID, &overageLock); err != nil {
+		t.Fatal(err)
+	}
+	budgetRunID := createReportReadyRun(t, pool, fullID, "budget-overage-blocked")
+	if processed, processErr := analysisService.ProcessNextGoJob(ctx); processErr != nil || !processed {
+		t.Fatalf("skip budget-blocked report: processed=%v err=%v", processed, processErr)
+	}
+	budgetBlocked := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+budgetRunID, nil, "", http.StatusOK)
+	if budgetBlocked["status"] != "partial" || budgetBlocked["error_code"] != "BUDGET_EXHAUSTED" {
+		t.Fatalf("budget-blocked run=%#v", budgetBlocked)
+	}
+	requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/model-calls/"+overageCallID+"/reconcile", map[string]any{
+		"lock_version": overageLock, "status": "succeeded", "actual_cost": "0.000280", "provider_request_id": "fixture-request", "reason": "确认超预留供应商账单",
+	}, adminCSRF, http.StatusOK)
+
+	afterReconcileID := createReportReadyRun(t, pool, fullID, "budget-after-reconcile")
+	for _, stage := range []string{"report", "validate"} {
+		if processed, processErr := analysisService.ProcessNextGoJob(ctx); processErr != nil || !processed {
+			t.Fatalf("process post-reconciliation %s: processed=%v err=%v", stage, processed, processErr)
+		}
+	}
+	if got := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+afterReconcileID, nil, "", http.StatusOK); got["status"] != "succeeded" {
+		t.Fatalf("post-reconciliation run=%#v", got)
+	}
+
+	orphanRunID := createReportReadyRun(t, pool, fullID, "orphaned-model-call")
+	requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/analysis-runs/"+orphanRunID+"/cancel", map[string]any{}, csrf, http.StatusOK)
+	var orphanCallID string
+	if err = pool.QueryRow(ctx, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,status,currency,reserved_cost,billing_period,price_version,request_sha256,dispatch_started_at)
+		SELECT r.id,j.id,'orphan:'||j.id::text,'fixture','synthetic-report','p0-v1','reserved','CNY',0.000161,date_trunc('month',now() AT TIME ZONE 'Asia/Shanghai')::date,'fixture-price',$2,now()-interval '2 minutes'
+		FROM teaching.analysis_runs r JOIN teaching.analysis_jobs j ON j.run_id=r.id AND j.stage='report' WHERE r.id=$1 RETURNING id::text`, orphanRunID, strings.Repeat("f", 64)).Scan(&orphanCallID); err != nil {
+		t.Fatal(err)
+	}
+	if count, reapErr := analysisService.ReapExpired(ctx); reapErr != nil || count != 1 {
+		t.Fatalf("orphan model-call recovery count=%d err=%v", count, reapErr)
+	}
+	var orphanStatus string
+	var orphanLock int
+	if err = pool.QueryRow(ctx, `SELECT status,lock_version FROM teaching.model_calls WHERE id=$1`, orphanCallID).Scan(&orphanStatus, &orphanLock); err != nil || orphanStatus != "unknown" {
+		t.Fatalf("orphan model call status=%s lock=%d err=%v", orphanStatus, orphanLock, err)
+	}
+	requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/model-calls/"+orphanCallID+"/reconcile", map[string]any{
+		"lock_version": orphanLock, "status": "failed", "actual_cost": "0.000000", "provider_request_id": nil, "reason": "重启恢复后确认未收费",
+	}, adminCSRF, http.StatusOK)
+
 	cancelRun := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs", create, csrf, map[string]string{"Idempotency-Key": "cancel-1"}, http.StatusAccepted)
 	cancelClaim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"probe"}}, workerToken, "", http.StatusOK)
 	requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/analysis-runs/"+cancelRun["id"].(string)+"/cancel", map[string]any{}, csrf, http.StatusOK)
@@ -816,6 +871,43 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+fullID+"/results", nil, "", http.StatusForbidden)
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/transcript-revisions/"+revision["id"].(string), nil, "", http.StatusForbidden)
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/reports/"+reportID, nil, "", http.StatusForbidden)
+}
+
+func createReportReadyRun(t *testing.T, pool *pgxpool.Pool, sourceRunID, key string) string {
+	t.Helper()
+	ctx := context.Background()
+	var runID, sessionID, mediaID, requesterID, revisionID string
+	err := pool.QueryRow(ctx, `INSERT INTO teaching.analysis_runs(session_id,media_asset_id,requested_by,idempotency_key,input_sha256,config_hash,pipeline_version,config_snapshot,mode,status,request_sha256)
+		SELECT session_id,media_asset_id,requested_by,$2,input_sha256,config_hash,pipeline_version,config_snapshot,'full','running',$3
+		FROM teaching.analysis_runs WHERE id=$1 RETURNING id::text,session_id::text,media_asset_id::text,requested_by::text`, sourceRunID, key, strings.Repeat("e", 64)).
+		Scan(&runID, &sessionID, &mediaID, &requesterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT metadata->>'transcript_revision_id' FROM teaching.job_artifacts WHERE run_id=$1 AND artifact_key='__result/evidence'`, sourceRunID).Scan(&revisionID); err != nil {
+		t.Fatal(err)
+	}
+	var segmentID string
+	if err = pool.QueryRow(ctx, `INSERT INTO teaching.transcript_segments(run_id,session_id,segment_no,start_ms,end_ms,speaker_label,text_content)
+		SELECT $2,session_id,segment_no,start_ms,end_ms,speaker_label,text_content FROM teaching.transcript_segments WHERE run_id=$1 ORDER BY segment_no LIMIT 1 RETURNING id::text`, sourceRunID, runID).Scan(&segmentID); err != nil {
+		t.Fatal(err)
+	}
+	var evidenceJobID string
+	if err = pool.QueryRow(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,attempts,max_attempts,progress) VALUES($1,'evidence','succeeded',1,3,100) RETURNING id::text`, runID).Scan(&evidenceJobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,artifact_key,metadata)
+		VALUES($1,$2,$3,'__result/evidence',jsonb_build_object('transcript_revision_id',$4::text))`, evidenceJobID, runID, sessionID, revisionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO teaching.evidence_items(run_id,session_id,media_asset_id,transcript_segment_id,kind,start_ms,end_ms,description,provenance,created_by)
+		SELECT $1,$2,$3,$4,'transcript',start_ms,end_ms,text_content,'{}'::jsonb,$5 FROM teaching.transcript_segments WHERE id=$4`, runID, sessionID, mediaID, segmentID, requesterID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'report',1)`, runID); err != nil {
+		t.Fatal(err)
+	}
+	return runID
 }
 
 func requestWithHeaders(t *testing.T, c *http.Client, method, target string, body any, csrf string, headers map[string]string, want int) map[string]any {
