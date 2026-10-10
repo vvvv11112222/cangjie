@@ -16,7 +16,7 @@
 
 P0 正式接口严格使用 [团队协议](../docs/开发协议.md)及 [Schema 1.1](../contracts/v1.schema.json)：`events=[]`、`model=null`。本地行为报告包含更多字段，不能直接交给正式完成接口。正式六维报告、业务证据 ID、授权和数据库写入由 Go 负责。
 
-当前 main 的 Go 尚未实现 `/internal/v1/jobs/*`，所以正式入口目前需要后端补齐接口才能接通。提供的模拟服务用于验证协议与真实媒体处理，不是可对外使用的后端。
+2026-10-10 检查：main 为 `8d9f0de`，包含后端 PR #6 和前端 PR #7；任务接口已在待合并的后端 PR #11 实现，后续 PR #12—#14 继续实现证据、报告与治理。真实 Go 联调入口见下文，模拟服务仍仅用于隔离测试。后端需带入 [PR #15 参数摘要修复](https://github.com/vvvv11112222/cangjie/pull/15)，否则会被严格 Worker 拒绝。
 
 ## 安装与检查
 
@@ -47,12 +47,12 @@ python tools/check_docs.py
 
 ## 连接团队 Go 后端
 
-在后端实现内部接口、分配 Worker 凭据后执行：
+在运行包含 PR #11 及 PR #15 修复的后端、分配 Worker 凭据后执行：
 
 ```powershell
 $runtime = python -m workers runtime-info | ConvertFrom-Json
 $env:WORKER_API_BASE = 'http://127.0.0.1:8080/internal/v1'
-$env:WORKER_ID = 'video-01'
+$env:WORKER_ID = 'worker-01' # 必须与 Go 配置的 WORKER_ID 相同
 $env:WORKER_TOKEN = '<后端分配的本地凭据>'
 $env:WORKER_CAPABILITIES = 'probe,video_analysis'
 $env:WORKER_PROCESSOR_VERSION = $runtime.processor_version
@@ -62,7 +62,9 @@ python -m workers run
 
 `--once` 只领取一次。环境变量与 [配置模板](../.env.example)一致；程序读取进程环境，不自行加载配置文件。后端固定同一 `processor_version`、FFmpeg 摘要和参数摘要到 Claim。参数间隔和上限使用 Claim，不能由本机默认值偷偷替换。
 
-处理器版本已更新为 `cangjie-video-worker-1.0.1`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
+当前 Go 只配置一个 Worker 编号及能力许可集合。Go 的 `WORKER_CAPABILITIES` 保持公共模板的三个阶段；视频进程仅声明 `probe,video_analysis`，音频进程声明自身实际能力。相同凭据与编号须由后端分配，不以在视频配置中添加 `audio_analysis` 假装实现 ASR。
+
+处理器版本已更新为 `cangjie-video-worker-1.0.2`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
 
 已领取任务的媒体访问、心跳、上传与回传每次操作最多尝试 3 次，遵循 `Retry-After`（秒数或 HTTP 日期），并持续检查租约、取消及截止时间。重传产物复用同一键与内容，完成请求保留原字节；超过次数报告可重试失败，由 Go 决定重新调度。本地超时报告 `PROCESSING_TIMEOUT`，不会清除外部撤租或取消信号。
 
@@ -73,8 +75,8 @@ python -m workers run
 Docker 入口（构建上下文为仓库根目录）：
 
 ```bash
-docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.1 .
-docker run --rm cangjie-video-worker:1.0.1 python -m workers runtime-info
+docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.2 .
+docker run --rm cangjie-video-worker:1.0.2 python -m workers runtime-info
 ```
 
 运行时显式传入前述环境变量及可写临时目录。容器中的 `127.0.0.1` 指容器自身；后端地址使用共同网络中的 Go 服务名。[GitHub 检查](https://github.com/vvvv11112222/cangjie/actions/runs/37630242939)已通过 Linux/Windows 测试、CPU 容器构建、运行信息与容器内测试。共同环境中的真实 Go 和 GPU 样本联调仍待验收。
@@ -118,6 +120,29 @@ report = analyze_local(source, empty_output_directory, config,
 
 ## 验证入口
 
+### 真实 Go、PostgreSQL 与视频 Worker
+
+[自动检查](../.github/workflows/vision-worker.yml)创建一次性 PostgreSQL 17.6，运行固定 Go 1.26.0、Python 3.12 和实际视频 Worker。后端使用两个固定提交：PR #11 加修复 `8cf079e`，以及最新 PR #14 `03de4cd` 加同一修复；不会自动跟随队友移动的分支。
+
+测试使用 FFmpeg 生成的 4 秒无音轨图案视频，检查上传、领取、心跳、下载校验、转码、产物上传、完成、授权 Range 回放、关键帧时间与清理；另外覆盖 161×120 奇数宽度。最新后端还检查 Go 把每张关键帧建立为本批次画面证据。无音轨时明确保留“没有转写”的限制，不伪造 ASR 或六维报告。这些耗时属于 P0 媒体处理，不能代替密集课堂 P1 识别速度和准确率。
+
+手动复现须先准备**独立、可清空的** PostgreSQL 数据库，名字严格为 `cangjie_worker_integration`，以及包含上述修复的完整后端检出。该测试会清空业务表；禁止指向学校或演示数据。Worker 本身不访问数据库，只有 Go 测试夹具准备合成课堂。
+
+```powershell
+$env:WORKER_INTEGRATION_ROOT = (Get-Location).Path
+$env:WORKER_INTEGRATION_PYTHON = (Get-Command python).Source
+$env:TEST_DATABASE_URL = '<一次性 cangjie_worker_integration 数据库的连接地址>'
+$env:WORKER_INTEGRATION_ALLOW_DATABASE_RESET = '1'
+Copy-Item workers/integration/real_go_test.go.fixture '<独立后端检出>/internal/httpapi/real_video_worker_test.go'
+# 在独立后端检出的根目录运行：
+go test ./internal/analysis -run TestWorkerParameterDigestMatchesContract -count=1 -v
+go test ./internal/httpapi -run '^TestRealVideoWorkerIntegration$' -count=1 -v -timeout=8m
+```
+
+测试桥接代码为 [check_real_go.py](tools/check_real_go.py)，实际执行现有 `Runner` 和处理器，没有模拟 Go 路由。正式 Worker 仍通过 `python -m workers run` 启动。CI 默认凭据仅属于每次创建的测试容器，不作为部署凭据。
+
+### 其他检查
+
 真实媒体与模拟 Go 接口联调：
 
 ```powershell
@@ -154,4 +179,4 @@ python -m workers.tools.check_speed_acceptance --baseline var/speed-baseline --t
 
 先按前文配置实际执行器、模型目录和运行配置；原实验目录的 runtime.json 必须与团队配置一致。对照检查还会核对实际显卡、模型摘要、执行配置与完整结果，参数不同或结果变化时拒绝通过。输出中的“未变慢”只针对该轮测量，系统负载和模型编译缓存仍会影响时间。
 
-这一步使用同一份已生成的播放视频，便于单独比较算法耗时，不包含上传与转码。2026-10-07 已完成三段录像的独占环境对照及 2 分钟录像的本地完整处理；本轮团队版达到原示例的最低速度和结果一致性标准，但完整处理约 185 秒，尚未达到 120 秒目标。具体数据和准确率限制见 [验证记录](VALIDATION.md)。真实 Go 全链路仍待队友接入。
+这一步使用同一份已生成的播放视频，便于单独比较算法耗时，不包含上传与转码。2026-10-07 已完成三段录像的独占环境对照及 2 分钟录像的本地完整处理；本轮团队版达到原示例的最低速度和结果一致性标准，但完整处理约 185 秒，尚未达到 120 秒目标。具体数据和准确率限制见 [验证记录](VALIDATION.md)。2026-10-10 真实 Go 视频接口与画面证据已通过合成媒体联调；ASR、六维报告和前端完整流程仍待团队共同接入。
