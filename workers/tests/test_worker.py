@@ -8,6 +8,7 @@ import time
 import pytest
 
 from workers.common.contracts import LeaseLost, WorkerError, validate_result
+from workers.common.config import Settings
 from workers.common.lifecycle import Guard, cleanup, cleanup_expired, scratch_path, validate_claim
 from workers.common.runner import Runner, execute_claim
 from workers.common.transport import Transport
@@ -20,6 +21,17 @@ def execute(source, settings, claim, fake=None):
     outcome = execute_claim(settings, claim, Guard(claim), scratch_path(settings.temp_root, claim),
                             Transport(settings, fake.client()))
     return outcome, fake
+
+
+def test_environment_defaults_match_shared_backend_identity(settings, monkeypatch):
+    monkeypatch.delenv("WORKER_ID", raising=False)
+    monkeypatch.delenv("WORKER_CAPABILITIES", raising=False)
+    monkeypatch.setenv("WORKER_TOKEN", settings.token)
+    monkeypatch.setenv("WORKER_PROCESSOR_VERSION", settings.processor_version)
+    monkeypatch.setenv("FFMPEG_BUILD_SHA256", settings.ffmpeg_sha256)
+    configured = Settings.from_env()
+    assert configured.worker_id == "worker-01"
+    assert configured.capabilities == ("probe", "video_analysis")
 
 
 @pytest.mark.parametrize("stage", ["probe", "video_analysis"])

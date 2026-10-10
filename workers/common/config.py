@@ -47,7 +47,7 @@ class Settings:
             raise ValueError("本视频入口一次执行一个任务；可使用不同 worker_id 启动多个进程")
         return cls(
             api_base=os.environ.get("WORKER_API_BASE", "http://127.0.0.1:8080/internal/v1").rstrip("/"),
-            worker_id=os.environ.get("WORKER_ID", "video-01"), token=os.environ.get("WORKER_TOKEN", ""),
+            worker_id=os.environ.get("WORKER_ID", "worker-01"), token=os.environ.get("WORKER_TOKEN", ""),
             temp_root=Path(os.environ.get("WORKER_TEMP_ROOT", "var/worker-tmp")).resolve(),
             processor_version=os.environ.get("WORKER_PROCESSOR_VERSION", ""),
             ffmpeg_sha256=os.environ.get("FFMPEG_BUILD_SHA256", ""),
