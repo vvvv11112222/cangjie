@@ -525,7 +525,9 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 		t.Fatalf("first evidence limit was not enforced: chars=%d limitations=%#v", longChars, longInput.Limitations)
 	}
 
-	if _, err = pool.Exec(ctx, `UPDATE teaching.model_calls SET actual_cost=99.98 WHERE id=(SELECT id FROM teaching.model_calls WHERE status='succeeded' ORDER BY created_at LIMIT 1)`); err != nil {
+	if _, err = pool.Exec(ctx, `UPDATE teaching.model_calls SET reserved_cost=99.98,actual_cost=99.98,
+		reconciled_by=(SELECT id FROM teaching.user_accounts WHERE username='admin'),reconciliation_reason='budget concurrency fixture'
+		WHERE id=(SELECT id FROM teaching.model_calls WHERE status='succeeded' ORDER BY created_at LIMIT 1)`); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `SELECT transcript_lock_version FROM teaching.lesson_sessions WHERE id=$1`, sessionID).Scan(&currentTranscriptLock); err != nil {
@@ -592,7 +594,7 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 		t.Fatalf("concurrent budget guard allowed %d provider calls, want 1", got)
 	}
 	budgetBlocked := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+budgetRunTwo["id"].(string), nil, "", http.StatusOK)
-	if budgetBlocked["status"] != "partial" || budgetBlocked["error_code"] != "INVALID_RESULT" {
+	if budgetBlocked["status"] != "partial" || budgetBlocked["error_code"] != "BUDGET_EXHAUSTED" {
 		t.Fatalf("budget-blocked run=%#v", budgetBlocked)
 	}
 	var blockedCalls int
@@ -740,9 +742,9 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	if processed, processErr := analysisService.ProcessNextGoJob(ctx); processErr != nil || !processed {
 		t.Fatalf("skip budget-blocked report: processed=%v err=%v", processed, processErr)
 	}
-	budgetBlocked := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+budgetRunID, nil, "", http.StatusOK)
-	if budgetBlocked["status"] != "partial" || budgetBlocked["error_code"] != "BUDGET_EXHAUSTED" {
-		t.Fatalf("budget-blocked run=%#v", budgetBlocked)
+	overageBlocked := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+budgetRunID, nil, "", http.StatusOK)
+	if overageBlocked["status"] != "partial" || overageBlocked["error_code"] != "BUDGET_EXHAUSTED" {
+		t.Fatalf("budget-blocked run=%#v", overageBlocked)
 	}
 	requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/model-calls/"+overageCallID+"/reconcile", map[string]any{
 		"lock_version": overageLock, "status": "succeeded", "actual_cost": "0.000280", "provider_request_id": "fixture-request", "reason": "确认超预留供应商账单",
