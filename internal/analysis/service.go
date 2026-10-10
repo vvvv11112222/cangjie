@@ -1277,7 +1277,12 @@ func (s *Service) failAfterProbe(ctx context.Context, tx pgx.Tx, runID, code str
 
 func (s *Service) newSnapshot(mode string) snapshot {
 	params := Parameters{ConfigProfile: pipelineVersion, KeyframeIntervalMS: s.cfg.KeyframeIntervalMS, MaxKeyframes: s.cfg.MaxKeyframes, ASRDevice: s.cfg.ASRDevice}
-	paramHash := digestJSON(params)
+	// Match the contract's sorted-key, compact JSON used by Python workers.
+	// Keep execution/result digests unchanged for already persisted leases.
+	paramHash := digestJSON(map[string]any{
+		"asr_device": params.ASRDevice, "config_profile": params.ConfigProfile,
+		"keyframe_interval_ms": params.KeyframeIntervalMS, "max_keyframes": params.MaxKeyframes,
+	})
 	base := Execution{ProcessorVersion: s.cfg.ProcessorVersion, FFmpegBuildSHA256: s.cfg.FFmpegSHA256, ParametersSHA256: paramHash}
 	probe := base
 	video := base
