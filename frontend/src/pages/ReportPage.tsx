@@ -44,7 +44,14 @@ function CitedEvidence({
   );
 }
 
-export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): ReactElement {
+export function ReportPage({
+  view: injectedView,
+  embedded = false,
+}: {
+  view?: ReportView;
+  /** 嵌入课堂详情页时隐藏页头与数据来源说明，只保留正文卡片。 */
+  embedded?: boolean;
+} = {}): ReactElement {
   const loaded = useReportData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
@@ -77,16 +84,16 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
   if (!ready) {
     return (
       <div className="page">
-        {head}
-        {notes}
+        {embedded ? null : head}
+        {embedded ? null : notes}
       </div>
     );
   }
 
   return (
     <div className="page">
-      {head}
-      {notes}
+      {embedded ? null : head}
+      {embedded ? null : notes}
 
       <Card title="报告状态" subtitle="版本与内容摘要用于并发检查和复核追溯。">
         <div className="field-grid">

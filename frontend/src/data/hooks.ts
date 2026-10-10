@@ -16,7 +16,13 @@ import { describeError } from './errors';
 import { loadingState, readyState, signedOutState } from './loadState';
 import type { LoadState } from './loadState';
 import { loadReportView, loadSessionTasks as loadSessionTasksApi, loadTranscriptView } from './loaders';
-import { FIXTURES } from './samples';
+import {
+  isRunActive,
+  loadReportForSession,
+  loadSessionDetail,
+  loadTranscriptForSession,
+} from './loaders';
+import { FIXTURES, fixtures } from './samples';
 import type { AuthStatus } from './sessionFlow';
 import { DATA_SOURCE_LABEL, isApiMode } from './sources';
 import type { DataSourceKind, SessionQuery } from './sources';
@@ -24,6 +30,7 @@ import { dataSource } from './sources';
 import { SearchPaused, newSearch, checkNextCursor } from './search';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
 import type { ReportView, SessionTaskView, TranscriptView } from './viewModel';
+import type { Run, RunStatus, Session } from '../types';
 
 /** 页面顶部"数据来源"一行需要的信息。 */
 export interface DataOrigin {
@@ -304,4 +311,170 @@ export function useReportData(enabled = true): ReportResult {
         : [FIXTURES.report, FIXTURES.results, FIXTURES.sessionPage, FIXTURES.run],
     ),
   };
+}
+
+/** 协议第 1 节：活动批次每 2 秒轮询一次，进入终态即停止。 */
+const POLL_INTERVAL_MS = 2000;
+
+/** 轮询单个批次；status 为初始状态，只有活动批次才启动计时器。 */
+export function useRunPolling(runId: string | null, status: RunStatus | null, enabled: boolean): Run | null {
+  const [run, setRun] = useState<Run | null>(null);
+  useEffect(() => {
+    setRun(null);
+    if (!enabled || runId === null || status === null) {
+      return;
+    }
+    if (status !== 'queued' && status !== 'running') {
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = async () => {
+      try {
+        const next = await dataSource.getRun(runId);
+        if (cancelled) {
+          return;
+        }
+        setRun(next);
+        if (!isRunActive(next) && timer !== null) {
+          clearInterval(timer);
+        }
+      } catch {
+        // 单次失败不中断轮询，下一次到点继续尝试；页面另有错误区显示最近一次结果。
+      }
+    };
+    timer = setInterval(tick, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (timer !== null) {
+        clearInterval(timer);
+      }
+    };
+  }, [runId, status, enabled]);
+  return run;
+}
+
+export interface SessionDetailData {
+  session: Session | null;
+  run: Run | null;
+}
+
+export type SessionDetailResult = LoadState<SessionDetailData> &
+  LoadActions & {
+    origin: DataOrigin;
+    /** 轮询期间的最新批次；轮询没启动时等于 data.run。 */
+    run: Run | null;
+  };
+
+/**
+ * 指定课堂的详情：从列表按 id 找到课堂（找不到时支持"继续查找"越过单轮预算），
+ * 取最新批次，并对活动批次每 2 秒轮询。
+ */
+export function useSessionDetail(sessionId: string | null, enabled = true): SessionDetailResult {
+  const { sessionKey, authStatus } = useSessionContext();
+  const initial = useMemo<SessionDetailData>(() => ({ session: null, run: null }), []);
+  const state = useLoaded({
+    enabled: enabled && sessionId !== null,
+    sessionKey: sessionId === null ? sessionKey : `${sessionKey}:${sessionId}`,
+    authStatus,
+    initialData: initial,
+    newProgress: newSearch,
+    load: async (progress) => {
+      const loaded = await loadSessionDetail(dataSource, sessionId as string, progress);
+      return { session: loaded.session, run: loaded.run };
+    },
+  });
+  return {
+    ...state,
+    run: state.status === 'ready' ? state.data.run : null,
+    origin: originFor(
+      API ? 'api' : 'fixtures',
+      API ? ['GET /api/v1/sessions', 'GET /api/v1/analysis-runs/{id}'] : [FIXTURES.sessionPage, FIXTURES.run],
+    ),
+  };
+}
+
+/** 指定课堂的最新批次转写视图；在样例模式下按 id 同步取固定样例。 */
+export function useSessionTranscript(
+  session: Session | null,
+  enabled = true,
+): LoadState<TranscriptView> & { origin: DataOrigin } {
+  const { sessionKey, authStatus } = useSessionContext();
+  const initial = useMemo<TranscriptView>(
+    () =>
+      API
+        ? buildTranscriptView({ results: emptyResults(), revision: null, run: null, kind: 'api' })
+        : fixtureSessionTranscript(session),
+    [session],
+  );
+  const state = useLoaded({
+    enabled: enabled && session !== null,
+    sessionKey: session === null ? sessionKey : `${sessionKey}:transcript:${session.id}`,
+    authStatus,
+    initialData: initial,
+    newProgress: () => undefined,
+    load: async () => loadTranscriptForSession(dataSource, session as Session),
+  });
+  return {
+    ...state,
+    origin: originFor(
+      API ? 'api' : 'fixtures',
+      API
+        ? [
+            'GET /api/v1/analysis-runs/{id}',
+            'GET /api/v1/analysis-runs/{id}/results',
+            'GET /api/v1/transcript-revisions/{id}',
+          ]
+        : [FIXTURES.results, FIXTURES.revision],
+    ),
+  };
+}
+
+/** 指定课堂的当前发布版/草稿报告视图；在样例模式下按 id 同步取固定样例。 */
+export function useSessionReport(
+  session: Session | null,
+  run: Run | null,
+  enabled = true,
+): LoadState<ReportView> & { origin: DataOrigin } {
+  const { sessionKey, authStatus } = useSessionContext();
+  const initial = useMemo<ReportView>(
+    () => (API ? emptyReportView() : fixtureSessionReport(session)),
+    [session],
+  );
+  const state = useLoaded({
+    enabled: enabled && session !== null,
+    sessionKey: session === null ? sessionKey : `${sessionKey}:report:${session.id}`,
+    authStatus,
+    initialData: initial,
+    newProgress: () => undefined,
+    load: async () => loadReportForSession(dataSource, session as Session, run),
+  });
+  return {
+    ...state,
+    origin: originFor(
+      API ? 'api' : 'fixtures',
+      API
+        ? ['GET /api/v1/reports/{id}', 'GET /api/v1/analysis-runs/{id}', 'GET /api/v1/analysis-runs/{id}/results']
+        : [FIXTURES.report, FIXTURES.results, FIXTURES.sessionPage, FIXTURES.run],
+    ),
+  };
+}
+
+/** 样例模式下同步找到固定样例里的课堂。 */
+export function fixtureSession(sessionId: string): Session | null {
+  return fixtures.sessionPage.items.find((session) => session.id === sessionId) ?? null;
+}
+
+function fixtureSessionTranscript(session: Session | null): TranscriptView {
+  if (session === null || session.latest_run_id !== fixtures.run.id) {
+    return buildTranscriptView({ results: emptyResults(), revision: null, run: null, kind: 'fixtures' });
+  }
+  return buildTranscriptView();
+}
+
+function fixtureSessionReport(session: Session | null): ReportView {
+  if (session === null || session.id !== fixtures.report.session_id) {
+    return emptyReportView();
+  }
+  return buildReportView();
 }

@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { AccountBar } from './components/AccountBar';
 import { DATA_SOURCE_KIND, DATA_SOURCE_LABEL } from './data/sources';
 import { ReportPage } from './pages/ReportPage';
+import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
 
@@ -24,6 +25,9 @@ const PAGES: Record<(typeof NAV_ROUTES)[number]['path'], () => ReactElement> = {
 };
 
 const DEFAULT_ROUTE = NAV_ROUTES[0].path;
+
+/** #/sessions/{id} 进入指定课堂详情；id 之外的路径仍走三个固定页面。 */
+const SESSION_DETAIL = /^#\/sessions\/([^/]+)$/;
 
 /**
  * 唯一的页面导航入口，宽屏在侧栏、窄屏在顶部导航条（见 styles.css 的 900px 断点）。
@@ -59,7 +63,10 @@ function useHashRoute(): string {
 
 export function App(): ReactElement {
   const hash = useHashRoute();
-  const route = NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  const detailMatch = SESSION_DETAIL.exec(hash);
+  const detailId = detailMatch === null ? null : decodeURIComponent(detailMatch[1]!);
+  const route = detailMatch ? NAV_ROUTES[0] : NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  const breadcrumbTitle = detailMatch ? '课堂详情' : route.title;
   const dataBadge =
     DATA_SOURCE_KIND === 'api'
       ? `${DATA_SOURCE_LABEL.api} · 走 /api/v1`
@@ -75,7 +82,7 @@ export function App(): ReactElement {
             <div className="brand-caption">教学质量管理系统</div>
           </div>
         </div>
-        <NavLinks current={route.path} />
+        <NavLinks current={detailMatch ? NAV_ROUTES[0].path : route.path} />
         <AccountBar />
         <div className="sidebar-note">
           <p>M1 数据访问层</p>
@@ -90,11 +97,17 @@ export function App(): ReactElement {
           <div className="breadcrumb">
             <span className="muted">教学工作空间</span>
             <span className="crumb-divider">/</span>
-            <strong>{route.title}</strong>
+            <strong>{breadcrumbTitle}</strong>
           </div>
           <span className="prototype-badge">{dataBadge}</span>
         </header>
-        <main id="main">{PAGES[route.path]()}</main>
+        <main id="main">
+          {detailId !== null ? (
+            <SessionDetailPage key={detailId} sessionId={detailId} />
+          ) : (
+            PAGES[route.path]()
+          )}
+        </main>
         <footer className="workspace-footer">
           <span>观课 · 让教学观察有据可循</span>
           <span className="muted tiny">
