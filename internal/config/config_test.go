@@ -90,6 +90,24 @@ func TestFromLookupRejectsInvalidMediaLimits(t *testing.T) {
 	}
 }
 
+func TestValidateWorkerRuntimeRequiresPinnedCredentialAndExecution(t *testing.T) {
+	cfg, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = cfg.ValidateWorkerRuntime(); err == nil || !strings.Contains(err.Error(), "WORKER_TOKEN") {
+		t.Fatalf("expected worker token error, got %v", err)
+	}
+	cfg.WorkerToken = strings.Repeat("x", 32)
+	cfg.ProcessorVersion = "fixed-json-v1"
+	cfg.FFmpegSHA256 = strings.Repeat("a", 64)
+	cfg.ASRModelName = "fixed-json-asr"
+	cfg.ASRModelRevision = "p0-v1"
+	if err = cfg.ValidateWorkerRuntime(); err != nil {
+		t.Fatalf("valid worker runtime rejected: %v", err)
+	}
+}
+
 func mapLookup(values map[string]string) func(string) (string, bool) {
 	return func(key string) (string, bool) {
 		value, ok := values[key]
