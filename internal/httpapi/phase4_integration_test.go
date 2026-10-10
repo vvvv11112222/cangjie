@@ -133,6 +133,9 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	claim := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/claim", map[string]any{"worker_id": "worker-01", "capabilities": []string{"probe"}}, workerToken, "", http.StatusOK)
 	jobID := claim["job_id"].(string)
 	lease := claim["lease_token"].(string)
+	if _, err = pool.Exec(ctx, `UPDATE teaching.analysis_runs SET config_snapshot=config_snapshot-'media_limits' WHERE id=$1`, runID); err != nil {
+		t.Fatal(err)
+	}
 	requestWorkerContent(t, server.URL+claim["input_url"].(string), workerToken, lease, "bytes=4-7", http.StatusPartialContent, []byte("ftyp"))
 	probe := map[string]any{"schema_version": "1.1", "job_id": jobID, "run_id": runID, "session_id": sessionID, "media_asset_id": mediaID, "stage": "probe", "duration_ms": 60000, "has_audio": true, "width": 1280, "height": 720, "video_codec": "h264", "playback_asset_id": mediaID, "origin_offset_ms": 0, "limitations": []string{}, "execution": claim["execution"]}
 	completed := requestWorker(t, http.MethodPost, server.URL+"/internal/v1/jobs/"+jobID+"/complete", probe, workerToken, lease, http.StatusOK)
@@ -147,6 +150,10 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	ready := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+runID, nil, "", http.StatusOK)
 	if ready["status"] != "succeeded" {
 		t.Fatalf("prepare status=%v", ready["status"])
+	}
+	prepareResults := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+runID+"/results", nil, "", http.StatusOK)
+	if prepareResults["run_status"] != "succeeded" {
+		t.Fatalf("playback-only prepare results=%#v", prepareResults)
 	}
 
 	full := map[string]any{"media_asset_id": mediaID, "mode": "full", "input_transcript_revision_id": nil, "config_profile": "p0-v1"}

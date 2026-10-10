@@ -654,9 +654,6 @@ func (s *Service) lockJobForCompletion(ctx context.Context, tx pgx.Tx, jobID, to
 	if err = json.Unmarshal(snapshotJSON, &v.Snapshot); err != nil {
 		return v, false, err
 	}
-	if v.Snapshot.MediaLimits.MaxDurationMS <= 0 || v.Snapshot.MediaLimits.MaxVideoHeight <= 0 {
-		return v, false, state("analysis run is missing pinned media limits")
-	}
 	needed := "analysis"
 	if v.Mode == "media_prepare" {
 		needed = "playback"
@@ -673,6 +670,18 @@ func (s *Service) lockJobForCompletion(ctx context.Context, tx pgx.Tx, jobID, to
 			return v, true, nil
 		}
 		return v, false, apperror.New(http.StatusConflict, "COMPLETION_CONFLICT", "completed job has different content or token")
+	}
+	// Runs created before media limits were pinned in config_snapshot used the
+	// service limits at completion time. Keep that compatibility for active
+	// legacy jobs; new runs always carry explicit pinned values.
+	if v.Snapshot.MediaLimits.MaxDurationMS <= 0 && s.cfg.MaxMediaDurationMS > 0 {
+		v.Snapshot.MediaLimits.MaxDurationMS = s.cfg.MaxMediaDurationMS
+	}
+	if v.Snapshot.MediaLimits.MaxVideoHeight <= 0 && s.cfg.MaxVideoHeight > 0 {
+		v.Snapshot.MediaLimits.MaxVideoHeight = s.cfg.MaxVideoHeight
+	}
+	if v.Snapshot.MediaLimits.MaxDurationMS <= 0 || v.Snapshot.MediaLimits.MaxVideoHeight <= 0 {
+		return v, false, state("analysis run is missing usable media limits")
 	}
 	if runStatus != "running" || jobStatus != "running" || leaseToken == nil || *leaseToken != token || leaseExpires == nil || deadline == nil || now.After(*leaseExpires) || now.After(*deadline) {
 		return v, false, leaseLost()
@@ -855,20 +864,24 @@ func (s *Service) Results(ctx context.Context, p identity.Principal, runID strin
 }
 
 func (s *Service) requireRunContentReadable(ctx context.Context, runID string, requireMediaCurrent bool) error {
-	var sessionStatus, rights string
+	var sessionStatus, rights, mode string
 	var contentExpires, mediaExpires time.Time
 	var uses []byte
-	err := s.pool.QueryRow(ctx, `SELECT ls.status,ls.content_expires_at,m.expires_at,src.rights_status,src.allowed_uses
+	err := s.pool.QueryRow(ctx, `SELECT ls.status,ls.content_expires_at,m.expires_at,src.rights_status,src.allowed_uses,r.mode
 		FROM teaching.analysis_runs r JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
 		JOIN teaching.media_assets m ON m.id=r.media_asset_id JOIN teaching.source_records src ON src.id=m.source_record_id
-		WHERE r.id=$1`, runID).Scan(&sessionStatus, &contentExpires, &mediaExpires, &rights, &uses)
+		WHERE r.id=$1`, runID).Scan(&sessionStatus, &contentExpires, &mediaExpires, &rights, &uses, &mode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notFound()
 	}
 	if err != nil {
 		return err
 	}
-	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requireMediaCurrent)
+	requiredUse := "analysis"
+	if mode == "media_prepare" {
+		requiredUse = "playback"
+	}
+	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requiredUse, requireMediaCurrent)
 }
 
 func (s *Service) requireSessionMediaContentReadable(ctx context.Context, sessionID, mediaID string, requireMediaCurrent bool) error {
@@ -885,18 +898,18 @@ func (s *Service) requireSessionMediaContentReadable(ctx context.Context, sessio
 	if err != nil {
 		return err
 	}
-	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requireMediaCurrent)
+	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, "analysis", requireMediaCurrent)
 }
 
-func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires time.Time, rights string, uses []byte, requireMediaCurrent bool) error {
+func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires time.Time, rights string, uses []byte, requiredUse string, requireMediaCurrent bool) error {
 	if sessionStatus == "deleting" || sessionStatus == "deleted" {
 		return state("classroom content is unavailable")
 	}
 	if !contentExpires.After(time.Now()) || requireMediaCurrent && !mediaExpires.After(time.Now()) {
 		return expired()
 	}
-	if rights != "verified" || !jsonArrayContains(uses, "analysis") {
-		return apperror.New(http.StatusForbidden, "SOURCE_NOT_VERIFIED", "source no longer permits analysis content access")
+	if rights != "verified" || !jsonArrayContains(uses, requiredUse) {
+		return apperror.New(http.StatusForbidden, "SOURCE_NOT_VERIFIED", "source no longer permits content access")
 	}
 	return nil
 }
