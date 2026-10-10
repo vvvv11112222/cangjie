@@ -117,6 +117,14 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 	if err = s.assertGoLease(ctx, tx, j); err != nil {
 		return err
 	}
+	var mode string
+	var inputRevisionID *string
+	if err = tx.QueryRow(ctx, `SELECT mode,input_transcript_revision_id::text FROM teaching.analysis_runs WHERE id=$1`, j.RunID).Scan(&mode, &inputRevisionID); err != nil {
+		return err
+	}
+	if mode == "report_only" {
+		return s.executeRevisionEvidence(ctx, tx, j, inputRevisionID)
+	}
 	if err = s.createFrameEvidence(ctx, tx, j); err != nil {
 		return err
 	}
@@ -184,6 +192,69 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'report',1) ON CONFLICT DO NOTHING`, j.RunID)
 	} else {
 		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code) VALUES($1,'report','skipped',1,'REPORT_DISABLED'),($1,'validate','skipped',$2,'REPORT_DISABLED') ON CONFLICT DO NOTHING`, j.RunID, s.maxAttempts("validate"))
+		if err == nil {
+			_, err = tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='partial',error_code='REPORT_DISABLED',finished_at=now() WHERE id=$1`, j.RunID)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Service) executeRevisionEvidence(ctx context.Context, tx pgx.Tx, j goJob, revisionID *string) error {
+	if revisionID == nil {
+		return fmt.Errorf("report_only run has no transcript revision")
+	}
+	rows, err := tx.Query(ctx, `SELECT segment_no,start_ms,end_ms,text_content,speaker_label
+		FROM teaching.transcript_revision_segments WHERE revision_id=$1 ORDER BY segment_no`, *revisionID)
+	if err != nil {
+		return err
+	}
+	var segments []Segment
+	for rows.Next() {
+		var seg Segment
+		if err = rows.Scan(&seg.SegmentNo, &seg.StartMS, &seg.EndMS, &seg.Text, &seg.Speaker); err != nil {
+			rows.Close()
+			return err
+		}
+		segments = append(segments, seg)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if len(segments) == 0 {
+		return s.finishWithoutReport(ctx, tx, j, "NO_TRANSCRIPT")
+	}
+	for _, seg := range segments {
+		_, err = tx.Exec(ctx, `INSERT INTO teaching.transcript_segments(run_id,session_id,segment_no,start_ms,end_ms,speaker_label,text_content)
+			VALUES($1,$2,$3,$4,$5,$6,$7)`, j.RunID, j.SessionID, seg.SegmentNo, seg.StartMS, seg.EndMS, seg.Speaker, seg.Text)
+		if err != nil {
+			return err
+		}
+		prov := map[string]any{"source_revision_id": *revisionID, "source_segment_no": seg.SegmentNo}
+		if _, err = tx.Exec(ctx, `INSERT INTO teaching.evidence_items(run_id,session_id,media_asset_id,kind,start_ms,end_ms,description,provenance)
+			VALUES($1,$2,$3,'manual',$4,$5,$6,$7)`, j.RunID, j.SessionID, j.MediaID, seg.StartMS, seg.EndMS, seg.Text, prov); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata)
+		VALUES($1,$2,$3,$4,'__result/evidence',jsonb_build_object('transcript_revision_id',$5::text))`, j.ID, j.RunID, j.SessionID, j.Token, *revisionID); err != nil {
+		return err
+	}
+	if err = s.completeGoJob(ctx, tx, j); err != nil {
+		return err
+	}
+	reportConfig, err := s.reportConfigForRun(ctx, j.RunID)
+	if err != nil {
+		return err
+	}
+	if reportConfig.Enabled {
+		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'report',1) ON CONFLICT DO NOTHING`, j.RunID)
+	} else {
+		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code) VALUES
+			($1,'report','skipped',1,'REPORT_DISABLED'),($1,'validate','skipped',$2,'REPORT_DISABLED') ON CONFLICT DO NOTHING`, j.RunID, s.maxAttempts("validate"))
 		if err == nil {
 			_, err = tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='partial',error_code='REPORT_DISABLED',finished_at=now() WHERE id=$1`, j.RunID)
 		}
@@ -665,6 +736,9 @@ func (s *Service) executeValidate(ctx context.Context, j goJob) error {
 				return err
 			}
 		}
+	}
+	if err = s.refreshReportDigest(ctx, tx, reportID); err != nil {
+		return err
 	}
 	if err = s.completeGoJob(ctx, tx, j); err != nil {
 		return err

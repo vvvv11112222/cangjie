@@ -86,6 +86,8 @@ Invoke-RestMethod http://127.0.0.1:8080/health/ready
 
 音视频任务终态后，Go 会保存不可变转写快照、建立同批次时间证据，并在外部处理许可和报告配置有效时调用兼容 Chat Completions 的报告模型。实际发送的证据清单和摘要先持久化；模型候选只有通过六维结构、时间范围和引用归属校验后才成为可读取草稿。模型未配置、无有效转写或证据不足时批次明确以受限状态收口，不补造结论。该能力提供 M1 固定样例联调所需后端入口；前端、Worker 和真实授权课堂样本的跨模块验收仍未完成，因此不代表 M1 或 M2 已完成。
 
+后端还提供不可变的人工转写修订与 `report_only` 重跑，以及报告复制、编辑、逐条复核、整篇确认、发布和撤回接口。转写与报告写入均检查版本锁；竞争发布还会比较调用方预期的当前发布版。发布要求督导或系统管理员权限、六维结构完整、事实证据仍可用且所有保留观察已复核。旧转写、旧证据关系和旧报告不会被新修订覆盖。以上是 M3 的后端能力，前端复核页面、跨模块联调和导出仍待验收，因此不代表 M3 已完成。
+
 需要四种角色的本地联调账号时，在 development/test 环境运行：
 
 ```powershell
@@ -149,13 +151,13 @@ node tools/check_prototype.mjs
 `frontend/` 为 React 19 + Vite + TypeScript 工程。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`），三个页面统一经 `frontend/src/data/` 的数据访问层取数，不再各自读样例文件：
 
 - **默认读取 `contracts/examples` 固定样例**，不依赖后端，克隆仓库即可离线打开；
-- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/reports/{id}`；人工转写修订接口将在复核与发布能力中接入；
+- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/reports/{id}`；后端已提供人工转写修订、复核与发布接口，前端数据层尚未接入这些写操作；
 - 统一按协议处理 `{data,request_id}`、`{error:{code,message,details}}` 与列表 `{items,next_cursor}`，错误码映射为页面中文提示；
 - 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`；页面展示的操作以各资源返回的 `allowed_actions` 为准（服务端逐次授权），账号级能力只在账号区展示。
 - 接口模式下未登录不发业务数据请求（页面提示先登录）；确认退出或换账号后清空上一个账号的数据及分页进度，迟到的旧响应会被丢弃。初始化、登录和退出完整流程串行执行；请求中同步拦截重复操作。退出失败保留账号并清除旧 CSRF，重试时重新获取；确认退出成功或会话失效后立即显示匿名，不等待令牌预取。
 - 课堂列表通过“加载更多”继续读取游标，空页仍可继续，失败保留已有课堂并提供重试。转写与报告每轮最多查找 10 页；草稿每轮最多检查 20 个批次，达到预算后显示“继续查找”，保留页内位置和后续游标。报告在当前页优先选择发布版，再查询最新批次的草稿；只有全部查完才提示无结果，循环游标与接口读取失败各自保留真实错误。
 
-样例或接口数据之间的引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）仍在页面“样例数据核对”中显式列出，不拼成虚假链路。`/sessions`、`/analysis-runs`、`/results` 和通过校验的 `/reports` 已有真实后端读取入口；人工转写修订、报告复核和发布尚未进入当前联调范围。
+样例或接口数据之间的引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）仍在页面“样例数据核对”中显式列出，不拼成虚假链路。`/sessions`、`/analysis-runs`、`/results` 和通过校验的 `/reports` 已有真实后端读取入口；人工转写修订、报告复核和发布已有后端接口，但尚未进入当前前端联调范围。
 
 ```powershell
 cd frontend

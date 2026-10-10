@@ -24,11 +24,13 @@ import (
 const pipelineVersion = "p0-v1"
 
 type snapshot struct {
-	StagePlan   []string             `json:"stage_plan"`
-	Parameters  Parameters           `json:"parameters"`
-	Executions  map[string]Execution `json:"executions"`
-	MediaLimits mediaLimits          `json:"media_limits"`
-	Report      reportSnapshot       `json:"report"`
+	StagePlan               []string             `json:"stage_plan"`
+	Parameters              Parameters           `json:"parameters"`
+	Executions              map[string]Execution `json:"executions"`
+	InputTranscriptRevision *string              `json:"input_transcript_revision_id,omitempty"`
+	InputTranscriptSHA256   *string              `json:"input_transcript_sha256,omitempty"`
+	MediaLimits             mediaLimits          `json:"media_limits"`
+	Report                  reportSnapshot       `json:"report"`
 }
 
 type mediaLimits struct {
@@ -65,11 +67,11 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	if sessionID == "" || in.MediaAssetID == "" || len(key) < 1 || len(key) > 128 || !printableASCII(key) || in.ConfigProfile != pipelineVersion {
 		return Run{}, false, invalid("invalid analysis request")
 	}
-	if in.Mode != "full" && in.Mode != "media_prepare" {
-		return Run{}, false, invalid("phase 4 supports full and media_prepare runs")
+	if in.Mode != "full" && in.Mode != "media_prepare" && in.Mode != "report_only" {
+		return Run{}, false, invalid("mode is invalid")
 	}
-	if in.InputTranscriptRevision != nil {
-		return Run{}, false, invalid("input_transcript_revision_id must be null")
+	if (in.Mode == "report_only") != (in.InputTranscriptRevision != nil) {
+		return Run{}, false, invalid("report_only requires input_transcript_revision_id and other modes require null")
 	}
 	requestDigest := digestJSON(in)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -107,6 +109,9 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	if mediaKind != "source" || (mediaStatus != "pending" && mediaStatus != "ready") {
 		return Run{}, false, state("media is not eligible for analysis")
 	}
+	if in.Mode == "report_only" && mediaStatus != "ready" {
+		return Run{}, false, state("report_only requires ready media")
+	}
 	needed := "analysis"
 	if in.Mode == "media_prepare" {
 		needed = "playback"
@@ -142,21 +147,42 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 		}
 	}
 
+	var revisionSHA *string
+	if in.Mode == "report_only" {
+		var value string
+		err = tx.QueryRow(ctx, `SELECT content_sha256 FROM teaching.transcript_revisions
+			WHERE id=$1 AND session_id=$2 AND media_asset_id=$3`, *in.InputTranscriptRevision, sessionID, in.MediaAssetID).Scan(&value)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Run{}, false, invalid("input transcript revision does not belong to this classroom media")
+		}
+		if err != nil {
+			return Run{}, false, err
+		}
+		revisionSHA = &value
+	}
 	snap := s.newSnapshot(in.Mode)
+	snap.InputTranscriptRevision = in.InputTranscriptRevision
+	snap.InputTranscriptSHA256 = revisionSHA
 	snapshotJSON, _ := json.Marshal(snap)
 	configHash := digestBytes(snapshotJSON)
 	var runID string
 	err = tx.QueryRow(ctx, `INSERT INTO teaching.analysis_runs(session_id,media_asset_id,requested_by,idempotency_key,
-		input_sha256,config_hash,pipeline_version,config_snapshot,mode,request_sha256)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id::text`, sessionID, in.MediaAssetID, p.UserID, key,
-		inputSHA, configHash, pipelineVersion, snapshotJSON, in.Mode, requestDigest).Scan(&runID)
+		input_sha256,config_hash,pipeline_version,config_snapshot,mode,input_transcript_revision_id,request_sha256)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id::text`, sessionID, in.MediaAssetID, p.UserID, key,
+		inputSHA, configHash, pipelineVersion, snapshotJSON, in.Mode, in.InputTranscriptRevision, requestDigest).Scan(&runID)
 	if err != nil {
 		if isUnique(err) {
 			return Run{}, false, state("an equivalent analysis is already active")
 		}
 		return Run{}, false, err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'probe',$2)`, runID, s.cfg.MediaJobAttempts)
+	if in.Mode == "report_only" {
+		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code) VALUES
+			($1,'probe','skipped',$2,'FIXED_TRANSCRIPT'),($1,'audio_analysis','skipped',$2,'FIXED_TRANSCRIPT'),
+			($1,'video_analysis','skipped',$2,'FIXED_TRANSCRIPT'),($1,'evidence','queued',$2,NULL)`, runID, s.cfg.MediaJobAttempts)
+	} else {
+		_, err = tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'probe',$2)`, runID, s.cfg.MediaJobAttempts)
+	}
 	if err != nil {
 		return Run{}, false, err
 	}
@@ -454,7 +480,8 @@ func (s *Service) lockActiveJob(ctx context.Context, tx pgx.Tx, jobID, token str
 	v := lockedJob{Token: token}
 	var status, runStatus, sessionStatus, rights string
 	var lease, timeContent, timeMedia time.Time
-	var uses, snapshotJSON []byte
+	var uses []byte
+	var snapshotJSON []byte
 	err := tx.QueryRow(ctx, `SELECT r.id::text,r.session_id::text,r.media_asset_id::text,j.stage,r.mode,j.status,r.status,ls.status,
 		j.lease_expires_at,j.execution_deadline_at,ls.content_expires_at,m.expires_at,ls.storage_generation,src.id::text,src.rights_status,src.allowed_uses,r.config_snapshot
 		FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
@@ -841,6 +868,25 @@ func (s *Service) Results(ctx context.Context, p identity.Principal, runID strin
 	}
 	if err := rows.Err(); err != nil {
 		return Results{}, err
+	}
+	if len(out.Segments) == 0 && run.Mode == "report_only" {
+		segmentRows, queryErr := s.pool.Query(ctx, `SELECT segment_no,start_ms,end_ms,text_content,speaker_label
+			FROM teaching.transcript_segments WHERE run_id=$1 ORDER BY segment_no`, runID)
+		if queryErr != nil {
+			return Results{}, queryErr
+		}
+		for segmentRows.Next() {
+			var segment Segment
+			if queryErr = segmentRows.Scan(&segment.SegmentNo, &segment.StartMS, &segment.EndMS, &segment.Text, &segment.Speaker); queryErr != nil {
+				segmentRows.Close()
+				return Results{}, queryErr
+			}
+			out.Segments = append(out.Segments, segment)
+		}
+		segmentRows.Close()
+		if queryErr = segmentRows.Err(); queryErr != nil {
+			return Results{}, queryErr
+		}
 	}
 	var revisionID *string
 	_ = s.pool.QueryRow(ctx, `SELECT metadata->>'transcript_revision_id' FROM teaching.job_artifacts WHERE run_id=$1 AND artifact_key='__result/evidence'`, runID).Scan(&revisionID)
@@ -1579,6 +1625,9 @@ func forbidden() error {
 	return apperror.New(http.StatusForbidden, "FORBIDDEN", "operation is not permitted")
 }
 func state(message string) error { return apperror.New(http.StatusConflict, "INVALID_STATE", message) }
+func revisionConflict() error {
+	return apperror.New(http.StatusConflict, "REVISION_CONFLICT", "resource version is stale")
+}
 func expired() error {
 	return apperror.New(http.StatusGone, "RESOURCE_EXPIRED", "resource has expired")
 }

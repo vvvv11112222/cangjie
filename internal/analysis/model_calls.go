@@ -106,7 +106,7 @@ func (s *Service) ReconcileModelCall(ctx context.Context, p identity.Principal, 
 		return ModelCall{}, err
 	}
 	if lockVersion != in.LockVersion {
-		return ModelCall{}, apperror.New(http.StatusConflict, "REVISION_CONFLICT", "resource was modified concurrently")
+		return ModelCall{}, revisionConflict()
 	}
 	if status != "unknown" && !overReservationPending {
 		return ModelCall{}, apperror.New(http.StatusConflict, "INVALID_STATE", "only unknown or unreviewed over-reservation model calls can be reconciled")
