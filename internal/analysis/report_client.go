@@ -57,7 +57,15 @@ func buildReportRequest(input modelInput, config reportSnapshot) ([]byte, error)
 			{"role": "user", "content": mustJSON(input)},
 		},
 	}
-	return json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	maxBytes := int64(config.MaxInputTokens) * 8
+	if config.MaxInputTokens <= 0 || int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("complete report prompt exceeds configured input limit")
+	}
+	return body, nil
 }
 
 func (s *Service) callReportModel(ctx context.Context, body []byte) (modelCallResult, error) {
