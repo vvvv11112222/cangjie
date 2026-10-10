@@ -125,6 +125,39 @@ def test_real_http_and_spawned_worker(source, settings):
         server.server_close()
 
 
+def test_parent_heartbeats_never_rewrite_child_cleanup_marker(source, settings, monkeypatch):
+    claim = make_claim(settings, source)
+    fake = FakeGo(source, claim)
+    server = fake.server()
+    original_write = Path.write_text
+    heartbeat_count = []
+    try:
+        configured = replace(settings, api_base=f"http://127.0.0.1:{server.server_port}/internal/v1",
+                             heartbeat_seconds=.01)
+        runner = Runner(configured)
+        original_heartbeat = runner.transport.heartbeat
+        def heartbeat(*args, **kwargs):
+            heartbeat_count.append(1)
+            return original_heartbeat(*args, **kwargs)
+        def reject_parent_marker(path, *args, **kwargs):
+            if path.name == "lease.deadline":
+                raise FileNotFoundError("child completed and deleted the directory during renewal")
+            return original_write(path, *args, **kwargs)
+        # Spawned children import a fresh module; this interception affects only the parent.
+        monkeypatch.setattr(Path, "write_text", reject_parent_marker)
+        monkeypatch.setattr(runner.transport, "heartbeat", heartbeat)
+        try:
+            assert runner.run_claim(claim) == "succeeded"
+        finally:
+            runner.transport.close()
+        assert len(heartbeat_count) >= 2
+        assert len(fake.complete_bytes) == 1 and not fake.failures
+        assert not scratch_path(settings.temp_root, claim).exists()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_cleanup_containment_and_expired_marker(source, settings, tmp_path):
     claim = make_claim(settings, source)
     directory = scratch_path(settings.temp_root, claim)

@@ -82,7 +82,8 @@ class Runner:
                     try:
                         result = self.transport.heartbeat(claim, guard.progress.value, guard)
                         guard.expires.value = epoch(result["lease_expires_at"])
-                        (directory / "lease.deadline").write_text(str(guard.deadline), encoding="utf-8") if directory.exists() else None
+                        # The child writes the immutable hard deadline once. It may clean up
+                        # immediately after completion; never rewrite files during renewal.
                     except httpx.TransportError:
                         # Keep the last acknowledged expiry; never assume a renewed lease.
                         LOG.warning("job=%s heartbeat unreachable", claim["job_id"])
