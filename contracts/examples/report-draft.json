@@ -79,7 +79,7 @@
   "summary_evidence_ids": [
     "00000000-0000-4000-8000-000000000005"
   ],
-  "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+  "content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
   "reviewed_content_sha256": null,
   "reviewed_by": null,
   "reviewed_at": null,
@@ -93,6 +93,7 @@
     },
     "prompt_version": "p0-v1",
     "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "selection_version": "time-window-v1",
     "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
     "coverage": [
       {

@@ -28,6 +28,7 @@ type snapshot struct {
 	Parameters  Parameters           `json:"parameters"`
 	Executions  map[string]Execution `json:"executions"`
 	MediaLimits mediaLimits          `json:"media_limits"`
+	Report      reportSnapshot       `json:"report"`
 }
 
 type mediaLimits struct {
@@ -35,7 +36,28 @@ type mediaLimits struct {
 	MaxVideoHeight int   `json:"max_video_height"`
 }
 
+type reportSnapshot struct {
+	Enabled           bool   `json:"enabled"`
+	Model             Model  `json:"model"`
+	PromptVersion     string `json:"prompt_version"`
+	PromptSHA256      string `json:"prompt_sha256"`
+	SelectionVersion  string `json:"selection_version"`
+	SystemPrompt      string `json:"system_prompt"`
+	MaxInputTokens    int    `json:"max_input_tokens"`
+	MaxOutputTokens   int    `json:"max_output_tokens"`
+	PriceVersion      string `json:"price_version"`
+	Currency          string `json:"currency"`
+	InputPriceMicros  int64  `json:"input_price_micros"`
+	OutputPriceMicros int64  `json:"output_price_micros"`
+}
+
 func NewService(pool *pgxpool.Pool, store storage.Backend, cfg Config) *Service {
+	if cfg.GoStageTimeout <= 0 {
+		cfg.GoStageTimeout = 5 * time.Minute
+	}
+	if cfg.ReportTimeout <= 0 {
+		cfg.ReportTimeout = 180 * time.Second
+	}
 	return &Service{pool: pool, store: store, cfg: cfg}
 }
 
@@ -109,6 +131,16 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, false, err
 	}
+	if in.Mode == "full" || in.Mode == "report_only" {
+		var unresolved bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls mc JOIN teaching.analysis_runs r ON r.id=mc.run_id
+			WHERE r.session_id=$1 AND mc.dispatch_started_at IS NOT NULL AND mc.status IN('reserved','unknown'))`, sessionID).Scan(&unresolved); err != nil {
+			return Run{}, false, err
+		}
+		if unresolved {
+			return Run{}, false, apperror.New(http.StatusConflict, "INVALID_STATE", "classroom has an unresolved model call requiring administrator reconciliation")
+		}
+	}
 
 	snap := s.newSnapshot(in.Mode)
 	snapshotJSON, _ := json.Marshal(snap)
@@ -141,10 +173,11 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Run
 	var teacher, college string
 	err := s.pool.QueryRow(ctx, `SELECT r.id::text,r.session_id::text,r.media_asset_id::text,r.mode,
 		r.input_transcript_revision_id::text,r.status,r.error_code,r.config_snapshot,
+		(SELECT id::text FROM teaching.reports WHERE run_id=r.id ORDER BY revision DESC LIMIT 1),
 		o.teacher_id::text,teaching.college_of(o.org_unit_id)::text
 		FROM teaching.analysis_runs r JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
 		JOIN teaching.course_offerings o ON o.id=ls.offering_id WHERE r.id=$1`, id).
-		Scan(&run.ID, &run.SessionID, &run.MediaAssetID, &run.Mode, &run.InputTranscriptRevisionID, &run.Status, &run.ErrorCode, &snapshotJSON, &teacher, &college)
+		Scan(&run.ID, &run.SessionID, &run.MediaAssetID, &run.Mode, &run.InputTranscriptRevisionID, &run.Status, &run.ErrorCode, &snapshotJSON, &run.ReportID, &teacher, &college)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, notFound()
 	}
@@ -806,7 +839,28 @@ func (s *Service) Results(ctx context.Context, p identity.Principal, runID strin
 			}
 		}
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return Results{}, err
+	}
+	var revisionID *string
+	_ = s.pool.QueryRow(ctx, `SELECT metadata->>'transcript_revision_id' FROM teaching.job_artifacts WHERE run_id=$1 AND artifact_key='__result/evidence'`, runID).Scan(&revisionID)
+	out.TranscriptRevisionID = revisionID
+	evidenceRows, err := s.pool.Query(ctx, `SELECT id::text,run_id::text,session_id::text,media_asset_id::text,kind,start_ms,end_ms,
+		transcript_segment_id::text,frame_asset_id::text,availability,description,provenance
+		FROM teaching.evidence_items WHERE run_id=$1 ORDER BY start_ms,id`, runID)
+	if err != nil {
+		return Results{}, err
+	}
+	defer evidenceRows.Close()
+	for evidenceRows.Next() {
+		var value Evidence
+		if err = evidenceRows.Scan(&value.ID, &value.RunID, &value.SessionID, &value.MediaAssetID, &value.Kind, &value.StartMS, &value.EndMS, &value.TranscriptSegmentID, &value.FrameAssetID, &value.Availability, &value.Description, &value.Provenance); err != nil {
+			return Results{}, err
+		}
+		raw, _ := json.Marshal(value)
+		out.Evidence = append(out.Evidence, raw)
+	}
+	return out, evidenceRows.Err()
 }
 
 func (s *Service) requireRunContentReadable(ctx context.Context, runID string, requireMediaCurrent bool) error {
@@ -830,6 +884,23 @@ func (s *Service) requireRunContentReadable(ctx context.Context, runID string, r
 	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, requiredUse, requireMediaCurrent)
 }
 
+func (s *Service) requireSessionMediaContentReadable(ctx context.Context, sessionID, mediaID string, requireMediaCurrent bool) error {
+	var sessionStatus, rights string
+	var contentExpires, mediaExpires time.Time
+	var uses []byte
+	err := s.pool.QueryRow(ctx, `SELECT ls.status,ls.content_expires_at,m.expires_at,src.rights_status,src.allowed_uses
+		FROM teaching.lesson_sessions ls JOIN teaching.media_assets m ON m.session_id=ls.id AND m.id=$2
+		JOIN teaching.source_records src ON src.id=m.source_record_id WHERE ls.id=$1`, sessionID, mediaID).
+		Scan(&sessionStatus, &contentExpires, &mediaExpires, &rights, &uses)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err != nil {
+		return err
+	}
+	return contentLifecycleError(sessionStatus, contentExpires, mediaExpires, rights, uses, "analysis", requireMediaCurrent)
+}
+
 func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires time.Time, rights string, uses []byte, requiredUse string, requireMediaCurrent bool) error {
 	if sessionStatus == "deleting" || sessionStatus == "deleted" {
 		return state("classroom content is unavailable")
@@ -844,6 +915,10 @@ func contentLifecycleError(sessionStatus string, contentExpires, mediaExpires ti
 }
 
 func (s *Service) ReapExpired(ctx context.Context) (int, error) {
+	recovered, err := s.recoverOrphanedModelCalls(ctx)
+	if err != nil {
+		return 0, err
+	}
 	ineligible, err := s.finalizeIneligible(ctx)
 	if err != nil {
 		return 0, err
@@ -865,7 +940,7 @@ func (s *Service) ReapExpired(ctx context.Context) (int, error) {
 	if err = rows.Err(); err != nil {
 		return 0, err
 	}
-	count := ineligible
+	count := ineligible + int(recovered)
 	for _, p := range pairs {
 		if err = s.reapOne(ctx, p[0], p[1]); err != nil {
 			var app *apperror.Error
@@ -994,7 +1069,15 @@ func (s *Service) reapOne(ctx context.Context, jobID, token string) error {
 	} else {
 		_, err = tx.Exec(ctx, `UPDATE teaching.analysis_jobs SET status='failed',worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,execution_deadline_at=NULL,expected_execution_sha256=NULL,error_code='JOB_TIMEOUT',error_detail='final attempt expired',updated_at=now() WHERE id=$1`, jobID)
 		if err == nil {
-			if state.Stage == "probe" {
+			if state.Stage == "report" {
+				_, err = tx.Exec(ctx, `UPDATE teaching.model_calls SET status='unknown' WHERE job_id=$1 AND dispatch_started_at IS NOT NULL AND status='reserved'`, jobID)
+			}
+			if err != nil {
+				return err
+			}
+			if state.Stage == "evidence" || state.Stage == "report" || state.Stage == "validate" {
+				err = s.finishGoStageFailure(ctx, tx, state.RunID, state.Stage, "JOB_TIMEOUT")
+			} else if state.Stage == "probe" {
 				err = s.failAfterProbe(ctx, tx, state.RunID, "JOB_TIMEOUT")
 			} else {
 				err = s.advance(ctx, tx, state, resultEnvelope{Stage: state.Stage})
@@ -1011,6 +1094,19 @@ func (s *Service) reapOne(ctx context.Context, jobID, token string) error {
 		_ = s.store.Remove(key)
 	}
 	return nil
+}
+
+func (s *Service) finishGoStageFailure(ctx context.Context, tx pgx.Tx, runID, failedStage, code string) error {
+	for _, stage := range []string{"report", "validate"} {
+		if stage == failedStage {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code) VALUES($1,$2,'skipped',$3,'DEPENDENCY_FAILED') ON CONFLICT DO NOTHING`, runID, stage, s.maxAttempts(stage)); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='partial',error_code=$2,finished_at=now() WHERE id=$1`, runID, code)
+	return err
 }
 
 func (s *Service) removeLeaseArtifacts(ctx context.Context, tx pgx.Tx, jobID, token string) ([]string, error) {
@@ -1251,29 +1347,13 @@ func (s *Service) advance(ctx context.Context, tx pgx.Tx, state lockedJob, envel
 		if remaining > 0 {
 			return nil
 		}
-		return s.finishPhaseFour(ctx, tx, state.RunID)
+		return s.startEvidence(ctx, tx, state.RunID)
 	}
 	return nil
 }
 
-func (s *Service) finishPhaseFour(ctx context.Context, tx pgx.Tx, runID string) error {
-	for _, stage := range []string{"evidence", "report", "validate"} {
-		_, err := tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code) VALUES($1,$2,'skipped',$3,'PHASE_5_PENDING') ON CONFLICT DO NOTHING`, runID, stage, s.maxAttempts(stage))
-		if err != nil {
-			return err
-		}
-	}
-	var probeStatus string
-	if err := tx.QueryRow(ctx, `SELECT status FROM teaching.analysis_jobs WHERE run_id=$1 AND stage='probe'`, runID).Scan(&probeStatus); err != nil {
-		return err
-	}
-	status := "partial"
-	code := "PHASE_5_PENDING"
-	if probeStatus == "failed" {
-		status = "failed"
-		code = "PROBE_FAILED"
-	}
-	_, err := tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status=$2,error_code=$3,finished_at=now() WHERE id=$1`, runID, status, code)
+func (s *Service) startEvidence(ctx context.Context, tx pgx.Tx, runID string) error {
+	_, err := tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'evidence',$2) ON CONFLICT DO NOTHING`, runID, s.maxAttempts("evidence"))
 	return err
 }
 
@@ -1301,7 +1381,27 @@ func (s *Service) newSnapshot(mode string) snapshot {
 		plan = []string{"probe"}
 	}
 	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
-		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight}}
+		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},
+		Report: reportSnapshot{Enabled: s.cfg.ReportEnabled, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision},
+			PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion,
+			SystemPrompt: reportSystemPrompt, MaxInputTokens: s.cfg.ReportMaxInputTokens, MaxOutputTokens: s.cfg.ReportMaxOutputTokens,
+			PriceVersion: s.cfg.ReportPriceVersion, Currency: s.cfg.ReportBudgetCurrency,
+			InputPriceMicros: s.cfg.ReportInputPriceMicros, OutputPriceMicros: s.cfg.ReportOutputPriceMicros}}
+}
+
+func (s *Service) reportConfigForRun(ctx context.Context, runID string) (reportSnapshot, error) {
+	var raw []byte
+	if err := s.pool.QueryRow(ctx, `SELECT config_snapshot FROM teaching.analysis_runs WHERE id=$1`, runID).Scan(&raw); err != nil {
+		return reportSnapshot{}, err
+	}
+	var snap snapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return reportSnapshot{}, err
+	}
+	if snap.Report.Enabled && (snap.Report.Model.Name == "" || snap.Report.Model.Revision == "" || snap.Report.SystemPrompt == "" || snap.Report.MaxInputTokens <= 0 || snap.Report.MaxOutputTokens <= 0) {
+		return reportSnapshot{}, fmt.Errorf("analysis run is missing pinned report configuration")
+	}
+	return snap.Report, nil
 }
 
 func (s *Service) timeout(stage string) time.Duration {
@@ -1341,6 +1441,13 @@ func digestJSON(value any) string {
 	return digestBytes(bytes.TrimSuffix(body.Bytes(), []byte{'\n'}))
 }
 func digestBytes(raw []byte) string { sum := sha256.Sum256(raw); return hex.EncodeToString(sum[:]) }
+func canonicalDigest(value any) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(value)
+	return digestBytes(bytes.TrimSuffix(buf.Bytes(), []byte{'\n'}))
+}
 func printableASCII(v string) bool {
 	for _, c := range v {
 		if c < 0x20 || c > 0x7e {

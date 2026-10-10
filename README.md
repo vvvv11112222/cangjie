@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 前端 | [开发协议](docs/开发协议.md)、[接口样例](contracts/examples/manifest.json) | 用固定样例显示任务、转写和报告 |
 | 后端 | 开发协议、[数据库设计](docs/数据库设计.md) | Go API、任务流转和权限校验 |
-| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)、[002](database/002_review_baseline.sql)、[003](database/003_review_fixes.sql) | 初始化、迁移及约束检查 |
+| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[005](database/005_reporting_runtime.sql) | 初始化、迁移及约束检查 |
 | 音频 | 开发协议第3节、audio-result 样例 | Worker 公共入口和带时间戳转写 |
 | 视频 | 开发协议第3节、probe-result/video-result 样例 | 媒体检查、播放代理和关键帧 |
 
@@ -21,7 +21,7 @@
 - [AGENTS.md](AGENTS.md)：Codex 的仓库开发约定，包含按任务查阅文档、模块边界、验证及协作规则。
 - `docs/`：架构、协议、数据库、验收计划。
 - `contracts/v1.schema.json`、[端点映射](contracts/endpoints.json)与 `contracts/examples/`：契约1.1及联调样例；api-cases.json 中每个 value 是独立 DTO，按 definition 选择。前端和 Worker 须同步更新，不能混用1.0结果。
-- `database/`：迁移和约束验证；新库依次执行001、002、003，旧库只执行未应用迁移。
+- `database/`：迁移和约束验证；新库按编号依次执行001～005，旧库只执行未应用迁移。
 - `tools/`：文档/协议检查、隔离数据库检查。
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
 
@@ -30,7 +30,7 @@
 后端使用 Go 1.26 系列和 PostgreSQL 17。当前已提供：
 
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
-- `cmd/migrate`：按文件名顺序执行 `database/001`～`004`，记录并校验迁移摘要；
+- `cmd/migrate`：按文件名顺序执行 `database/001`～`005`，记录并校验迁移摘要；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；
@@ -82,7 +82,9 @@ Invoke-RestMethod http://127.0.0.1:8080/health/ready
 
 浏览器业务接口使用 `/api/v1` 前缀。先请求 `GET /api/v1/auth/csrf`，再以返回的 token 作为 `X-CSRF-Token` 调用登录；所有写请求还须携带与 `PUBLIC_ORIGIN` 完全一致的 `Origin`。登录成功后服务端轮换为 HttpOnly、SameSite=Lax 的会话 Cookie，HTTPS 环境自动启用 Secure。会话有效期由 `SESSION_TTL_SECONDS` 控制，禁用账号会在同一事务撤销其活动会话。
 
-为支持 M0 环境复现和 M1 固定样例联调，Go 后端已实现协议中的身份、基础教务、课表、课堂目录、来源、媒体与分析任务接口。上传完成的原媒体保持 `pending`；`media_prepare` 的 probe 成功后进入 `ready`。Worker 使用独立 Bearer 凭据，经 `/internal/v1/jobs/*` 领取任务、续租、读取输入、上传产物并提交固定 JSON 结果；所有任务输入和结果都绑定当前租约、课堂存储代次及固定执行版本。服务启动和周期扫描会回收过期租约，旧 token 不能写入，重复完成只接受完全相同的原始 JSON。阶段 5 尚未实现的 evidence/report/validate 会明确标记为 `skipped`，full 批次以 `partial` 收口，不会伪装成完整报告链路。
+为支持 M0 环境复现和 M1 固定样例联调，Go 后端已实现协议中的身份、基础教务、课表、课堂目录、来源、媒体与分析任务接口。上传完成的原媒体保持 `pending`；`media_prepare` 的 probe 成功后进入 `ready`。Worker 使用独立 Bearer 凭据，经 `/internal/v1/jobs/*` 领取任务、续租、读取输入、上传产物并提交固定 JSON 结果；所有任务输入和结果都绑定当前租约、课堂存储代次及固定执行版本。服务启动和周期扫描会回收过期租约，旧 token 不能写入，重复完成只接受完全相同的原始 JSON。
+
+音视频任务终态后，Go 会保存不可变转写快照、建立同批次时间证据，并在外部处理许可和报告配置有效时调用兼容 Chat Completions 的报告模型。实际发送的证据清单和摘要先持久化；模型候选只有通过六维结构、时间范围和引用归属校验后才成为可读取草稿。模型未配置、无有效转写或证据不足时批次明确以受限状态收口，不补造结论。该能力提供 M1 固定样例联调所需后端入口；前端、Worker 和真实授权课堂样本的跨模块验收仍未完成，因此不代表 M1 或 M2 已完成。
 
 需要四种角色的本地联调账号时，在 development/test 环境运行：
 
@@ -147,13 +149,13 @@ node tools/check_prototype.mjs
 `frontend/` 为 React 19 + Vite + TypeScript 工程。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`），三个页面统一经 `frontend/src/data/` 的数据访问层取数，不再各自读样例文件：
 
 - **默认读取 `contracts/examples` 固定样例**，不依赖后端，克隆仓库即可离线打开；
-- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getRevision`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/transcript-revisions/{id}`、`/reports/{id}`；
+- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/reports/{id}`；人工转写修订接口将在复核与发布能力中接入；
 - 统一按协议处理 `{data,request_id}`、`{error:{code,message,details}}` 与列表 `{items,next_cursor}`，错误码映射为页面中文提示；
 - 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`；页面展示的操作以各资源返回的 `allowed_actions` 为准（服务端逐次授权），账号级能力只在账号区展示。
 - 接口模式下未登录不发业务数据请求（页面提示先登录）；确认退出或换账号后清空上一个账号的数据及分页进度，迟到的旧响应会被丢弃。初始化、登录和退出完整流程串行执行；请求中同步拦截重复操作。退出失败保留账号并清除旧 CSRF，重试时重新获取；确认退出成功或会话失效后立即显示匿名，不等待令牌预取。
 - 课堂列表通过“加载更多”继续读取游标，空页仍可继续，失败保留已有课堂并提供重试。转写与报告每轮最多查找 10 页；草稿每轮最多检查 20 个批次，达到预算后显示“继续查找”，保留页内位置和后续游标。报告在当前页优先选择发布版，再查询最新批次的草稿；只有全部查完才提示无结果，循环游标与接口读取失败各自保留真实错误。
 
-样例或接口数据之间的引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）仍在页面“样例数据核对”中显式列出，不拼成虚假链路。`/sessions` 已实现真实目录读取、创建、编辑与归档；`/analysis-runs`、`/results`、`/transcript-revisions`、`/reports` 后端尚未实现，接口模式下这些入口显示可读的 NOT_FOUND 提示，不回落到假数据。
+样例或接口数据之间的引用不一致（例如 `run-partial` 与 `results` 的批次状态、报告溯源引用的修订）仍在页面“样例数据核对”中显式列出，不拼成虚假链路。`/sessions`、`/analysis-runs`、`/results` 和通过校验的 `/reports` 已有真实后端读取入口；人工转写修订、报告复核和发布尚未进入当前联调范围。
 
 ```powershell
 cd frontend

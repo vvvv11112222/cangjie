@@ -774,7 +774,7 @@
       "lock_version": 1,
       "action": "confirm_report",
       "observation_id": null,
-      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
       "reason": "Reviewed all text, references and coverage"
     }
   },
@@ -1284,7 +1284,7 @@
         }
       ],
       "summary_evidence_ids": [],
-      "content_sha256": "6a1a5c57f05e496f9b56c7ee99ce01695d4641a9d005eacca2cbdf1ee2a7dc18",
+      "content_sha256": "a1e584cc8ce18f17788b5248e252fb2e4e765a003b3dfbbea1767619305ead90",
       "reviewed_content_sha256": null,
       "reviewed_by": null,
       "reviewed_at": null,
@@ -1298,6 +1298,7 @@
         },
         "prompt_version": "p0-v1",
         "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "selection_version": "time-window-v1",
         "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "coverage": [
           {
@@ -1408,7 +1409,7 @@
       "summary_evidence_ids": [
         "00000000-0000-4000-8000-000000000005"
       ],
-      "content_sha256": "f92b6dd66104f88011c6c8654a1ec493721657c10b8e94ca1828b40901c6a4a5",
+      "content_sha256": "1029fcc28acd640ab3713c41798f17104d8e2a9e0fc303002f2436bed0f427dd",
       "reviewed_content_sha256": null,
       "reviewed_by": null,
       "reviewed_at": null,
@@ -1422,6 +1423,7 @@
         },
         "prompt_version": "p0-v1",
         "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "selection_version": "time-window-v1",
         "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "coverage": [
           {
@@ -1532,7 +1534,7 @@
       "summary_evidence_ids": [
         "00000000-0000-4000-8000-000000000005"
       ],
-      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
       "reviewed_content_sha256": null,
       "reviewed_by": null,
       "reviewed_at": null,
@@ -1546,6 +1548,7 @@
         },
         "prompt_version": "p0-v1",
         "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "selection_version": "time-window-v1",
         "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "coverage": [
           {
@@ -1656,7 +1659,7 @@
       "summary_evidence_ids": [
         "00000000-0000-4000-8000-000000000005"
       ],
-      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
       "reviewed_content_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "reviewed_by": "00000000-0000-4000-8000-000000000010",
       "reviewed_at": "2026-10-03T10:00:00+08:00",
@@ -1670,6 +1673,7 @@
         },
         "prompt_version": "p0-v1",
         "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "selection_version": "time-window-v1",
         "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "coverage": [
           {
@@ -2125,6 +2129,7 @@
       "prompt_version": "synthetic",
       "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "selection_version": "synthetic",
+      "limitations": [],
       "course_context": {
         "course_name": "synthetic",
         "session_title": "synthetic"
@@ -2166,6 +2171,7 @@
       "prompt_version": "synthetic",
       "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "selection_version": "synthetic",
+      "limitations": [],
       "course_context": {
         "course_name": "synthetic",
         "session_title": "synthetic"
@@ -2370,8 +2376,8 @@
       "summary_evidence_ids": [
         "00000000-0000-4000-8000-000000000005"
       ],
-      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
-      "reviewed_content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
+      "reviewed_content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
       "reviewed_by": "00000000-0000-4000-8000-000000000010",
       "reviewed_at": "2026-10-03T10:00:00+08:00",
       "provenance": {
@@ -2384,6 +2390,7 @@
         },
         "prompt_version": "p0-v1",
         "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "selection_version": "time-window-v1",
         "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "coverage": [
           {
@@ -2495,8 +2502,8 @@
       "summary_evidence_ids": [
         "00000000-0000-4000-8000-000000000005"
       ],
-      "content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
-      "reviewed_content_sha256": "f73cea81a5a35022aa12022a1d7b9abd540b0a07cd5d189abd53d04480ec213b",
+      "content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
+      "reviewed_content_sha256": "17b6f6db8554aa529024379b0907bc7cace7915bd4dc8cfc13a1c785e9dc85c8",
       "reviewed_by": "00000000-0000-4000-8000-000000000010",
       "reviewed_at": "2026-10-03T10:00:00+08:00",
       "provenance": {
@@ -2509,6 +2516,7 @@
         },
         "prompt_version": "p0-v1",
         "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "selection_version": "time-window-v1",
         "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "coverage": [
           {
@@ -2673,6 +2681,69 @@
         "storage_generation": 0
       },
       "duration_ms": 600000
+    }
+  },
+  {
+    "name": "model-input-missing-limitations",
+    "definition": "ModelInput",
+    "valid": false,
+    "semantic_valid": false,
+    "value": {
+      "schema_version": "1.1",
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "media_asset_id": "00000000-0000-4000-8000-000000000001",
+      "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "transcript_revision_id": null,
+      "model": {
+        "name": "synthetic",
+        "revision": "synthetic"
+      },
+      "prompt_version": "synthetic",
+      "prompt_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "selection_version": "synthetic",
+      "course_context": {
+        "course_name": "synthetic",
+        "session_title": "synthetic"
+      },
+      "coverage": [],
+      "evidence": [
+        {
+          "id": "00000000-0000-4000-8000-000000000005",
+          "kind": "transcript",
+          "start_ms": 1000,
+          "end_ms": 5000,
+          "text_content": "Synthetic matrix lesson",
+          "text_sha256": "18003ecad00ce0c5925e010bac7297ca379666310df238ecb204d02c09a55ae4"
+        }
+      ]
+    }
+  },
+  {
+    "name": "report-provenance-missing-selection-version",
+    "definition": "ReportProvenance",
+    "valid": false,
+    "semantic_valid": false,
+    "value": {
+      "media_asset_id": "00000000-0000-4000-8000-000000000002",
+      "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "transcript_revision_id": null,
+      "model": {
+        "name": "synthetic-report",
+        "revision": "fixture-1"
+      },
+      "prompt_version": "p0-v1",
+      "prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "manifest_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "coverage": [],
+      "limitations": [],
+      "source": {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "title": "Synthetic classroom recording",
+        "attribution": "Synthetic teaching team",
+        "source_url": null,
+        "rights_version": 1
+      }
     }
   }
 ]

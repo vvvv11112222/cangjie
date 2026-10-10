@@ -1611,6 +1611,10 @@
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         },
+        "selection_version": {
+          "type": "string",
+          "minLength": 1
+        },
         "manifest_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
@@ -1676,6 +1680,7 @@
         "model",
         "prompt_version",
         "prompt_sha256",
+        "selection_version",
         "manifest_sha256",
         "coverage",
         "limitations",
@@ -4671,6 +4676,15 @@
             "$ref": "#/$defs/Interval"
           }
         },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "maxItems": 32
+        },
         "evidence": {
           "type": "array",
           "items": {
@@ -4729,6 +4743,7 @@
         "selection_version",
         "course_context",
         "coverage",
+        "limitations",
         "evidence"
       ],
       "additionalProperties": false
