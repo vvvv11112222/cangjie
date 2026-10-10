@@ -1,6 +1,7 @@
 """Reusable stage dispatch. Go owns queue/retry state; this only runs the claimed lease."""
 import logging
 import multiprocessing as mp
+from queue import Empty
 import time
 
 import httpx
@@ -103,6 +104,17 @@ class Runner:
                 raise WorkerError("PROCESSING_TIMEOUT", "媒体阶段超过本地执行时限", True)
             return result
         except LeaseLost:
+            # Go may commit complete() immediately before rejecting a racing heartbeat.
+            # Only a child that received the actual completion ACK can return success.
+            # Local expiry or an already signalled cancellation gets no grace here.
+            if process.pid is not None and not guard.event.is_set():
+                process.join(timeout=2)
+                if not process.is_alive() and process.exitcode == 0:
+                    try:
+                        if outcome.get(timeout=.2) == "succeeded":
+                            return "succeeded"
+                    except Empty:
+                        pass
             return "stopped"
         except WorkerError as error:
             try:

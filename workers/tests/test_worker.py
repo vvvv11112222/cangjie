@@ -4,7 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 import time
+import threading
 
+import httpx
 import pytest
 
 from workers.common.contracts import LeaseLost, WorkerError, validate_result
@@ -165,6 +167,42 @@ def test_parent_heartbeats_never_rewrite_child_cleanup_marker(source, settings, 
         assert len(heartbeat_count) >= 2
         assert len(fake.complete_bytes) == 1 and not fake.failures
         assert not scratch_path(settings.temp_root, claim).exists()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("completion_ack", [True, False])
+def test_completion_heartbeat_race_requires_actual_child_ack(source, settings, completion_ack):
+    claim = make_claim(settings, source)
+    fake = FakeGo(source, claim)
+    completing = threading.Event()
+    rejected_heartbeats = []
+    original_handle = fake.handle
+    def handle(request):
+        if request.url.path.endswith("/heartbeat") and completing.is_set():
+            rejected_heartbeats.append(request)
+            return httpx.Response(409)
+        if request.url.path.endswith("/complete"):
+            response = original_handle(request) if completion_ack else httpx.Response(409)
+            completing.set()
+            # Ensure the parent receives rejection before the child receives this response.
+            time.sleep(.6)
+            return response
+        return original_handle(request)
+    fake.handle = handle
+    server = fake.server()
+    try:
+        configured = replace(settings, api_base=f"http://127.0.0.1:{server.server_port}/internal/v1",
+                             heartbeat_seconds=.01)
+        runner = Runner(configured)
+        try:
+            assert runner.run_claim(claim) == ("succeeded" if completion_ack else "stopped")
+        finally:
+            runner.transport.close()
+        assert rejected_heartbeats
+        assert len(fake.complete_bytes) == (1 if completion_ack else 0)
+        assert not fake.failures and not scratch_path(settings.temp_root, claim).exists()
     finally:
         server.shutdown()
         server.server_close()
