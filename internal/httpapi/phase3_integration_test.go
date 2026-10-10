@@ -123,6 +123,7 @@ func TestPhaseThreeSourceUploadPlaybackAndAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	serverURL.Path = "/api/v1/sessions/" + sessionID + "/media"
 	cookies := teacher.Jar.Cookies(serverURL)
 	if len(cookies) == 0 {
 		t.Fatal("authenticated client has no session cookie")
@@ -137,7 +138,14 @@ func TestPhaseThreeSourceUploadPlaybackAndAuthorization(t *testing.T) {
 	if err = connection.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	requestHead := fmt.Sprintf("POST /api/v1/sessions/%s/media HTTP/1.1\r\nHost: %s\r\nContent-Type: multipart/form-data; boundary=%s\r\nContent-Length: %d\r\nOrigin: http://frontend.test\r\nX-CSRF-Token: %s\r\nCookie: %s\r\n\r\n", sessionID, serverURL.Host, boundary, len(partialBody)+1024, teacherCSRF, cookies[0].String())
+	cookieHeader := ""
+	for index, cookie := range cookies {
+		if index > 0 {
+			cookieHeader += "; "
+		}
+		cookieHeader += cookie.String()
+	}
+	requestHead := fmt.Sprintf("POST /api/v1/sessions/%s/media HTTP/1.1\r\nHost: %s\r\nContent-Type: multipart/form-data; boundary=%s\r\nContent-Length: %d\r\nOrigin: http://frontend.test\r\nX-CSRF-Token: %s\r\nCookie: %s\r\n\r\n", sessionID, serverURL.Host, boundary, len(partialBody)+1024, teacherCSRF, cookieHeader)
 	startedAt := time.Now()
 	if _, err = io.WriteString(connection, requestHead+partialBody); err != nil {
 		t.Fatal(err)
