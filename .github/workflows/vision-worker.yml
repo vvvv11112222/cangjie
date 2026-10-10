@@ -71,9 +71,17 @@ jobs:
         run: docker run --rm cangjie-video-worker:ci python -m pytest -q --basetemp=/tmp/vision-tests /app/workers/tests
 
   real-go-integration:
-    name: Real Go + PostgreSQL + video Worker
+    name: Real Go + PostgreSQL (${{ matrix.backend }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: phase4
+            ref: 8cf079edb58d8684e293519db682fd952c592d71
+          - backend: phase7
+            ref: 03de4cd2bde4909c6751063aedbde529080d6286
     services:
       postgres:
         image: postgres:17.6
@@ -97,7 +105,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: 8cf079edb58d8684e293519db682fd952c592d71 # PR 11 + canonical parameter digest fix
+          ref: ${{ matrix.ref }} # Fixed backend commits, not a moving branch
           path: var/backend-integration
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -111,6 +119,12 @@ jobs:
           cache-dependency-path: var/backend-integration/go.sum
       - name: Install locked Worker dependencies
         run: python -m pip install -r workers/requirements.lock
+      - name: Apply canonical digest fix to the latest backend
+        if: matrix.backend == 'phase7'
+        working-directory: var/backend-integration
+        run: |
+          git fetch --no-tags origin 8cf079edb58d8684e293519db682fd952c592d71
+          git cherry-pick --no-commit FETCH_HEAD
       - name: Run real backend and Worker integration
         shell: bash
         run: |

@@ -93,6 +93,16 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 			fullID := create("full","full")
 			fullProbe := work("probe",fullID)
 			videoResult := work("video_analysis",fullID)
+			// Later backend phases build business evidence in Go. Phase4 has no Go-stage executor.
+			goPipeline, hasGoPipeline := any(svc).(interface{ ProcessNextGoJob(context.Context) (bool,error) })
+			if hasGoPipeline {
+				for i:=0;i<8;i++ {
+					did,err:=goPipeline.ProcessNextGoJob(ctx)
+					if err!=nil { t.Fatal(err) }
+					if !did { break }
+					if i==7 { t.Fatal("Go pipeline did not become idle") }
+				}
+			}
 			finished := requestJSON(t,teacher,http.MethodGet,server.URL+"/api/v1/analysis-runs/"+fullID,nil,"",http.StatusOK)
 			if finished["status"] != "partial" { t.Fatalf("phase4 full status = %v",finished["status"]) }
 			for _, job := range finished["jobs"].([]any) {
@@ -111,9 +121,22 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 				if err := pool.QueryRow(ctx,`SELECT kind,byte_size FROM teaching.media_assets WHERE id=$1 AND session_id=$2 AND status='ready'`,f["asset_id"],sessionID).Scan(&kind,&size); err != nil { t.Fatal(err) }
 				if kind != "keyframe" || size <= 0 { t.Fatalf("invalid frame artifact: %s %d",kind,size) }
 			}
+			evidenceCount:=len(results["evidence"].([]any))
+			if hasGoPipeline {
+				if evidenceCount!=len(frames) || finished["report_id"]!=nil || finished["error_code"]!="NO_TRANSCRIPT" { t.Fatalf("no-audio evidence pipeline = %v %v",finished,results) }
+				for _,item:=range results["evidence"].([]any) {
+					e:=item.(map[string]any)
+					matched:=false
+					for _,frame:=range frames {
+						f:=frame.(map[string]any)
+						if e["frame_asset_id"]==f["asset_id"] && e["start_ms"]==f["timestamp_ms"] { matched=true }
+					}
+					if !matched || e["run_id"]!=fullID || e["session_id"]!=sessionID || e["availability"]!="available" { t.Fatalf("frame evidence not linked to current run = %v",e) }
+				}
+			}
 			markers,_ := filepath.Glob(filepath.Join(tmp,"scratch","*","*","lease.deadline"))
 			if len(markers) != 0 { t.Fatal("Worker did not clean up its lease directory") }
-			summary,_ := json.Marshal(map[string]any{"case":name,"media_prepare":prepareResult,"full_probe":fullProbe,"video_analysis":videoResult,"frames":len(frames),"real_go_integration":true,"backend_scope":"phase4; ASR/evidence/report not exercised"})
+			summary,_ := json.Marshal(map[string]any{"case":name,"media_prepare":prepareResult,"full_probe":fullProbe,"video_analysis":videoResult,"frames":len(frames),"evidence_count":evidenceCount,"real_go_integration":true,"go_evidence_exercised":hasGoPipeline,"asr_and_model_report_exercised":false})
 			t.Log(string(summary))
 		})
 	}
