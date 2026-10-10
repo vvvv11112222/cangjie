@@ -64,7 +64,7 @@ python -m workers run
 
 当前 Go 只配置一个 Worker 编号及能力许可集合。Go 的 `WORKER_CAPABILITIES` 保持公共模板的三个阶段；视频进程仅声明 `probe,video_analysis`，音频进程声明自身实际能力。相同凭据与编号须由后端分配，不以在视频配置中添加 `audio_analysis` 假装实现 ASR。
 
-处理器版本已更新为 `cangjie-video-worker-1.0.2`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
+处理器版本已更新为 `cangjie-video-worker-1.0.3`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
 
 已领取任务的媒体访问、心跳、上传与回传每次操作最多尝试 3 次，遵循 `Retry-After`（秒数或 HTTP 日期），并持续检查租约、取消及截止时间。重传产物复用同一键与内容，完成请求保留原字节；超过次数报告可重试失败，由 Go 决定重新调度。本地超时报告 `PROCESSING_TIMEOUT`，不会清除外部撤租或取消信号。
 
@@ -72,11 +72,13 @@ python -m workers run
 
 一次执行一个任务，心跳使用独立控制进程。失去租约、取消、硬截止或本地超时会停止媒体子进程并清理其临时目录。下载验证 SHA-256，上传验证回执摘要；重试完成请求保留同一份 JSON 字节。临时目录按任务/租约隔离，启动只清理带有效 UUID 和过期标记的自有目录。
 
+Go 确认完成与最后一次心跳同时发生时，心跳可能被拒绝。父进程最多等待 2 秒收取子进程结果；仅子进程收到实际完成确认才报告 succeeded，否则仍停止。已经收到本地撤销/过期信号时不等待完成确认，也不重发领取或完成请求。
+
 Docker 入口（构建上下文为仓库根目录）：
 
 ```bash
-docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.2 .
-docker run --rm cangjie-video-worker:1.0.2 python -m workers runtime-info
+docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.3 .
+docker run --rm cangjie-video-worker:1.0.3 python -m workers runtime-info
 ```
 
 运行时显式传入前述环境变量及可写临时目录。容器中的 `127.0.0.1` 指容器自身；后端地址使用共同网络中的 Go 服务名。[GitHub 检查](https://github.com/vvvv11112222/cangjie/actions/runs/37630242939)已通过 Linux/Windows 测试、CPU 容器构建、运行信息与容器内测试。共同环境中的真实 Go 和 GPU 样本联调仍待验收。
