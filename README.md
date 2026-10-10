@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 前端 | [开发协议](docs/开发协议.md)、[接口样例](contracts/examples/manifest.json) | 用固定样例显示任务、转写和报告 |
 | 后端 | 开发协议、[数据库设计](docs/数据库设计.md) | Go API、任务流转和权限校验 |
-| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[005](database/005_reporting_runtime.sql) | 初始化、迁移及约束检查 |
+| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[006](database/006_governance_runtime.sql) | 初始化、迁移及约束检查 |
 | 音频 | 开发协议第3节、audio-result 样例 | Worker 公共入口和带时间戳转写 |
 | 视频 | 开发协议第3节、probe-result/video-result 样例 | 媒体检查、播放代理和关键帧 |
 

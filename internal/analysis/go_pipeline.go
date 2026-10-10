@@ -678,7 +678,7 @@ func (s *Service) executeValidate(ctx context.Context, j goJob) error {
 	if err = tx.QueryRow(ctx, `SELECT requested_by::text FROM teaching.analysis_runs WHERE id=$1`, j.RunID).Scan(&requester); err != nil {
 		return err
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO teaching.reports(run_id,session_id,revision,status,summary,created_by,summary_evidence_ids,content_sha256,provenance) VALUES($1,$2,1,'draft',$3,$4,$5,$6,$7) RETURNING id::text`, j.RunID, j.SessionID, candidate.Summary, requester, candidate.SummaryEvidenceIDs, contentSHA, prov).Scan(&reportID)
+	err = tx.QueryRow(ctx, `INSERT INTO teaching.reports(run_id,session_id,revision,status,summary,created_by,summary_evidence_ids,content_sha256,provenance,expires_at) VALUES($1,$2,1,'draft',$3,$4,$5,$6,$7,LEAST((SELECT content_expires_at FROM teaching.lesson_sessions WHERE id=$2),now()+interval '180 days')) RETURNING id::text`, j.RunID, j.SessionID, candidate.Summary, requester, candidate.SummaryEvidenceIDs, contentSHA, prov).Scan(&reportID)
 	if err != nil {
 		return err
 	}

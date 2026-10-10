@@ -7,10 +7,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
 
 type Ledger struct {
 	path string
+	mu   sync.Mutex
+}
+
+type Tombstone struct {
+	TombstoneID    string    `json:"tombstone_id"`
+	SessionID      string    `json:"session_id"`
+	RequestedBy    string    `json:"requested_by"`
+	Reason         string    `json:"reason"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	RequestSHA256  string    `json:"request_sha256"`
+	RequestedAt    time.Time `json:"requested_at"`
 }
 
 func OpenLedger(path string) (*Ledger, error) {
@@ -36,27 +49,60 @@ func OpenLedger(path string) (*Ledger, error) {
 }
 
 func (l *Ledger) Check(ctx context.Context) error {
+	_, err := l.ReadAll(ctx)
+	return err
+}
+
+func (l *Ledger) Append(entry Tombstone) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("encode deletion tombstone: %w", err)
+	}
+	file, err := os.OpenFile(l.path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open deletion ledger: %w", err)
+	}
+	defer file.Close()
+	if _, err = file.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("append deletion ledger: %w", err)
+	}
+	if err = file.Sync(); err != nil {
+		return fmt.Errorf("sync deletion ledger: %w", err)
+	}
+	return nil
+}
+
+func (l *Ledger) ReadAll(ctx context.Context) ([]Tombstone, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	file, err := os.Open(l.path)
 	if err != nil {
-		return fmt.Errorf("read deletion ledger: %w", err)
+		return nil, fmt.Errorf("read deletion ledger: %w", err)
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	line := 0
+	var entries []Tombstone
 	for scanner.Scan() {
 		line++
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
-		var entry map[string]any
+		var entry Tombstone
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
-			return fmt.Errorf("deletion ledger line %d is invalid JSON: %w", line, err)
+			return nil, fmt.Errorf("deletion ledger line %d is invalid JSON: %w", line, err)
 		}
+		if entry.TombstoneID == "" || entry.SessionID == "" || entry.RequestedBy == "" || entry.RequestSHA256 == "" || entry.RequestedAt.IsZero() {
+			return nil, fmt.Errorf("deletion ledger line %d is missing required fields", line)
+		}
+		entries = append(entries, entry)
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scan deletion ledger: %w", err)
+		return nil, fmt.Errorf("scan deletion ledger: %w", err)
 	}
-	return nil
+	return entries, nil
 }

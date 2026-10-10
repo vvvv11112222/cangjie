@@ -18,9 +18,18 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/optional"
 )
 
-type Service struct{ pool *pgxpool.Pool }
+type Service struct {
+	pool             *pgxpool.Pool
+	contentRetention time.Duration
+}
 
-func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
+func NewService(pool *pgxpool.Pool) *Service { return NewServiceWithRetention(pool, 180*24*time.Hour) }
+func NewServiceWithRetention(pool *pgxpool.Pool, retention time.Duration) *Service {
+	if retention <= 0 {
+		retention = 180 * 24 * time.Hour
+	}
+	return &Service{pool: pool, contentRetention: retention}
+}
 
 type Session struct {
 	ID                    string    `json:"id"`
@@ -184,8 +193,8 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, in CreateSes
 			return Session{}, apperror.New(http.StatusConflict, "INVALID_STATE", "cancelled schedules cannot create lessons")
 		}
 	}
-	v, err := scanSession(tx.QueryRow(ctx, `INSERT INTO teaching.lesson_sessions AS ls(offering_id,schedule_entry_id,title,planned_start_at,planned_end_at,is_demo,created_by)
-		VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING `+sessionColumns, in.OfferingID, in.ScheduleEntryID.Value, title, start, end, *in.IsDemo, p.UserID))
+	v, err := scanSession(tx.QueryRow(ctx, `INSERT INTO teaching.lesson_sessions AS ls(offering_id,schedule_entry_id,title,planned_start_at,planned_end_at,is_demo,created_by,content_expires_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,now()+$8::interval) RETURNING `+sessionColumns, in.OfferingID, in.ScheduleEntryID.Value, title, start, end, *in.IsDemo, p.UserID, s.contentRetention.String()))
 	if err != nil {
 		return Session{}, storageError(err)
 	}
