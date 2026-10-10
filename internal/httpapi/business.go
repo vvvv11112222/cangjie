@@ -53,6 +53,9 @@ func (s *server) registerBusinessRoutes(mux *http.ServeMux) {
 	if s.analysis != nil && s.classroom != nil {
 		s.registerAnalysisRoutes(mux)
 	}
+	if s.governance != nil {
+		s.registerGovernanceRoutes(mux)
+	}
 }
 
 func (s *server) registerScheduleRoutes(mux *http.ServeMux) {

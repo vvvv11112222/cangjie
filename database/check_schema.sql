@@ -1,5 +1,5 @@
 -- 仅在隔离测试数据库执行；所有演示数据与临时校验函数随事务回滚。
--- 先执行 001、002、003，再执行本文件。不是生产迁移。
+-- 先按编号执行 001～006，再执行本文件。不是生产迁移。
 BEGIN;
 SET search_path TO teaching, public;
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -325,14 +325,17 @@ BEGIN
         'INSERT INTO export_jobs(report_id,run_id,session_id,requested_by,format,status)
         VALUES(%L,%L,%L,%L,''json'',''running'')',report_id,run_a,session_a,user_id),'23514');
     PERFORM pg_temp.expect_sqlstate(format(
-        'INSERT INTO data_deletion_requests(session_id,requested_by,reason,status)
-        VALUES(%L,%L,''synthetic'',''processing'')',session_a,user_id),'23514');
+        'INSERT INTO data_deletion_requests(session_id,requested_by,reason,status,tombstone_id)
+        VALUES(%L,%L,''synthetic'',''processing'',gen_random_uuid())',session_a,user_id),'23514');
+	INSERT INTO governance_workers(worker_id,capabilities) VALUES('__check_worker',ARRAY['probe']);
+	PERFORM pg_temp.expect_sqlstate(
+		'INSERT INTO governance_workers(worker_id,capabilities) VALUES(''__check_empty_worker'',ARRAY[]::text[])','23514');
     -- Full classroom cleanup may remove the report and its history together.
     DELETE FROM reports WHERE id=report_id;
     IF EXISTS(SELECT 1 FROM review_actions WHERE reason='synthetic review history') THEN
         RAISE EXCEPTION 'Complete report cleanup left review content';
     END IF;
-    RAISE NOTICE 'PASS: v0.6 constraints, leases, snapshots, namespaces, scope, coverage, review history and accounting';
+    RAISE NOTICE 'PASS: v0.7 constraints, leases, snapshots, namespaces, scope, coverage, review history, accounting and governance';
 END;
 $$;
 ROLLBACK;

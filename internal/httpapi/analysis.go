@@ -405,6 +405,12 @@ func (s *server) claimJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if s.governance != nil {
+		if err := s.governance.RecordWorker(r.Context(), in.WorkerID, in.Capabilities); err != nil {
+			s.writeServiceError(w, r, err)
+			return
+		}
+	}
 	claim, err := s.analysis.Claim(r.Context(), in.WorkerID, in.Capabilities)
 	if err != nil {
 		s.writeServiceError(w, r, err)
@@ -434,6 +440,16 @@ func (s *server) heartbeatJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeServiceError(w, r, err)
 		return
+	}
+	if s.governance != nil {
+		capabilities := make([]string, 0, len(s.workerCapabilities))
+		for capability := range s.workerCapabilities {
+			capabilities = append(capabilities, capability)
+		}
+		if err = s.governance.RecordWorker(r.Context(), s.workerID, capabilities); err != nil {
+			s.writeServiceError(w, r, err)
+			return
+		}
 	}
 	writeData(w, r, http.StatusOK, value)
 }
