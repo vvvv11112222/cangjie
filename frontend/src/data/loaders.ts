@@ -1,5 +1,5 @@
 /** 页面取数组合；查找检查点由 hook 按会话持有，不写入持久存储。 */
-import type { Run } from '../types';
+import type { Run, Session } from '../types';
 import { ApiError, describeError } from './errors';
 import { dataSource } from './sources';
 import type { DataSource, SessionQuery } from './sources';
@@ -9,9 +9,76 @@ import { MAX_DRAFT_RUN_LOOKUPS, SearchPaused, newSearch, searchSessions } from '
 import type { SearchCheckpoint } from './search';
 export { MAX_SESSION_PAGES, MAX_DRAFT_RUN_LOOKUPS } from './search';
 
+/** 批次是否仍在执行（协议第 1 节：活动批次每 2 秒轮询，进入终态即停止）。 */
+export function isRunActive(run: Run): boolean {
+  return run.status === 'queued' || run.status === 'running';
+}
+
 export interface SessionTasksLoad {
   tasks: SessionTaskView[];
   nextCursor: string | null;
+}
+
+export interface SessionDetailLoad {
+  session: Session;
+  run: Run | null;
+}
+
+/** 从课堂列表里按 id 找到课堂并取它的最新批次。找不到就在可见范围外（NOT_FOUND）。 */
+export async function loadSessionDetail(
+  source: DataSource = dataSource,
+  sessionId: string,
+  checkpoint: SearchCheckpoint = newSearch(),
+): Promise<SessionDetailLoad> {
+  const session = await searchSessions(source, checkpoint, async (candidate) =>
+    candidate.id === sessionId ? candidate : null,
+  );
+  if (session === null) {
+    throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '找不到该课堂，或不在当前账号可见范围。' });
+  }
+  const run = session.latest_run_id === null ? null : await source.getRun(session.latest_run_id).catch(() => null);
+  return { session, run };
+}
+
+/** 指定课堂的最新批次转写视图（不再自动挑第一条）。 */
+export async function loadTranscriptForSession(
+  source: DataSource = dataSource,
+  session: Session,
+): Promise<TranscriptView> {
+  const runId = session.latest_run_id;
+  if (runId === null) {
+    throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '该课堂还没有分析批次，暂无转写。' });
+  }
+  const run = await source.getRun(runId);
+  const results = await source.getResults(runId);
+  const revision =
+    results.transcript_revision_id === null ? null : await source.getRevision(results.transcript_revision_id);
+  return buildTranscriptView({ results, revision, run, kind: 'api' });
+}
+
+/** 指定课堂的当前发布版报告，或尚未发布时按批次 report_id 取草稿。 */
+export async function loadReportForSession(
+  source: DataSource = dataSource,
+  session: Session,
+  run: Run | null,
+): Promise<ReportView> {
+  const reportId = session.current_report_id ?? run?.report_id ?? null;
+  if (reportId === null) {
+    throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '该课堂还没有报告。' });
+  }
+  const report = await source.getReport(reportId);
+  const results = await source.getResults(report.run_id);
+  const runForReport = run !== null && run.id === report.run_id ? run : await source.getRun(report.run_id);
+  const revision =
+    results.transcript_revision_id === null ? null : await source.getRevision(results.transcript_revision_id);
+  return buildReportView({
+    report,
+    results,
+    sessionPage: { items: [session], next_cursor: null },
+    run: runForReport,
+    revision,
+    kind: 'api',
+  });
 }
 
 /** 加载一页，游标由界面显式传入；批次失败保留课堂行及失败说明。 */

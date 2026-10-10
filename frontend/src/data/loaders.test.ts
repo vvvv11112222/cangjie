@@ -2,9 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, describeError } from './errors';
 import { clearCsrfToken } from './http';
 import {
+  isRunActive,
   MAX_DRAFT_RUN_LOOKUPS,
+  loadReportForSession,
   loadReportView,
+  loadSessionDetail,
   loadSessionTasks,
+  loadTranscriptForSession,
   loadTranscriptView,
 } from './loaders';
 import { apiSource } from './sources';
@@ -14,6 +18,7 @@ import resultsJson from '../../../contracts/examples/results.json';
 import revisionJson from '../../../contracts/examples/revision.json';
 import runPartialJson from '../../../contracts/examples/run-partial.json';
 import sessionPageJson from '../../../contracts/examples/session-page.json';
+import type { Run, Session } from '../types';
 
 /**
  * 把协议样例当作"后端返回的响应"喂给接口实现，验证取数组合顺序、分页和错误处理。
@@ -22,7 +27,7 @@ import sessionPageJson from '../../../contracts/examples/session-page.json';
 /** 返回 undefined 表示"这条路由不处理该 URL"，交给后面的路由。 */
 type Route = (url: string) => Response | undefined;
 
-const BASE_SESSION = sessionPageJson.items[0]!;
+const BASE_SESSION: Session = sessionPageJson.items[0] as unknown as Session;
 const RUN_ID = BASE_SESSION.latest_run_id!;
 
 function json(status: number, data: unknown): Response {
@@ -238,5 +243,50 @@ describe('接口模式取数组合', () => {
     const error = (await loadSessionTasks(apiSource).catch((reason: unknown) => reason)) as ApiError;
     expect(error.code).toBe('NOT_FOUND');
     expect(describeError(error)).toContain('不存在，或超出了当前账号的可见范围');
+  });
+});
+
+describe('指定课堂的详情取数（评审意见：真实导航）', () => {
+  it('isRunActive 只把 queued/running 当作活动批次', () => {
+    expect(isRunActive({ ...runPartialJson, status: 'queued' } as unknown as Run)).toBe(true);
+    expect(isRunActive({ ...runPartialJson, status: 'running' } as unknown as Run)).toBe(true);
+    for (const status of ['succeeded', 'partial', 'failed', 'cancelled'] as const) {
+      expect(isRunActive({ ...runPartialJson, status } as unknown as Run)).toBe(false);
+    }
+  });
+
+  it('按 id 找到课堂并取最新批次', async () => {
+    stubRoutes(defaultRoutes());
+    const loaded = await loadSessionDetail(apiSource, BASE_SESSION.id);
+    expect(loaded.session.id).toBe(BASE_SESSION.id);
+    expect(loaded.run?.id).toBe(RUN_ID);
+  });
+
+  it('id 不在可见范围时返回 NOT_FOUND', async () => {
+    stubRoutes(defaultRoutes());
+    const error = (await loadSessionDetail(apiSource, '不存在的课堂').catch((reason: unknown) => reason)) as ApiError;
+    expect(error.code).toBe('NOT_FOUND');
+  });
+
+  it('按指定课堂取转写（不再全局挑第一条）', async () => {
+    stubRoutes(defaultRoutes());
+    const view = await loadTranscriptForSession(apiSource, BASE_SESSION);
+    expect(view.segments).toHaveLength(1);
+    expect(view.run?.id).toBe(RUN_ID);
+  });
+
+  it('课堂没有批次时转写给出明确提示', async () => {
+    stubRoutes(defaultRoutes([route('/api/v1/sessions', { items: [{ ...BASE_SESSION, latest_run_id: null }], next_cursor: null })]));
+    const error = (await loadTranscriptForSession(apiSource, { ...BASE_SESSION, latest_run_id: null }).catch((reason: unknown) => reason)) as ApiError;
+    expect(error.code).toBe('NOT_FOUND');
+    expect(error.message).toContain('还没有分析批次');
+  });
+
+  it('按指定课堂取报告：没有发布版时用批次 report_id 取草稿', async () => {
+    const draftRun = { ...runPartialJson, report_id: reportDraft.id } as unknown as Run;
+    stubRoutes(defaultRoutes([route(`/api/v1/analysis-runs/${RUN_ID}`, draftRun)]));
+    const view = await loadReportForSession(apiSource, BASE_SESSION, draftRun);
+    expect(view.report.id).toBe(reportDraft.id);
+    expect(view.report.status).toBe('draft');
   });
 });
