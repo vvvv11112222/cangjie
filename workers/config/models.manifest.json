@@ -1,0 +1,44 @@
+{
+  "yolox_tiny.onnx": {
+    "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx",
+    "upstream": "https://github.com/Megvii-BaseDetection/YOLOX",
+    "license": "Apache-2.0 (code); upstream released model, retain source attribution",
+    "sha256": "427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7",
+    "bytes": 20219662
+  },
+  "yolov11_phd_s.onnx": {
+    "url": "https://huggingface.co/Sharath33/Person/resolve/f109818fa5025b94152be2ac8353b2c473bc6c5f/yolov11_phd_s.onnx",
+    "upstream": "https://huggingface.co/Sharath33/Person",
+    "license": "Model card: openrail++; Ultralytics architecture AGPL-3.0; retain attribution",
+    "sha256": "3f0a061b37f1398be76fc344c116a8a6c42fb835583cabe33ddd80812ef4af10",
+    "bytes": 37850759
+  },
+  "rtmpose_x.onnx": {
+    "url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-x_simcc-body7_pt-body7_700e-384x288-71d7b7e9_20230629.zip",
+    "upstream": "https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose",
+    "license": "OpenMMLab released model; code Apache-2.0; retain source and dataset attribution",
+    "sha256": "df0c0fa91e9870b1515dcaff741fd76cc753dcfb12786862f61b243bae81cd52",
+    "bytes": 197660326
+  },
+  "rtmpose_s.onnx": {
+    "url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.zip",
+    "upstream": "https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose",
+    "license": "OpenMMLab upstream released model; code Apache-2.0; verify dataset/model terms for deployment",
+    "sha256": "9aeb635b83f86aea45cf45d85798f7eba1a162de8e0d721c44e54fe5eebaf47d",
+    "bytes": 21890172
+  },
+  "headpose_resnet18.onnx": {
+    "url": "https://github.com/yakhyo/head-pose-estimation/releases/download/weights/resnet18.onnx",
+    "upstream": "https://github.com/yakhyo/head-pose-estimation",
+    "license": "MIT source; released 300W-LP-trained head-pose model; retain attribution",
+    "sha256": "61c34e877989412980d1ea80c52391250b074abc00d19a6100de5c8e999212ee",
+    "bytes": 44714860
+  },
+  "doorway.onnx": {
+    "url": "https://huggingface.co/perseusdg/doorway-door-people-window-seg/resolve/fc5fb4cc8ccc164d8c8618fc28417ebe98e638e2/doorway_seg_yolo26n.onnx",
+    "upstream": "https://huggingface.co/perseusdg/doorway-door-people-window-seg",
+    "license": "AGPL-3.0 model card; pseudo-label training, retain attribution; doorway candidates only",
+    "sha256": "b960c75c9d5365c0fd6c6dc09e92da75342805e5a270b3724aadf6fbcc36772a",
+    "bytes": 11085011
+  }
+}

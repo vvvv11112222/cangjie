@@ -1,0 +1,136 @@
+name: Vision worker
+
+on:
+  pull_request:
+    paths:
+      - 'workers/**'
+      - 'contracts/**'
+      - 'tools/check_docs.py'
+      - 'tools/contract_rules.py'
+      - 'pytest.ini'
+      - '.dockerignore'
+      - '.github/workflows/vision-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vision-worker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-tests:
+    name: Worker tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: '3.12.14'
+          - os: windows-2025
+            python: '3.12.10'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+      VISION_RUNTIME: cpu
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: workers/requirements.lock
+      - name: Install locked dependencies
+        run: python -m pip install -r workers/requirements.lock
+      - name: Verify environment and contracts
+        run: |
+          python -m pip check
+          python tools/check_docs.py
+          python -m workers runtime-info
+      - name: Test worker and generated media
+        run: python -m pytest -q
+
+  cpu-container:
+    name: CPU container
+    needs: worker-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build CPU image
+        run: docker build -f workers/Dockerfile -t cangjie-video-worker:ci .
+      - name: Check actual runtime
+        run: docker run --rm cangjie-video-worker:ci python -m workers runtime-info
+      - name: Test worker inside image
+        run: docker run --rm cangjie-video-worker:ci python -m pytest -q --basetemp=/tmp/vision-tests /app/workers/tests
+
+  real-go-integration:
+    name: Real Go + PostgreSQL (${{ matrix.backend }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: phase4
+            ref: 8cf079edb58d8684e293519db682fd952c592d71
+          - backend: phase7
+            ref: 03de4cd2bde4909c6751063aedbde529080d6286
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: worker_test
+          POSTGRES_PASSWORD: disposable-integration-password
+          POSTGRES_DB: cangjie_worker_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U worker_test -d cangjie_worker_integration"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PYTHONUTF8: '1'
+      VISION_RUNTIME: cpu
+      TEST_DATABASE_URL: postgres://worker_test:disposable-integration-password@127.0.0.1:5432/cangjie_worker_integration?sslmode=disable
+      WORKER_INTEGRATION_ALLOW_DATABASE_RESET: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ matrix.ref }} # Fixed backend commits, not a moving branch
+          path: var/backend-integration
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12.14'
+          cache: pip
+          cache-dependency-path: workers/requirements.lock
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.0'
+          cache-dependency-path: var/backend-integration/go.sum
+      - name: Install locked Worker dependencies
+        run: python -m pip install -r workers/requirements.lock
+      - name: Apply canonical digest fix to the latest backend
+        if: matrix.backend == 'phase7'
+        working-directory: var/backend-integration
+        run: |
+          git fetch --no-tags origin 8cf079edb58d8684e293519db682fd952c592d71
+          git cherry-pick --no-commit FETCH_HEAD
+      - name: Run real backend and Worker integration
+        shell: bash
+        run: |
+          export WORKER_INTEGRATION_ROOT="$GITHUB_WORKSPACE"
+          export WORKER_INTEGRATION_PYTHON="$(command -v python)"
+          cp workers/integration/real_go_test.go.fixture var/backend-integration/internal/httpapi/real_video_worker_test.go
+          cd var/backend-integration
+          go test ./internal/analysis -run TestWorkerParameterDigestMatchesContract -count=1 -v
+          go test ./internal/httpapi -run '^TestRealVideoWorkerIntegration$' -count=1 -v -timeout=8m
