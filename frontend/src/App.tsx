@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { AccountBar } from './components/AccountBar';
+import { IconHome, IconReport, IconTask, IconTranscript } from './components/icons';
 import { DATA_SOURCE_KIND, DATA_SOURCE_LABEL } from './data/sources';
 import { ReportPage } from './pages/ReportPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
@@ -26,6 +27,13 @@ const PAGES: Record<(typeof NAV_ROUTES)[number]['path'], () => ReactElement> = {
 
 const DEFAULT_ROUTE = NAV_ROUTES[0].path;
 
+/** 导航图标按路由固定；图标只是视觉标记，点击行为仍然完全由上面的 <a> 决定。 */
+const NAV_ICONS: Record<(typeof NAV_ROUTES)[number]['path'], ReactElement> = {
+  '#/sessions': <IconTask size={16} />,
+  '#/transcript': <IconTranscript size={16} />,
+  '#/reports': <IconReport size={16} />,
+};
+
 /** #/sessions/{id} 进入指定课堂详情；id 之外的路径仍走三个固定页面。 */
 const SESSION_DETAIL = /^#\/sessions\/([^/]+)$/;
 
@@ -44,6 +52,7 @@ export function NavLinks({ current }: { current: string }): ReactElement {
           href={item.path}
           aria-current={item.path === current ? 'page' : undefined}
         >
+          <span className="nav-icon" aria-hidden="true">{NAV_ICONS[item.path]}</span>
           {item.label}
         </a>
       ))}
@@ -95,6 +104,7 @@ export function App(): ReactElement {
       <div className="workspace">
         <header className="topbar">
           <div className="breadcrumb">
+            <IconHome size={15} className="crumb-icon" />
             <span className="muted">教学工作空间</span>
             <span className="crumb-divider">/</span>
             <strong>{breadcrumbTitle}</strong>

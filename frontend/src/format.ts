@@ -21,7 +21,12 @@ import type {
 } from './types';
 import type { AccountAction, RoleCode } from './data/authApi';
 
-export type Tone = 'green' | 'blue' | 'amber' | 'red' | 'gray';
+/**
+ * 状态色调。`teal` 是本次视觉规范新增的强调色，只用于"进行中"这类
+ * 品牌色状态；它和 `green`（已成功）分成两个色调，避免"进行中"和
+ * "已完成"看起来是同一个状态。
+ */
+export type Tone = 'green' | 'blue' | 'amber' | 'red' | 'gray' | 'teal';
 
 export interface Badge {
   label: string;
@@ -90,7 +95,7 @@ const SESSION_STATUS: Record<SessionStatus, Badge> = {
 
 const RUN_STATUS: Record<RunStatus, Badge> = {
   queued: { label: '排队中', tone: 'gray' },
-  running: { label: '分析中', tone: 'blue' },
+  running: { label: '分析中', tone: 'teal' },
   succeeded: { label: '已完成', tone: 'green' },
   partial: { label: '部分完成', tone: 'amber' },
   failed: { label: '已失败', tone: 'red' },
@@ -99,7 +104,11 @@ const RUN_STATUS: Record<RunStatus, Badge> = {
 
 const JOB_STATUS: Record<JobStatus, Badge> = {
   queued: { label: '排队', tone: 'gray' },
-  running: { label: '进行中', tone: 'blue' },
+  /*
+   * 批次和阶段的"运行中"统一用强调色（青绿），橙色只留给"部分完成""证据不足"
+   * 这类需要留意的警告语义，避免两个状态撞成同一种颜色。
+   */
+  running: { label: '进行中', tone: 'teal' },
   succeeded: { label: '成功', tone: 'green' },
   failed: { label: '失败', tone: 'red' },
   cancelled: { label: '已取消', tone: 'gray' },
