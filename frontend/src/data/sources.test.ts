@@ -67,6 +67,10 @@ describe('固定样例实现', () => {
     expect(error.code).toBe('NOT_FOUND');
   });
 
+  it('样例模式下媒体列表为空（不使用媒体选择器，评审意见 F02）', async () => {
+    await expect(fixtureSource.getSessionMedia(fixtures.sessionPage.items[0]!.id)).resolves.toEqual([]);
+  });
+
   it('results 引用的修订 id 与 revision.json 不同，两个 id 都指向同一份修订样例', async () => {
     expect(fixtures.results.transcript_revision_id).not.toBe(fixtures.revision.id);
     await expect(fixtureSource.getRevision(fixtures.results.transcript_revision_id!)).resolves.toEqual(
@@ -117,5 +121,35 @@ describe('接口实现', () => {
     const error = (await apiSource.getSessions().catch((reason: unknown) => reason)) as ApiError;
     expect(error.code).toBe('MALFORMED_RESPONSE');
     expect(error.message).toContain('next_cursor');
+  });
+
+  it('媒体列表只取选择器需要的字段，并校验 kind/status（评审意见 F02）', async () => {
+    const urls = stubFetch(() =>
+      respond(200, {
+        data: {
+          items: [
+            { id: 'media-1', kind: 'source', status: 'ready' },
+            { id: 'media-2', kind: 'proxy', status: 'pending' },
+          ],
+          next_cursor: null,
+        },
+        request_id: 'r1',
+      }),
+    );
+
+    await expect(apiSource.getSessionMedia('session-1')).resolves.toEqual([
+      { id: 'media-1', kind: 'source', status: 'ready' },
+      { id: 'media-2', kind: 'proxy', status: 'pending' },
+    ]);
+    expect(urls[0]).toBe('/api/v1/sessions/session-1/media');
+  });
+
+  it('媒体 kind/status 不在协议枚举里时判为 MALFORMED_RESPONSE', async () => {
+    stubFetch(() =>
+      respond(200, { data: { items: [{ id: 'm', kind: 'unknown_kind', status: 'ready' }], next_cursor: null }, request_id: 'r' }),
+    );
+    const error = (await apiSource.getSessionMedia('session-1').catch((reason: unknown) => reason)) as ApiError;
+    expect(error.code).toBe('MALFORMED_RESPONSE');
+    expect(error.message).toContain('kind');
   });
 });

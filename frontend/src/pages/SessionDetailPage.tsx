@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { createRun, cancelRun, uploadMedia } from '../data/actions';
+import { useAuth } from '../auth';
+import { cancelRun, createRun, newIdempotencyKey, uploadMedia } from '../data/actions';
 import { describeError } from '../data/errors';
 import {
   fixtureSession,
   useRunPolling,
   useSessionDetail,
+  useSessionMedia,
   useSessionReport,
   useSessionTranscript,
 } from '../data/hooks';
 import { isRunActive } from '../data/loaders';
 import { fixtures } from '../data/samples';
 import { isApiMode } from '../data/sources';
-import type { CreateRun, Run, RunMode } from '../types';
+import type { CreateRun, RunMode } from '../types';
 import {
   formatDateTime,
   jobStageLabel,
@@ -31,6 +33,14 @@ import {
   LoadControls,
   LoadStateNote,
 } from '../components/ui';
+import {
+  actionStateFor,
+  emptyActionState,
+  intentSignature,
+  processingMediaId,
+  writeActionState,
+} from './sessionActions';
+import type { ActionState } from './sessionActions';
 import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
 
@@ -42,13 +52,9 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'report', label: '报告' },
 ];
 
-/** 提交分析 / 媒体准备都要主媒体；M1 骨架按协议只发 full 或 media_prepare。 */
-function analyzeInput(sessionPrimaryMedia: string | null, mode: RunMode): CreateRun | null {
-  if (sessionPrimaryMedia === null) {
-    return null;
-  }
+function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
   return {
-    media_asset_id: sessionPrimaryMedia,
+    media_asset_id: mediaAssetId,
     mode,
     input_transcript_revision_id: null,
     config_profile: 'p0-v1',
@@ -57,14 +63,19 @@ function analyzeInput(sessionPrimaryMedia: string | null, mode: RunMode): Create
 
 export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactElement {
   const api = isApiMode();
+  const { sessionKey } = useAuth();
+  /**
+   * 动作状态归属：auth sessionKey + 课堂 id（评审意见 F01）。
+   * 退出、换账号、换课堂都会改变 scope，渲染时立即按空状态呈现。
+   */
+  const scope = `${sessionKey}:${sessionId}`;
+
   const [tab, setTab] = useState<Tab>('run');
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNote, setActionNote] = useState<string | null>(null);
-  const [actionRun, setActionRun] = useState<Run | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [sourceId, setSourceId] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [actions, setActions] = useState<ActionState>(() => emptyActionState(scope));
+  const action = actionStateFor(actions, scope);
+  const write = (fromScope: string, update: (base: ActionState) => ActionState): void => {
+    setActions((current) => writeActionState(current, fromScope, update));
+  };
 
   const detail = useSessionDetail(sessionId, api);
   const fixtureSessionData = api ? null : fixtureSession(sessionId);
@@ -77,78 +88,132 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
   const transcript = useSessionTranscript(session, tab === 'transcript');
   const report = useSessionReport(session, baseRun, tab === 'report');
+  const media = useSessionMedia(session, api && tab === 'run');
 
-  // 动作返回的批次优先展示；轮询跟着"动作后最新批次"走。
-  const effectiveRun = actionRun ?? baseRun;
-  const polledRun = useRunPolling(effectiveRun?.id ?? null, effectiveRun?.status ?? null, api && session !== null);
-  const shownRun = polledRun ?? effectiveRun;
+  const effectiveRun = action.run ?? baseRun;
+  const poll = useRunPolling(effectiveRun?.id ?? null, effectiveRun?.status ?? null, api && session !== null);
+  const shownRun = poll.run ?? effectiveRun;
+
+  // 评审意见 F04：批次进入终态后刷新 Session，否则转写/报告还绑在旧的 latest_run_id 上。
+  const activeRuns = useRef<Set<string>>(new Set());
+  const refreshedRuns = useRef<Set<string>>(new Set());
+  // 会话切换（退出、换账号）后这些"已刷新过的批次"记录也失效，避免影响新会话（F01）。
+  useEffect(() => {
+    activeRuns.current = new Set();
+    refreshedRuns.current = new Set();
+  }, [scope]);
+  useEffect(() => {
+    if (shownRun === null) {
+      return;
+    }
+    if (isRunActive(shownRun)) {
+      activeRuns.current.add(shownRun.id);
+      return;
+    }
+    if (!activeRuns.current.has(shownRun.id) || refreshedRuns.current.has(shownRun.id)) {
+      return;
+    }
+    refreshedRuns.current.add(shownRun.id);
+    detail.reload();
+  }, [api, shownRun]);
 
   async function submitAnalyze(mode: RunMode): Promise<void> {
-    if (session === null) {
+    const fromScope = scope;
+    const mediaAssetId = processingMediaId(action, session?.primary_media_asset_id ?? null);
+    if (session === null || mediaAssetId === null) {
+      write(fromScope, (base) => ({ ...base, error: '该课堂还没有可处理的媒体，请先上传录像。' }));
       return;
     }
-    const input = analyzeInput(session.primary_media_asset_id, mode);
-    if (input === null) {
-      setActionError('该课堂还没有主媒体，无法提交分析。');
-      return;
-    }
-    setBusy(true);
-    setActionError(null);
-    setActionNote(null);
+    // 评审意见 F03：同一次逻辑提交（同课堂+模式+媒体）复用同一个幂等键；
+    // 只有换模式/换媒体才算新的分析，重新生成键。
+    const signature = intentSignature(session.id, mode, mediaAssetId);
+    const key =
+      action.intentSignature === signature && action.intentKey !== null ? action.intentKey : newIdempotencyKey();
+
+    write(fromScope, (base) => ({
+      ...base,
+      busy: true,
+      error: null,
+      note: null,
+      intentKey: key,
+      intentSignature: signature,
+    }));
     try {
-      const run = await createRun(session.id, input);
-      setActionRun(run);
-      setActionNote(`已提交，批次 ${shortId(run.id)}，当前状态 ${run.status}。`);
+      const run = await createRun(session.id, analyzeInput(mediaAssetId, mode), key);
+      write(fromScope, (base) => ({
+        ...base,
+        busy: false,
+        run,
+        note: `已提交，批次 ${shortId(run.id)}，当前状态 ${run.status}。`,
+        intentKey: null,
+        intentSignature: null,
+      }));
+      if (api) {
+        detail.reload();
+      }
     } catch (error) {
-      setActionError(describeError(error));
-    } finally {
-      setBusy(false);
+      // 失败时保留 intentKey：用户重试会复用同一个键，避免重复分析（F03）。
+      write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
     }
   }
 
   async function submitCancel(): Promise<void> {
+    const fromScope = scope;
     if (shownRun === null) {
       return;
     }
-    setBusy(true);
-    setActionError(null);
-    setActionNote(null);
+    write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
     try {
       const run = await cancelRun(shownRun.id);
-      setActionRun(run);
-      setActionNote(`已请求取消，批次 ${shortId(run.id)} 状态 ${run.status}。`);
+      write(fromScope, (base) => ({
+        ...base,
+        busy: false,
+        run,
+        note: `已请求取消，批次 ${shortId(run.id)} 状态 ${run.status}。`,
+      }));
     } catch (error) {
-      setActionError(describeError(error));
-    } finally {
-      setBusy(false);
+      write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
     }
   }
 
   async function submitUpload(): Promise<void> {
-    if (session === null || file === null || sourceId.trim() === '') {
-      setActionError('请选择录像文件，并填写已登记来源的 source_record_id。');
+    const fromScope = scope;
+    if (session === null || action.file === null || action.sourceRecordId.trim() === '') {
+      write(fromScope, (base) => ({
+        ...base,
+        error: '请选择录像文件，并填写已登记来源的 source_record_id。',
+      }));
       return;
     }
-    setBusy(true);
-    setActionError(null);
-    setActionNote(null);
+    write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
     try {
-      const result = await uploadMedia(session.id, file, sourceId.trim());
-      setActionNote(`已上传，媒体 id ${result.mediaId}。`);
-      setUploadOpen(false);
-      setFile(null);
+      const result = await uploadMedia(session.id, action.file, action.sourceRecordId.trim());
+      // 评审意见 F02：上传返回的 pending 媒体要成为接下来的处理目标，不能只显示一下 id。
+      write(fromScope, (base) => ({
+        ...base,
+        busy: false,
+        note: `已上传，媒体 ${shortId(result.mediaId)} 已设为处理目标（状态 pending，可直接媒体准备）。`,
+        uploadedMediaId: result.mediaId,
+        selectedMediaId: result.mediaId,
+        uploadOpen: false,
+        file: null,
+      }));
+      if (api) {
+        detail.reload();
+        media.reload();
+      }
     } catch (error) {
-      setActionError(describeError(error));
-    } finally {
-      setBusy(false);
+      write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
     }
   }
 
+  const mediaTarget = processingMediaId(action, session?.primary_media_asset_id ?? null);
   const canUpload = session !== null && session.allowed_actions.includes('upload');
   const canPrepare = session !== null && session.allowed_actions.includes('prepare_media');
   const canAnalyze = session !== null && session.allowed_actions.includes('analyze');
   const canCancel = shownRun !== null && shownRun.allowed_actions.includes('cancel') && isRunActive(shownRun);
   const canRetry = shownRun !== null && shownRun.allowed_actions.includes('retry') && !isRunActive(shownRun);
+  const sourceMedia = session === null ? [] : media.data.filter((item) => item.kind === 'source');
 
   return (
     <div className="page">
@@ -210,21 +275,42 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   <Field label="当前报告">
                     {session.current_report_id === null ? <span className="muted">null</span> : <IdChip id={session.current_report_id} />}
                   </Field>
-                  <Field label="允许操作">
-                    {session.allowed_actions.length === 0 ? '无' : session.allowed_actions.join('、')}
+                  <Field label="处理目标媒体">
+                    {mediaTarget === null ? <span className="muted">尚无（先上传录像）</span> : <IdChip id={mediaTarget} />}
                   </Field>
                 </div>
               </Card>
+
+              {detail.runError === null ? null : (
+                <Card title="批次读取失败" subtitle="这是读取错误，不等于该课堂没有批次。">
+                  <p className="callout callout-amber">{detail.runError}</p>
+                  <button type="button" className="account-button" onClick={() => detail.reload()}>
+                    重试读取
+                  </button>
+                </Card>
+              )}
 
               <Card
                 title={shownRun === null ? '最近批次' : `最近批次 ${shortId(shownRun.id)}`}
                 subtitle={
                   shownRun === null
                     ? '该课堂还没有分析批次。'
-                    : `${runModeLabel(shownRun.mode)} · 状态 ${shownRun.status}${isRunActive(shownRun) ? ' · 每 2 秒刷新' : ' · 已进入终态，停止刷新'}`
+                    : `${runModeLabel(shownRun.mode)} · 状态 ${shownRun.status}${
+                        isRunActive(shownRun)
+                          ? poll.error === null
+                            ? ' · 每 2 秒刷新'
+                            : ' · 轮询中断，显示的是上次结果'
+                          : ' · 已进入终态，停止刷新'
+                      }`
                 }
                 actions={shownRun === null ? undefined : <BadgeTag badge={runStatusBadge(shownRun.status)} />}
               >
+                {poll.error === null ? null : (
+                  <p className="callout callout-amber">
+                    轮询失败：{poll.error}
+                    {poll.polling ? '（会自动重试）' : '（已停止轮询，请重新登录或刷新页面）'}
+                  </p>
+                )}
                 {shownRun === null ? (
                   <p className="empty">暂无批次。</p>
                 ) : (
@@ -264,7 +350,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
               <Card title="操作" subtitle="按钮按资源 allowed_actions 显示；样例模式下不可提交。">
                 <div className="pill-row">
                   {canUpload ? (
-                    <button type="button" className="account-button" disabled={!api || busy} onClick={() => setUploadOpen((v) => !v)}>
+                    <button
+                      type="button"
+                      className="account-button"
+                      disabled={!api || action.busy}
+                      onClick={() => write(scope, (base) => ({ ...base, uploadOpen: !base.uploadOpen }))}
+                    >
                       上传录像
                     </button>
                   ) : null}
@@ -272,7 +363,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     <button
                       type="button"
                       className="account-button"
-                      disabled={!api || busy || session.primary_media_asset_id === null}
+                      disabled={!api || action.busy || mediaTarget === null}
                       onClick={() => void submitAnalyze('media_prepare')}
                     >
                       媒体准备
@@ -282,14 +373,14 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     <button
                       type="button"
                       className="account-button"
-                      disabled={!api || busy || session.primary_media_asset_id === null}
+                      disabled={!api || action.busy || mediaTarget === null}
                       onClick={() => void submitAnalyze('full')}
                     >
                       提交分析
                     </button>
                   ) : null}
                   {canCancel ? (
-                    <button type="button" className="account-button" disabled={!api || busy} onClick={() => void submitCancel()}>
+                    <button type="button" className="account-button" disabled={!api || action.busy} onClick={() => void submitCancel()}>
                       取消批次
                     </button>
                   ) : null}
@@ -297,7 +388,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     <button
                       type="button"
                       className="account-button"
-                      disabled={!api || busy || session.primary_media_asset_id === null}
+                      disabled={!api || action.busy || mediaTarget === null}
                       onClick={() => void submitAnalyze('full')}
                     >
                       重试
@@ -306,27 +397,59 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   {session.allowed_actions.length === 0 ? <span className="muted">该课堂没有可执行的操作。</span> : null}
                 </div>
 
+                {api && sourceMedia.length > 0 ? (
+                  <label className="account-field">
+                    <span>处理目标媒体</span>
+                    <select
+                      value={action.selectedMediaId ?? ''}
+                      onChange={(event) =>
+                        write(scope, (base) => ({ ...base, selectedMediaId: event.target.value || null }))
+                      }
+                    >
+                      <option value="">（使用课堂当前主媒体）</option>
+                      {sourceMedia.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {shortId(item.id)} · 原媒体 · {item.status}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
                 {!api ? <p className="load-note">固定样例模式未接入后端，操作按钮不可用。</p> : null}
-                {uploadOpen ? (
+                {action.uploadOpen ? (
                   <div className="upload-form">
                     <label className="account-field">
                       <span>录像文件</span>
                       <input
                         type="file"
-                        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                        onChange={(event) =>
+                          write(scope, (base) => ({ ...base, file: event.target.files?.[0] ?? null }))
+                        }
                       />
                     </label>
                     <label className="account-field">
                       <span>来源 source_record_id</span>
-                      <input value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder="已登记来源的 UUID" />
+                      <input
+                        value={action.sourceRecordId}
+                        onChange={(event) =>
+                          write(scope, (base) => ({ ...base, sourceRecordId: event.target.value }))
+                        }
+                        placeholder="已登记来源的 UUID"
+                      />
                     </label>
-                    <button type="button" className="account-button" disabled={!api || busy || file === null} onClick={() => void submitUpload()}>
+                    <button
+                      type="button"
+                      className="account-button"
+                      disabled={!api || action.busy || action.file === null}
+                      onClick={() => void submitUpload()}
+                    >
                       提交上传
                     </button>
                   </div>
                 ) : null}
-                {actionError === null ? null : <p className="load-note load-note-error">{actionError}</p>}
-                {actionNote === null ? null : <p className="load-note">{actionNote}</p>}
+                {action.error === null ? null : <p className="load-note load-note-error">{action.error}</p>}
+                {action.note === null ? null : <p className="load-note">{action.note}</p>}
               </Card>
             </>
           ) : null}
@@ -335,7 +458,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
             transcript.status === 'ready' ? (
               <TranscriptPage embedded view={transcript.data} />
             ) : (
-              <LoadStateNote status={transcript.status} error={transcript.error} />
+              <>
+                <LoadStateNote status={transcript.status} error={transcript.error} />
+                <LoadControls actionLabel={transcript.actionLabel} loadMore={transcript.loadMore} />
+              </>
             )
           ) : null}
 
@@ -343,10 +469,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
             report.status === 'ready' ? (
               <ReportPage embedded view={report.data} />
             ) : (
-              <LoadStateNote status={report.status} error={report.error} />
+              <>
+                <LoadStateNote status={report.status} error={report.error} />
+                <LoadControls actionLabel={report.actionLabel} loadMore={report.loadMore} />
+              </>
             )
           ) : null}
-
         </>
       )}
     </div>

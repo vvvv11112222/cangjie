@@ -268,6 +268,32 @@ describe('指定课堂的详情取数（评审意见：真实导航）', () => {
     expect(error.code).toBe('NOT_FOUND');
   });
 
+  it('批次读取失败时保留原因，不伪装成“没有批次”（评审意见 F06）', async () => {
+    stubRoutes(
+      defaultRoutes([
+        (url) =>
+          url === `/api/v1/analysis-runs/${RUN_ID}`
+            ? json(503, {
+                error: { code: 'SERVICE_UNAVAILABLE', message: 'busy', details: {} },
+                request_id: 'r',
+              })
+            : undefined,
+      ]),
+    );
+
+    const loaded = await loadSessionDetail(apiSource, BASE_SESSION.id);
+
+    expect(loaded.session.id).toBe(BASE_SESSION.id);
+    expect(loaded.run).toBeNull();
+    expect(loaded.runError).toContain('服务暂时不可用');
+  });
+
+  it('大写 UUID 也能命中同一个课堂（评审意见 F10）', async () => {
+    stubRoutes(defaultRoutes());
+    const loaded = await loadSessionDetail(apiSource, BASE_SESSION.id.toUpperCase());
+    expect(loaded.session.id).toBe(BASE_SESSION.id);
+  });
+
   it('按指定课堂取转写（不再全局挑第一条）', async () => {
     stubRoutes(defaultRoutes());
     const view = await loadTranscriptForSession(apiSource, BASE_SESSION);

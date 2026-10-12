@@ -12,7 +12,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../auth';
-import { describeError } from './errors';
+import { ApiError, describeError } from './errors';
+import { sameId } from './ids';
 import { loadingState, readyState, signedOutState } from './loadState';
 import type { LoadState } from './loadState';
 import { loadReportView, loadSessionTasks as loadSessionTasksApi, loadTranscriptView } from './loaders';
@@ -24,8 +25,8 @@ import {
 } from './loaders';
 import { FIXTURES, fixtures } from './samples';
 import type { AuthStatus } from './sessionFlow';
-import { DATA_SOURCE_LABEL, isApiMode } from './sources';
-import type { DataSourceKind, SessionQuery } from './sources';
+import { DATA_SOURCE_LABEL, getSessionMedia, isApiMode } from './sources';
+import type { DataSourceKind, MediaLite, SessionQuery } from './sources';
 import { dataSource } from './sources';
 import { SearchPaused, newSearch, checkNextCursor } from './search';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
@@ -66,6 +67,8 @@ interface LoadActions {
   hasData: boolean;
   actionLabel: string | null;
   loadMore(): void;
+  /** 丢弃当前进度、从头重新加载；用于动作完成或轮询到终态后刷新数据。 */
+  reload(): void;
 }
 
 function useLoaded<T, P>(options: {
@@ -130,6 +133,20 @@ function useLoaded<T, P>(options: {
     : visible.status === 'ready' && options.hasMore?.(visible.data) ? '加载更多' : null;
   return { ...visible, actionLabel, loadMore: () => {
     if (actionLabel !== null && context.current !== null) void run(context.current);
+  }, reload: () => {
+    if (!enabled || !API || !canLoad) return;
+    // 从头重新加载：新建检查点，但保留已有数据，刷新期间页面不会闪空。
+    if (context.current !== null) context.current.active = false;
+    const ctx: Context = {
+      key,
+      progress: optionsRef.current.newProgress(),
+      data: context.current?.data ?? initialData,
+      hasData: context.current?.hasData ?? false,
+      busy: false,
+      active: true,
+    };
+    context.current = ctx;
+    void run(ctx);
   } };
 }
 
@@ -316,47 +333,88 @@ export function useReportData(enabled = true): ReportResult {
 /** 协议第 1 节：活动批次每 2 秒轮询一次，进入终态即停止。 */
 const POLL_INTERVAL_MS = 2000;
 
-/** 轮询单个批次；status 为初始状态，只有活动批次才启动计时器。 */
-export function useRunPolling(runId: string | null, status: RunStatus | null, enabled: boolean): Run | null {
-  const [run, setRun] = useState<Run | null>(null);
+export interface PollState {
+  /** 轮询得到的最新批次；还没取到或遇到不可恢复错误时为 null。 */
+  run: Run | null;
+  /** 最近一次轮询失败的可读提示；成功一次后清空。 */
+  error: string | null;
+  /** 是否仍在轮询：进入终态或遇到不可恢复错误后为 false。 */
+  polling: boolean;
+}
+
+/** 失效、无权限、超范围、已过期这类错误重试也不会好：停止轮询并交给页面提示。 */
+function isFatalPollError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === 'UNAUTHENTICATED' ||
+      error.code === 'FORBIDDEN' ||
+      error.code === 'NOT_FOUND' ||
+      error.code === 'SOURCE_NOT_VERIFIED' ||
+      error.code === 'RESOURCE_EXPIRED')
+  );
+}
+
+/**
+ * 轮询单个批次。
+ *
+ * 评审意见 F05、F07：
+ *   - **串行**：上一次请求返回后才调度下一次，不会出现两个在途请求互相覆盖
+ *     （原来用 setInterval，慢响应时后发的 succeeded 会被先发的 running 覆盖）；
+ *   - **错误不静默**：失败原因交给页面；不可恢复的错误停止轮询，
+ *     临时故障保留上次结果并提示“数据未更新”，下一轮继续尝试。
+ */
+export function useRunPolling(runId: string | null, status: RunStatus | null, enabled: boolean): PollState {
+  const [state, setState] = useState<PollState>({ run: null, error: null, polling: false });
   useEffect(() => {
-    setRun(null);
-    if (!enabled || runId === null || status === null) {
-      return;
-    }
-    if (status !== 'queued' && status !== 'running') {
-      return;
-    }
+    setState({ run: null, error: null, polling: false });
+    if (!enabled || runId === null || status === null) return;
+    if (status !== 'queued' && status !== 'running') return;
+
     let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const tick = async () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setState({ run: null, error: null, polling: true });
+
+    function schedule(): void {
+      if (!cancelled) {
+        timer = setTimeout(() => void tick(), POLL_INTERVAL_MS);
+      }
+    }
+
+    async function tick(): Promise<void> {
       try {
-        const next = await dataSource.getRun(runId);
-        if (cancelled) {
+        const next = await dataSource.getRun(runId as string);
+        if (cancelled) return;
+        if (!isRunActive(next)) {
+          setState({ run: next, error: null, polling: false });
           return;
         }
-        setRun(next);
-        if (!isRunActive(next) && timer !== null) {
-          clearInterval(timer);
+        setState({ run: next, error: null, polling: true });
+      } catch (error) {
+        if (cancelled) return;
+        const message = describeError(error);
+        if (isFatalPollError(error)) {
+          setState((current) => ({ run: current.run, error: message, polling: false }));
+          return;
         }
-      } catch {
-        // 单次失败不中断轮询，下一次到点继续尝试；页面另有错误区显示最近一次结果。
+        setState((current) => ({ run: current.run, error: message, polling: true }));
       }
-    };
-    timer = setInterval(tick, POLL_INTERVAL_MS);
+      schedule();
+    }
+
+    schedule();
     return () => {
       cancelled = true;
-      if (timer !== null) {
-        clearInterval(timer);
-      }
+      if (timer !== null) clearTimeout(timer);
     };
   }, [runId, status, enabled]);
-  return run;
+  return state;
 }
 
 export interface SessionDetailData {
   session: Session | null;
   run: Run | null;
+  /** 批次读取失败的可读原因；没有引用批次时为 null（评审意见 F06）。 */
+  runError: string | null;
 }
 
 export type SessionDetailResult = LoadState<SessionDetailData> &
@@ -364,6 +422,7 @@ export type SessionDetailResult = LoadState<SessionDetailData> &
     origin: DataOrigin;
     /** 轮询期间的最新批次；轮询没启动时等于 data.run。 */
     run: Run | null;
+    runError: string | null;
   };
 
 /**
@@ -372,7 +431,7 @@ export type SessionDetailResult = LoadState<SessionDetailData> &
  */
 export function useSessionDetail(sessionId: string | null, enabled = true): SessionDetailResult {
   const { sessionKey, authStatus } = useSessionContext();
-  const initial = useMemo<SessionDetailData>(() => ({ session: null, run: null }), []);
+  const initial = useMemo<SessionDetailData>(() => ({ session: null, run: null, runError: null }), []);
   const state = useLoaded({
     enabled: enabled && sessionId !== null,
     sessionKey: sessionId === null ? sessionKey : `${sessionKey}:${sessionId}`,
@@ -381,12 +440,13 @@ export function useSessionDetail(sessionId: string | null, enabled = true): Sess
     newProgress: newSearch,
     load: async (progress) => {
       const loaded = await loadSessionDetail(dataSource, sessionId as string, progress);
-      return { session: loaded.session, run: loaded.run };
+      return { session: loaded.session, run: loaded.run, runError: loaded.runError };
     },
   });
   return {
     ...state,
     run: state.status === 'ready' ? state.data.run : null,
+    runError: state.status === 'ready' ? state.data.runError : null,
     origin: originFor(
       API ? 'api' : 'fixtures',
       API ? ['GET /api/v1/sessions', 'GET /api/v1/analysis-runs/{id}'] : [FIXTURES.sessionPage, FIXTURES.run],
@@ -398,7 +458,7 @@ export function useSessionDetail(sessionId: string | null, enabled = true): Sess
 export function useSessionTranscript(
   session: Session | null,
   enabled = true,
-): LoadState<TranscriptView> & { origin: DataOrigin } {
+): LoadState<TranscriptView> & LoadActions & { origin: DataOrigin } {
   const { sessionKey, authStatus } = useSessionContext();
   const initial = useMemo<TranscriptView>(
     () =>
@@ -409,7 +469,11 @@ export function useSessionTranscript(
   );
   const state = useLoaded({
     enabled: enabled && session !== null,
-    sessionKey: session === null ? sessionKey : `${sessionKey}:transcript:${session.id}`,
+    // 加载标识带上实际批次：新批次完成后（评审意见 F04）会重新取转写，而不是继续用旧结果。
+    sessionKey:
+      session === null
+        ? sessionKey
+        : `${sessionKey}:transcript:${session.id}:${session.latest_run_id ?? 'none'}`,
     authStatus,
     initialData: initial,
     newProgress: () => undefined,
@@ -435,7 +499,7 @@ export function useSessionReport(
   session: Session | null,
   run: Run | null,
   enabled = true,
-): LoadState<ReportView> & { origin: DataOrigin } {
+): LoadState<ReportView> & LoadActions & { origin: DataOrigin } {
   const { sessionKey, authStatus } = useSessionContext();
   const initial = useMemo<ReportView>(
     () => (API ? emptyReportView() : fixtureSessionReport(session)),
@@ -443,7 +507,11 @@ export function useSessionReport(
   );
   const state = useLoaded({
     enabled: enabled && session !== null,
-    sessionKey: session === null ? sessionKey : `${sessionKey}:report:${session.id}`,
+    // 加载标识带上实际报告引用：发布版/草稿变化后重新取报告（评审意见 F04）。
+    sessionKey:
+      session === null
+        ? sessionKey
+        : `${sessionKey}:report:${session.id}:${session.current_report_id ?? run?.report_id ?? 'none'}`,
     authStatus,
     initialData: initial,
     newProgress: () => undefined,
@@ -462,7 +530,35 @@ export function useSessionReport(
 
 /** 样例模式下同步找到固定样例里的课堂。 */
 export function fixtureSession(sessionId: string): Session | null {
-  return fixtures.sessionPage.items.find((session) => session.id === sessionId) ?? null;
+  // UUID 按值比较，大小写不同也是同一个课堂（评审意见 F10）。
+  return fixtures.sessionPage.items.find((session) => sameId(session.id, sessionId)) ?? null;
+}
+
+/**
+ * 指定课堂的媒体列表（第一页）。
+ * 评审意见 F02：首次上传后 Session 还没有主媒体，需要能从"当前/历史原媒体"里选处理目标。
+ */
+export function useSessionMedia(
+  session: Session | null,
+  enabled = true,
+): LoadState<MediaLite[]> & LoadActions & { origin: DataOrigin } {
+  const { sessionKey, authStatus } = useSessionContext();
+  const initial = useMemo<MediaLite[]>(() => [], []);
+  const state = useLoaded({
+    enabled: enabled && session !== null,
+    sessionKey: session === null ? sessionKey : `${sessionKey}:media:${session.id}`,
+    authStatus,
+    initialData: initial,
+    newProgress: () => undefined,
+    load: async () => getSessionMedia((session as Session).id),
+  });
+  return {
+    ...state,
+    origin: originFor(
+      API ? 'api' : 'fixtures',
+      API ? ['GET /api/v1/sessions/{id}/media'] : [FIXTURES.sessionPage],
+    ),
+  };
 }
 
 function fixtureSessionTranscript(session: Session | null): TranscriptView {

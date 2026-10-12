@@ -18,7 +18,13 @@ import { parseRun } from './samples';
 import type { CreateRun, Run } from '../types';
 import { asRecord, asString } from './guards';
 
-/** 每次"提交分析/重试"都用新键：同键重放会命中幂等，重复点击才是真正的新请求。 */
+/**
+ * 生成一个幂等键。
+ *
+ * 注意（评审意见 F03）：键要由**调用方按"一次逻辑提交"持有**，不能每次请求都新生成。
+ * 只有用户明确开始一次新的分析时才换新键；响应丢失后的重试必须复用同一个键，
+ * 否则服务端会把重发当成新的分析（协议第 1.1 节：同键重放返回原资源并重新执行）。
+ */
 export function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }
@@ -35,13 +41,16 @@ function asRun(data: unknown, status: number): Run {
   }
 }
 
-/** 提交一次分析（full / media_prepare / report_only）。 */
-export async function createRun(sessionId: string, input: CreateRun): Promise<Run> {
+/**
+ * 提交一次分析（full / media_prepare / report_only）。
+ * idempotencyKey 由调用方给出：同一次逻辑提交的重发必须传同一个键（F03）。
+ */
+export async function createRun(sessionId: string, input: CreateRun, idempotencyKey: string): Promise<Run> {
   const { data } = await requestJson<unknown>(`/sessions/${encodeURIComponent(sessionId)}/analysis-runs`, {
     method: 'POST',
     body: input,
     csrf: true,
-    idempotencyKey: newIdempotencyKey(),
+    idempotencyKey,
   });
   return asRun(data, 202);
 }
