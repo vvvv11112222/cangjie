@@ -67,6 +67,13 @@ describe('固定样例实现', () => {
     expect(error.code).toBe('NOT_FOUND');
   });
 
+  it('样例模式下媒体列表为空（不使用媒体选择器，评审意见 F02）', async () => {
+    await expect(fixtureSource.getSessionMedia(fixtures.sessionPage.items[0]!.id)).resolves.toEqual({
+      items: [],
+      nextCursor: null,
+    });
+  });
+
   it('results 引用的修订 id 与 revision.json 不同，两个 id 都指向同一份修订样例', async () => {
     expect(fixtures.results.transcript_revision_id).not.toBe(fixtures.revision.id);
     await expect(fixtureSource.getRevision(fixtures.results.transcript_revision_id!)).resolves.toEqual(
@@ -117,5 +124,60 @@ describe('接口实现', () => {
     const error = (await apiSource.getSessions().catch((reason: unknown) => reason)) as ApiError;
     expect(error.code).toBe('MALFORMED_RESPONSE');
     expect(error.message).toContain('next_cursor');
+  });
+
+  it('媒体列表保留 allowed_actions 与游标（评审意见 N04/N05）', async () => {
+    const urls = stubFetch(() =>
+      respond(200, {
+        data: {
+          items: [
+            { id: 'media-1', kind: 'source', status: 'ready', allowed_actions: ['analyze', 'select_primary'] },
+            { id: 'media-2', kind: 'proxy', status: 'pending', allowed_actions: ['playback'] },
+          ],
+          next_cursor: 'cursor-2',
+        },
+        request_id: 'r1',
+      }),
+    );
+
+    await expect(apiSource.getSessionMedia('session-1')).resolves.toEqual({
+      items: [
+        { id: 'media-1', kind: 'source', status: 'ready', allowed_actions: ['analyze', 'select_primary'] },
+        { id: 'media-2', kind: 'proxy', status: 'pending', allowed_actions: ['playback'] },
+      ],
+      nextCursor: 'cursor-2',
+    });
+    expect(urls[0]).toBe('/api/v1/sessions/session-1/media');
+
+    // 继续读取时游标要带进查询参数（N04）。
+    await apiSource.getSessionMedia('session-1', 'cursor-2');
+    expect(urls[1]).toBe('/api/v1/sessions/session-1/media?cursor=cursor-2');
+  });
+
+  it('媒体 kind/status 不在协议枚举里时判为 MALFORMED_RESPONSE', async () => {
+    stubFetch(() =>
+      respond(200, {
+        data: { items: [{ id: 'm', kind: 'unknown_kind', status: 'ready', allowed_actions: [] }], next_cursor: null },
+        request_id: 'r',
+      }),
+    );
+    const error = (await apiSource.getSessionMedia('session-1').catch((reason: unknown) => reason)) as ApiError;
+    expect(error.code).toBe('MALFORMED_RESPONSE');
+    expect(error.message).toContain('kind');
+  });
+
+  it('媒体 allowed_actions 出现未收录取值时判为 MALFORMED_RESPONSE（评审意见 N05）', async () => {
+    stubFetch(() =>
+      respond(200, {
+        data: {
+          items: [{ id: 'm', kind: 'source', status: 'ready', allowed_actions: ['delete_everything'] }],
+          next_cursor: null,
+        },
+        request_id: 'r',
+      }),
+    );
+    const error = (await apiSource.getSessionMedia('session-1').catch((reason: unknown) => reason)) as ApiError;
+    expect(error.code).toBe('MALFORMED_RESPONSE');
+    expect(error.message).toContain('allowed_actions');
   });
 });

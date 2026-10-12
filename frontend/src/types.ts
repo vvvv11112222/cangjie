@@ -76,6 +76,14 @@ export interface Run {
   allowed_actions: RunAction[];
 }
 
+/** POST /sessions/{id}/analysis-runs 的请求体，见 contracts/v1.schema.json 的 CreateRun。 */
+export interface CreateRun {
+  media_asset_id: string;
+  mode: RunMode;
+  input_transcript_revision_id: string | null;
+  config_profile: 'p0-v1';
+}
+
 export interface Interval {
   start_ms: number;
   end_ms: number;

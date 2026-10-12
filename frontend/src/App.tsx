@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { AccountBar } from './components/AccountBar';
+import { parseSessionRoute } from './data/route';
 import { DATA_SOURCE_KIND, DATA_SOURCE_LABEL } from './data/sources';
 import { ReportPage } from './pages/ReportPage';
+import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
 
@@ -59,7 +61,12 @@ function useHashRoute(): string {
 
 export function App(): ReactElement {
   const hash = useHashRoute();
-  const route = NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  // 解析在纯函数里完成：畸形编码或非法 UUID 变成受控提示，不会抛到 React 根节点（F09/F10）。
+  const sessionRoute = parseSessionRoute(hash);
+  const detailId = sessionRoute.kind === 'detail' ? sessionRoute.sessionId : null;
+  const route = detailId !== null ? NAV_ROUTES[0] : NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  const breadcrumbTitle =
+    sessionRoute.kind === 'invalid' ? '课堂地址无效' : detailId !== null ? '课堂详情' : route.title;
   const dataBadge =
     DATA_SOURCE_KIND === 'api'
       ? `${DATA_SOURCE_LABEL.api} · 走 /api/v1`
@@ -75,7 +82,7 @@ export function App(): ReactElement {
             <div className="brand-caption">教学质量管理系统</div>
           </div>
         </div>
-        <NavLinks current={route.path} />
+        <NavLinks current={detailId !== null ? NAV_ROUTES[0].path : route.path} />
         <AccountBar />
         <div className="sidebar-note">
           <p>M1 数据访问层</p>
@@ -90,11 +97,29 @@ export function App(): ReactElement {
           <div className="breadcrumb">
             <span className="muted">教学工作空间</span>
             <span className="crumb-divider">/</span>
-            <strong>{route.title}</strong>
+            <strong>{breadcrumbTitle}</strong>
           </div>
           <span className="prototype-badge">{dataBadge}</span>
         </header>
-        <main id="main">{PAGES[route.path]()}</main>
+        <main id="main">
+          {sessionRoute.kind === 'invalid' ? (
+            <div className="page">
+              <header className="page-head">
+                <div>
+                  <p className="eyebrow">
+                    <a href="#/sessions">← 返回课堂列表</a>
+                  </p>
+                  <h1>课堂地址无效</h1>
+                  <p className="muted">{sessionRoute.message}</p>
+                </div>
+              </header>
+            </div>
+          ) : detailId !== null ? (
+            <SessionDetailPage key={detailId} sessionId={detailId} />
+          ) : (
+            PAGES[route.path]()
+          )}
+        </main>
         <footer className="workspace-footer">
           <span>观课 · 让教学观察有据可循</span>
           <span className="muted tiny">

@@ -97,6 +97,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                       <div className="cell-title">
                         <strong>{session.title}</strong>
                         {session.is_demo ? <Pill label="示范数据" tone="blue" /> : null}
+                        <a className="cell-link" href={`#/sessions/${session.id}`}>
+                          详情
+                        </a>
                       </div>
                       <div className="cell-meta mono">
                         <span title={session.id}>课堂 {shortId(session.id)}</span>

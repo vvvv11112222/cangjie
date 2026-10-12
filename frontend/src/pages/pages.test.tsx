@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { SessionListPage } from './SessionListPage';
+import { SessionDetailPage } from './SessionDetailPage';
 import { TranscriptPage } from './TranscriptPage';
 import { ReportPage } from './ReportPage';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from '../data/viewModel';
 import type { ReportView, SessionTaskView } from '../data/viewModel';
 import type { ReportAction, SessionAction } from '../types';
+import { fixtures } from '../data/samples';
 
 describe('三个页面的固定样例渲染', () => {
   it('课堂任务列表显示课堂、批次阶段和允许操作', () => {
@@ -104,5 +106,25 @@ describe('资源 allowed_actions 原样展示', () => {
     const html = renderToStaticMarkup(<SessionListPage tasks={[adminTask]} />);
 
     expect(html).toContain('归档');
+  });
+});
+
+describe('课堂详情页（固定样例模式）', () => {
+  it('按 id 显示课堂、批次阶段与操作按钮', () => {
+    const session = fixtures.sessionPage.items[0]!;
+    const html = renderToStaticMarkup(<SessionDetailPage sessionId={session.id} />);
+
+    expect(html).toContain('合成课堂');
+    expect(html).toContain('批次与操作');
+    expect(html).toContain('转写');
+    expect(html).toContain('报告');
+    expect(html).toContain('上传录像');
+    expect(html).toContain('提交分析');
+    expect(html).toContain('固定样例模式未接入后端');
+  });
+
+  it('id 不在样例里时给出找不到的提示', () => {
+    const html = renderToStaticMarkup(<SessionDetailPage sessionId="不存在的课堂" />);
+    expect(html).toContain('找不到该课堂');
   });
 });

@@ -21,7 +21,14 @@ function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] 
   return evidence.filter((item) => item.provenance['source_segment_no'] === segment.segment_no);
 }
 
-export function TranscriptPage({ view: injectedView }: { view?: TranscriptView } = {}): ReactElement {
+export function TranscriptPage({
+  view: injectedView,
+  embedded = false,
+}: {
+  view?: TranscriptView;
+  /** 嵌入课堂详情页时隐藏页头与数据来源说明，只保留正文卡片。 */
+  embedded?: boolean;
+} = {}): ReactElement {
   const loaded = useTranscriptData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
@@ -53,16 +60,16 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
   if (!ready) {
     return (
       <div className="page">
-        {head}
-        {notes}
+        {embedded ? null : head}
+        {embedded ? null : notes}
       </div>
     );
   }
 
   return (
     <div className="page">
-      {head}
-      {notes}
+      {embedded ? null : head}
+      {embedded ? null : notes}
 
       <Card
         title="结果摘要"

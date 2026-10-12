@@ -357,6 +357,46 @@ code {
   color: #a4442f;
 }
 
+/* 课堂详情页的标签栏与行内链接。 */
+.tab-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tab-item {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: #3f5760;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab-item.active {
+  background: #28534f;
+  color: #eafaf5;
+  border-color: #28534f;
+}
+
+.cell-link {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #2a675f;
+  text-decoration: none;
+}
+
+.upload-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .card {
   background: #fff;
   border: 1px solid var(--line);
