@@ -191,7 +191,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
             {run.error_code === null ? <RunFields run={run} /> : <RunErrorBox run={run} />}
 
             {run.limitations.length > 0 ? (
-              <p className="limit-strip">
+              <p className="notice-strip">
                 <IconAlert size={14} aria-hidden="true" />
                 批次限制：{run.limitations.join('；')}
               </p>

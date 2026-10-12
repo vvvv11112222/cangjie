@@ -7,6 +7,7 @@ import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewM
 import type { ReportView, SessionTaskView, TranscriptView } from './viewModel';
 import { MAX_DRAFT_RUN_LOOKUPS, SearchPaused, newSearch, searchSessions } from './search';
 import type { SearchCheckpoint } from './search';
+import { normalizeId, sameId } from './ids';
 export { MAX_SESSION_PAGES, MAX_DRAFT_RUN_LOOKUPS } from './search';
 
 /** 批次是否仍在执行（协议第 1 节：活动批次每 2 秒轮询，进入终态即停止）。 */
@@ -22,6 +23,11 @@ export interface SessionTasksLoad {
 export interface SessionDetailLoad {
   session: Session;
   run: Run | null;
+  /**
+   * 批次读取失败的原因；没有引用批次时为 null（评审意见 F06）。
+   * 区分"没有 latest_run_id"和"读取失败"，不能让暂时故障伪装成"还没有批次"。
+   */
+  runError: string | null;
 }
 
 /** 从课堂列表里按 id 找到课堂并取它的最新批次。找不到就在可见范围外（NOT_FOUND）。 */
@@ -31,13 +37,20 @@ export async function loadSessionDetail(
   checkpoint: SearchCheckpoint = newSearch(),
 ): Promise<SessionDetailLoad> {
   const session = await searchSessions(source, checkpoint, async (candidate) =>
-    candidate.id === sessionId ? candidate : null,
+    sameId(candidate.id, normalizeId(sessionId)) ? candidate : null,
   );
   if (session === null) {
     throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '找不到该课堂，或不在当前账号可见范围。' });
   }
-  const run = session.latest_run_id === null ? null : await source.getRun(session.latest_run_id).catch(() => null);
-  return { session, run };
+  if (session.latest_run_id === null) {
+    return { session, run: null, runError: null };
+  }
+  try {
+    return { session, run: await source.getRun(session.latest_run_id), runError: null };
+  } catch (error) {
+    // 读取失败要保留真实错误类别（401/403/503…），页面据此显示原因并给出重试入口。
+    return { session, run: null, runError: describeError(error) };
+  }
 }
 
 /** 指定课堂的最新批次转写视图（不再自动挑第一条）。 */
@@ -68,7 +81,7 @@ export async function loadReportForSession(
   }
   const report = await source.getReport(reportId);
   const results = await source.getResults(report.run_id);
-  const runForReport = run !== null && run.id === report.run_id ? run : await source.getRun(report.run_id);
+  const runForReport = run !== null && sameId(run.id, report.run_id) ? run : await source.getRun(report.run_id);
   const revision =
     results.transcript_revision_id === null ? null : await source.getRevision(results.transcript_revision_id);
   return buildReportView({

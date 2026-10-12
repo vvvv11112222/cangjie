@@ -376,6 +376,24 @@ code {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+/* 下拉框必须和输入框同一套尺寸与聚焦态，否则会出现"原生控件混进来"的观感。 */
+.account-field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.account-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 .account-bar .account-field {
   gap: 4px;
   font-size: 11px;
@@ -775,6 +793,7 @@ code {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  margin-top: 12px;
 }
 
 .action-row .btn-danger {
@@ -1181,9 +1200,13 @@ code {
   overflow-wrap: anywhere;
 }
 
-.limit-strip {
+/*
+ * 提示条：批次限制、结果限制、批次读取失败、轮询失败都用这一条，
+ * 靠图标和文字区分含义，不再另开一套颜色。
+ */
+.notice-strip {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-top: 12px;
   padding: 10px 14px;
@@ -1191,6 +1214,12 @@ code {
   background: var(--danger-soft);
   color: var(--danger-text);
   font-size: 12px;
+  line-height: 1.7;
+}
+
+.notice-strip svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* ============ 字段、提示条与核对列表 ============ */

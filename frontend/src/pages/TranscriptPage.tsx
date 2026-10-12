@@ -115,7 +115,7 @@ export function TranscriptPage({
           </ul>
         </TechDetails>
         {results.limitations.length > 0 ? (
-          <p className="limit-strip">
+          <p className="notice-strip">
             <IconAlert size={14} aria-hidden="true" />
             结果限制：{results.limitations.join('；')}
           </p>

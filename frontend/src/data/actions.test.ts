@@ -46,7 +46,8 @@ describe('动作请求', () => {
       expect(url).toBe(`/api/v1/sessions/${SESSION_ID}/analysis-runs`);
       const headers = init?.headers as Record<string, string>;
       expect(headers['X-CSRF-Token']).toBe('session-token');
-      expect(headers['Idempotency-Key']).toBeTruthy();
+      // 评审意见 F03：键由调用方给出，动作层不再自己生成。
+      expect(headers['Idempotency-Key']).toBe('intent-key-1');
       expect(init?.body).toBe(
         JSON.stringify({
           media_asset_id: runPartialJson.media_asset_id,
@@ -58,17 +59,40 @@ describe('动作请求', () => {
       return respond(202, { data: runPartialJson, request_id: 'r' });
     });
 
-    const run = await createRun(SESSION_ID, {
-      media_asset_id: runPartialJson.media_asset_id,
-      mode: 'full',
-      input_transcript_revision_id: null,
-      config_profile: 'p0-v1',
-    });
+    const run = await createRun(
+      SESSION_ID,
+      {
+        media_asset_id: runPartialJson.media_asset_id,
+        mode: 'full',
+        input_transcript_revision_id: null,
+        config_profile: 'p0-v1',
+      },
+      'intent-key-1',
+    );
 
     expect(run.id).toBe(RUN_ID);
   });
 
-  it('每次提交分析都生成新的幂等键', () => {
+  it('同一次逻辑提交重发时复用同一个幂等键（F03）', async () => {
+    const keys: (string | undefined)[] = [];
+    stubFetch((_url, init) => {
+      keys.push((init?.headers as Record<string, string>)['Idempotency-Key']);
+      return respond(202, { data: runPartialJson, request_id: 'r' });
+    });
+    const input = {
+      media_asset_id: runPartialJson.media_asset_id,
+      mode: 'full' as const,
+      input_transcript_revision_id: null,
+      config_profile: 'p0-v1' as const,
+    };
+
+    await createRun(SESSION_ID, input, 'same-intent');
+    await createRun(SESSION_ID, input, 'same-intent');
+
+    expect(keys).toEqual(['same-intent', 'same-intent']);
+  });
+
+  it('每次新建逻辑提交才生成新的幂等键', () => {
     expect(newIdempotencyKey()).not.toBe(newIdempotencyKey());
   });
 
