@@ -50,13 +50,20 @@ describe('幂等键与处理媒体（评审意见 F02/F03）', () => {
     expect(intentSignature('s2', 'full', 'm1')).not.toBe(base);
   });
 
-  it('处理媒体优先用户选定，其次刚上传的，最后才是主媒体', () => {
+  it('处理媒体按选择意图决定：auto 优先刚上传，primary 必须用主媒体（评审意见 N06）', () => {
     const base = emptyActionState(SCOPE_A);
     expect(processingMediaId(base, 'primary')).toBe('primary');
     expect(processingMediaId({ ...base, uploadedMediaId: 'uploaded' }, 'primary')).toBe('uploaded');
-    expect(processingMediaId({ ...base, uploadedMediaId: 'uploaded', selectedMediaId: 'picked' }, 'primary')).toBe(
-      'picked',
-    );
+    // 显式选了"使用课堂当前主媒体"：不能退回刚上传的媒体。
+    expect(
+      processingMediaId({ ...base, uploadedMediaId: 'uploaded', mediaChoice: { kind: 'primary' } }, 'primary'),
+    ).toBe('primary');
+    // 显式选了某个媒体：按它来。
+    expect(
+      processingMediaId({ ...base, mediaChoice: { kind: 'asset', mediaId: 'picked' } }, 'primary'),
+    ).toBe('picked');
+    // 显式选主媒体但当前没有主媒体：不能用别的媒体顶替。
+    expect(processingMediaId({ ...base, uploadedMediaId: 'uploaded', mediaChoice: { kind: 'primary' } }, null)).toBeNull();
     expect(processingMediaId(base, null)).toBeNull();
   });
 });

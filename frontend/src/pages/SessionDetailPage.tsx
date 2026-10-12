@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useAuth } from '../auth';
-import { cancelRun, createRun, newIdempotencyKey, uploadMedia } from '../data/actions';
+import { cancelRun, createRun, uploadMedia } from '../data/actions';
 import { describeError } from '../data/errors';
 import {
   fixtureSession,
@@ -14,6 +14,7 @@ import {
 import { isRunActive } from '../data/loaders';
 import { fixtures } from '../data/samples';
 import { isApiMode } from '../data/sources';
+import type { MediaAction } from '../data/sources';
 import type { CreateRun, RunMode } from '../types';
 import {
   formatDateTime,
@@ -40,7 +41,8 @@ import {
   processingMediaId,
   writeActionState,
 } from './sessionActions';
-import type { ActionState } from './sessionActions';
+import type { ActionState, MediaChoice } from './sessionActions';
+import { pendingIntent } from './pendingIntent';
 import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
 
@@ -61,9 +63,19 @@ function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
   };
 }
 
+/** 某个模式需要所选媒体具备的用途（与后端 mediaActions 的推导一致，评审意见 N05）。 */
+function requiredMediaAction(mode: RunMode): MediaAction {
+  return mode === 'media_prepare' ? 'prepare_media' : 'analyze';
+}
+
 export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactElement {
   const api = isApiMode();
-  const { sessionKey } = useAuth();
+  const { sessionKey, me } = useAuth();
+  /**
+   * 动作状态用 sessionKey（含登录代次）做归属；幂等意图用稳定的账号标识，
+   * 这样整页刷新后（sessionKey 的代次会重置）仍能找回未确定的意图（N02）。
+   */
+  const accountScope = me?.user_id ?? sessionKey;
   /**
    * 动作状态归属：auth sessionKey + 课堂 id（评审意见 F01）。
    * 退出、换账号、换课堂都会改变 scope，渲染时立即按空状态呈现。
@@ -72,6 +84,15 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
   const [tab, setTab] = useState<Tab>('run');
   const [actions, setActions] = useState<ActionState>(() => emptyActionState(scope));
+  /**
+   * 评审意见 N01：scope 变化时必须**真正重建可写状态**。
+   * 只把 actionStateFor 当渲染兜底的话，state 里仍是旧 scope，
+   * 之后所有写入都会被 writeActionState 当成"旧会话的迟到结果"丢掉
+   * （表现为按钮能点但表单打不开、错误不显示）。
+   */
+  if (actions.scope !== scope) {
+    setActions(emptyActionState(scope));
+  }
   const action = actionStateFor(actions, scope);
   const write = (fromScope: string, update: (base: ActionState) => ActionState): void => {
     setActions((current) => writeActionState(current, fromScope, update));
@@ -124,35 +145,32 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       write(fromScope, (base) => ({ ...base, error: '该课堂还没有可处理的媒体，请先上传录像。' }));
       return;
     }
-    // 评审意见 F03：同一次逻辑提交（同课堂+模式+媒体）复用同一个幂等键；
-    // 只有换模式/换媒体才算新的分析，重新生成键。
+    // 评审意见 F03/N02：同一逻辑提交（同课堂+模式+媒体）复用同一个键。
+    // 键由 pendingIntent 按"认证会话 + 课堂"保存，离开详情再回来也不会丢。
     const signature = intentSignature(session.id, mode, mediaAssetId);
-    const key =
-      action.intentSignature === signature && action.intentKey !== null ? action.intentKey : newIdempotencyKey();
+    const key = pendingIntent.keyFor(accountScope, session.id, signature);
 
     write(fromScope, (base) => ({
       ...base,
       busy: true,
       error: null,
       note: null,
-      intentKey: key,
-      intentSignature: signature,
     }));
     try {
       const run = await createRun(session.id, analyzeInput(mediaAssetId, mode), key);
+      // 服务端已受理：清除未确定意图，下一次提交才算新的分析。
+      pendingIntent.resolve(accountScope, session.id);
       write(fromScope, (base) => ({
         ...base,
         busy: false,
         run,
         note: `已提交，批次 ${shortId(run.id)}，当前状态 ${run.status}。`,
-        intentKey: null,
-        intentSignature: null,
       }));
       if (api) {
         detail.reload();
       }
     } catch (error) {
-      // 失败时保留 intentKey：用户重试会复用同一个键，避免重复分析（F03）。
+      // 失败时保留 pendingIntent：重试（含重进详情）会复用同一个键，避免重复分析。
       write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
     }
   }
@@ -176,6 +194,42 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     }
   }
 
+  /**
+   * 重试重放"这个批次自己"的提交：媒体、模式、修订都取批次字段，
+   * 而不是当前选中的处理目标——否则上传新录像后点重试会去分析错的录像。
+   */
+  async function submitRetry(): Promise<void> {
+    const fromScope = scope;
+    if (session === null || shownRun === null) {
+      return;
+    }
+    const input: CreateRun = {
+      media_asset_id: shownRun.media_asset_id,
+      mode: shownRun.mode,
+      input_transcript_revision_id: shownRun.input_transcript_revision_id,
+      config_profile: 'p0-v1',
+    };
+    const signature = intentSignature(session.id, input.mode, input.media_asset_id);
+    const key = pendingIntent.keyFor(accountScope, session.id, signature);
+
+    write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
+    try {
+      const run = await createRun(session.id, input, key);
+      pendingIntent.resolve(accountScope, session.id);
+      write(fromScope, (base) => ({
+        ...base,
+        busy: false,
+        run,
+        note: `已重试，批次 ${shortId(run.id)}，当前状态 ${run.status}。`,
+      }));
+      if (api) {
+        detail.reload();
+      }
+    } catch (error) {
+      write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
+    }
+  }
+
   async function submitUpload(): Promise<void> {
     const fromScope = scope;
     if (session === null || action.file === null || action.sourceRecordId.trim() === '') {
@@ -188,13 +242,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
     try {
       const result = await uploadMedia(session.id, action.file, action.sourceRecordId.trim());
-      // 评审意见 F02：上传返回的 pending 媒体要成为接下来的处理目标，不能只显示一下 id。
+      // 评审意见 F02：上传返回的 pending 媒体要成为接下来的处理目标（N06 的 auto 规则会优先它）。
       write(fromScope, (base) => ({
         ...base,
         busy: false,
         note: `已上传，媒体 ${shortId(result.mediaId)} 已设为处理目标（状态 pending，可直接媒体准备）。`,
         uploadedMediaId: result.mediaId,
-        selectedMediaId: result.mediaId,
         uploadOpen: false,
         file: null,
       }));
@@ -209,11 +262,38 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
   const mediaTarget = processingMediaId(action, session?.primary_media_asset_id ?? null);
   const canUpload = session !== null && session.allowed_actions.includes('upload');
-  const canPrepare = session !== null && session.allowed_actions.includes('prepare_media');
-  const canAnalyze = session !== null && session.allowed_actions.includes('analyze');
+  /**
+   * 评审意见 N05：Session 的授权不能覆盖所选媒体自己的用途。
+   * 目标媒体必须先在已加载列表里拿到 allowed_actions 才允许提交；
+   * 拿不到授权信息时按"不放行"处理（fail-closed），并提示可加载更多媒体页。
+   */
+  const targetMedia = mediaTarget === null ? null : media.data.items.find((item) => item.id === mediaTarget) ?? null;
+  const targetMediaKnown = targetMedia !== null;
+  const mediaAllows = (needed: MediaAction): boolean =>
+    targetMedia !== null && targetMedia.allowed_actions.includes(needed);
+  // 按钮是否显示看 Session 的 allowed_actions；是否可点还要看所选媒体自己的用途（N05）。
+  // 两者分开，避免"因为媒体授权未知"就把按钮整个藏掉，那样用户看不出这里本该有什么操作。
+  const showPrepare = session !== null && session.allowed_actions.includes('prepare_media');
+  const showAnalyze = session !== null && session.allowed_actions.includes('analyze');
+  const mediaReadyForActions = api && !action.busy && mediaTarget !== null;
+  const prepareDisabled = !mediaReadyForActions || !mediaAllows('prepare_media');
+  const analyzeDisabled = !mediaReadyForActions || !mediaAllows('analyze');
   const canCancel = shownRun !== null && shownRun.allowed_actions.includes('cancel') && isRunActive(shownRun);
-  const canRetry = shownRun !== null && shownRun.allowed_actions.includes('retry') && !isRunActive(shownRun);
-  const sourceMedia = session === null ? [] : media.data.filter((item) => item.kind === 'source');
+  const showRetry = shownRun !== null && shownRun.allowed_actions.includes('retry') && !isRunActive(shownRun);
+  // 重试针对批次自己的媒体，授权也按那个媒体判断（不是当前选中的目标）。
+  const retryMedia =
+    shownRun === null ? null : media.data.items.find((item) => item.id === shownRun.media_asset_id) ?? null;
+  const retryDisabled =
+    !api || action.busy || retryMedia === null || shownRun === null
+      ? true
+      : !retryMedia.allowed_actions.includes(requiredMediaAction(shownRun.mode));
+  const sourceMedia = session === null ? [] : media.data.items.filter((item) => item.kind === 'source');
+  const mediaChoiceValue =
+    action.mediaChoice.kind === 'asset'
+      ? action.mediaChoice.mediaId
+      : action.mediaChoice.kind === 'primary'
+        ? '__primary__'
+        : '__auto__';
 
   return (
     <div className="page">
@@ -294,7 +374,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 title={shownRun === null ? '最近批次' : `最近批次 ${shortId(shownRun.id)}`}
                 subtitle={
                   shownRun === null
-                    ? '该课堂还没有分析批次。'
+                    ? // 评审意见 N08：只有"确实没有批次引用"才是空态；读取失败不能断言不存在。
+                      detail.runError === null
+                      ? session.latest_run_id === null
+                        ? '该课堂还没有分析批次。'
+                        : '批次引用存在，但暂时读不到内容，请重试读取。'
+                      : '批次读取失败，暂时无法显示。'
                     : `${runModeLabel(shownRun.mode)} · 状态 ${shownRun.status}${
                         isRunActive(shownRun)
                           ? poll.error === null
@@ -312,7 +397,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   </p>
                 )}
                 {shownRun === null ? (
-                  <p className="empty">暂无批次。</p>
+                  detail.runError === null && session.latest_run_id === null ? (
+                    <p className="empty">暂无批次。</p>
+                  ) : null
                 ) : (
                   <>
                     <ol className="stage-list">
@@ -359,21 +446,21 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       上传录像
                     </button>
                   ) : null}
-                  {canPrepare ? (
+                  {showPrepare ? (
                     <button
                       type="button"
                       className="account-button"
-                      disabled={!api || action.busy || mediaTarget === null}
+                      disabled={prepareDisabled}
                       onClick={() => void submitAnalyze('media_prepare')}
                     >
                       媒体准备
                     </button>
                   ) : null}
-                  {canAnalyze ? (
+                  {showAnalyze ? (
                     <button
                       type="button"
                       className="account-button"
-                      disabled={!api || action.busy || mediaTarget === null}
+                      disabled={analyzeDisabled}
                       onClick={() => void submitAnalyze('full')}
                     >
                       提交分析
@@ -384,12 +471,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       取消批次
                     </button>
                   ) : null}
-                  {canRetry ? (
+                  {showRetry ? (
                     <button
                       type="button"
                       className="account-button"
-                      disabled={!api || action.busy || mediaTarget === null}
-                      onClick={() => void submitAnalyze('full')}
+                      disabled={retryDisabled}
+                      onClick={() => void submitRetry()}
                     >
                       重试
                     </button>
@@ -397,23 +484,64 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   {session.allowed_actions.length === 0 ? <span className="muted">该课堂没有可执行的操作。</span> : null}
                 </div>
 
-                {api && sourceMedia.length > 0 ? (
-                  <label className="account-field">
-                    <span>处理目标媒体</span>
-                    <select
-                      value={action.selectedMediaId ?? ''}
-                      onChange={(event) =>
-                        write(scope, (base) => ({ ...base, selectedMediaId: event.target.value || null }))
-                      }
-                    >
-                      <option value="">（使用课堂当前主媒体）</option>
-                      {sourceMedia.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {shortId(item.id)} · 原媒体 · {item.status}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                {api ? (
+                  <>
+                    {/* 评审意见 N07：媒体列表的失败要显示并可重试，和"正常空列表"分开。 */}
+                    <LoadStateNote status={media.status} error={media.error} />
+                    <LoadControls actionLabel={media.actionLabel} loadMore={media.loadMore} />
+                    {sourceMedia.length > 0 || action.uploadedMediaId !== null || session.primary_media_asset_id !== null ? (
+                      <label className="account-field">
+                        <span>处理目标媒体</span>
+                        <select
+                          value={mediaChoiceValue}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            // 评审意见 N06：显式选主媒体要记成 primary，不能和"未选择"都写成 null。
+                            const choice: MediaChoice =
+                              value === '__auto__'
+                                ? { kind: 'auto' }
+                                : value === '__primary__'
+                                  ? { kind: 'primary' }
+                                  : { kind: 'asset', mediaId: value };
+                            write(scope, (base) => ({ ...base, mediaChoice: choice }));
+                          }}
+                        >
+                          <option value="__auto__">自动（优先刚上传的媒体）</option>
+                          <option value="__primary__">
+                            使用课堂当前主媒体{session.primary_media_asset_id === null ? '（当前没有）' : ''}
+                          </option>
+                          {sourceMedia.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {shortId(item.id)} · 原媒体 · {item.status}
+                              {item.allowed_actions.length === 0 ? ' · 无可用途' : ` · ${item.allowed_actions.join('/')}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : media.status === 'ready' ? (
+                      <p className="load-note">该课堂还没有可选的原媒体，先上传录像。</p>
+                    ) : null}
+                    {mediaTarget === null ? (
+                      <p className="load-note">该课堂还没有可处理的媒体，请先上传录像。</p>
+                    ) : null}
+                    {mediaTarget !== null && !targetMediaKnown ? (
+                      <p className="load-note">
+                        还没拿到该媒体的授权信息（它不在已加载的媒体页里），为避免用课堂授权覆盖媒体用途，
+                        暂不能提交；可以先「加载更多」媒体，或改选已列出的媒体。
+                      </p>
+                    ) : null}
+                    {targetMedia !== null && targetMedia.status !== 'ready' ? (
+                      <p className="load-note">
+                        处理目标状态为 {targetMedia.status}
+                        {targetMedia.status === 'pending' ? '，可先做媒体准备（probe 允许对 pending 原媒体执行）。' : '，暂不能提交。'}
+                      </p>
+                    ) : null}
+                    {showRetry && retryDisabled && retryMedia === null ? (
+                      <p className="load-note">
+                        重试需要失败批次自己那个媒体的授权信息；可以在媒体列表里继续加载后再重试。
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
 
                 {!api ? <p className="load-note">固定样例模式未接入后端，操作按钮不可用。</p> : null}
