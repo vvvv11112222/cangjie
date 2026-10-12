@@ -135,6 +135,9 @@ function useLoaded<T, P>(options: {
     if (actionLabel !== null && context.current !== null) void run(context.current);
   }, reload: () => {
     if (!enabled || !API || !canLoad) return;
+    // 评审意见 N03：刷新也是副作用，必须确认这个闭包仍属于当前会话。
+    // 旧会话的迟到动作调用 reload 时，不能关掉新会话正在进行的加载。
+    if (currentKey.current !== key) return;
     // 从头重新加载：新建检查点，但保留已有数据，刷新期间页面不会闪空。
     if (context.current !== null) context.current.active = false;
     const ctx: Context = {
@@ -535,22 +538,42 @@ export function fixtureSession(sessionId: string): Session | null {
 }
 
 /**
- * 指定课堂的媒体列表（第一页）。
- * 评审意见 F02：首次上传后 Session 还没有主媒体，需要能从"当前/历史原媒体"里选处理目标。
+ * 指定课堂的媒体列表（可继续翻页）。
+ * 评审意见 F02：首次上传后 Session 还没有主媒体，需要能从"当前/历史原媒体"里选处理目标；
+ * 评审意见 N04：保留并消费 MediaPage 游标，第 21 条之后的合法原媒体也能取到。
  */
+export interface SessionMediaData {
+  items: MediaLite[];
+  /** 非 null 表示还有下一页原媒体（协议 limit 默认 20）。 */
+  nextCursor: string | null;
+}
+
 export function useSessionMedia(
   session: Session | null,
   enabled = true,
-): LoadState<MediaLite[]> & LoadActions & { origin: DataOrigin } {
+): LoadState<SessionMediaData> & LoadActions & { origin: DataOrigin } {
   const { sessionKey, authStatus } = useSessionContext();
-  const initial = useMemo<MediaLite[]>(() => [], []);
+  const initial = useMemo<SessionMediaData>(() => ({ items: [], nextCursor: null }), []);
   const state = useLoaded({
     enabled: enabled && session !== null,
     sessionKey: session === null ? sessionKey : `${sessionKey}:media:${session.id}`,
     authStatus,
     initialData: initial,
-    newProgress: () => undefined,
-    load: async () => getSessionMedia((session as Session).id),
+    newProgress: () => ({ cursor: undefined as string | undefined, seen: [] as string[] }),
+    load: async (progress, previous) => {
+      const page = await getSessionMedia((session as Session).id, progress.cursor);
+      // 重复游标（服务端异常循环）要单独报错，不能无限翻页（N04）。
+      const seen = [...progress.seen, progress.cursor ?? ''];
+      checkNextCursor(page.nextCursor, seen);
+      const merged = new Map(previous.items.map((item) => [item.id, item]));
+      for (const item of page.items) {
+        merged.set(item.id, item);
+      }
+      progress.cursor = page.nextCursor ?? undefined;
+      progress.seen = seen;
+      return { items: [...merged.values()], nextCursor: page.nextCursor };
+    },
+    hasMore: (data) => data.nextCursor !== null,
   });
   return {
     ...state,

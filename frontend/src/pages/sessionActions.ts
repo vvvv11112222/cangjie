@@ -6,11 +6,23 @@
  * 所以状态里带一个 scope 标识（auth sessionKey + sessionId），
  * 渲染时用 actionStateFor 过滤，写回时用 writeActionState 校验归属。
  *
- * 评审意见 F03：同一次逻辑提交要复用同一个幂等键，所以状态里保存
- * intentKey（键）与 intentSignature（提交内容签名）；签名相同=重发，签名不同=新分析。
+ * 评审意见 F03/N02：同一次逻辑提交要复用同一个幂等键。键由 pages/pendingIntent.ts
+ * 按"认证会话 + 课堂"保存（跨组件卸载仍有效），本模块只负责"选哪个媒体、按什么规则算"。
  */
 
 import type { Run, RunMode } from '../types';
+
+/**
+ * 处理目标的选择意图（评审意见 N06）：
+ *   auto    —— 未显式选择：优先刚上传的媒体，其次课堂主媒体；
+ *   primary —— 明确选择"使用课堂当前主媒体"；
+ *   asset   —— 明确选择某个媒体。
+ * 把 primary 与"没有选择"分开编码，否则选主媒体后仍会去分析刚上传的录像。
+ */
+export type MediaChoice =
+  | { kind: 'auto' }
+  | { kind: 'primary' }
+  | { kind: 'asset'; mediaId: string };
 
 export interface ActionState {
   /** 归属标识：`${auth sessionKey}:${sessionId}`。 */
@@ -22,12 +34,8 @@ export interface ActionState {
   run: Run | null;
   /** 上传成功后拿到的媒体 id：首次处理用它，不再死等主媒体（F02）。 */
   uploadedMediaId: string | null;
-  /** 用户选定的处理目标媒体（当前或历史原媒体）。 */
-  selectedMediaId: string | null;
-  /** 一次逻辑提交持有的幂等键；为 null 表示下次提交是新分析（F03）。 */
-  intentKey: string | null;
-  /** 幂等键对应的提交内容签名：`sessionId:mode:mediaAssetId`。 */
-  intentSignature: string | null;
+  /** 处理目标的选择意图（见 MediaChoice）。 */
+  mediaChoice: MediaChoice;
   uploadOpen: boolean;
   sourceRecordId: string;
   file: File | null;
@@ -41,9 +49,7 @@ export function emptyActionState(scope: string): ActionState {
     note: null,
     run: null,
     uploadedMediaId: null,
-    selectedMediaId: null,
-    intentKey: null,
-    intentSignature: null,
+    mediaChoice: { kind: 'auto' },
     uploadOpen: false,
     sourceRecordId: '',
     file: null,
@@ -72,7 +78,15 @@ export function intentSignature(sessionId: string, mode: RunMode, mediaAssetId: 
   return `${sessionId}:${mode}:${mediaAssetId}`;
 }
 
-/** 当前要处理的媒体：优先用户选定，其次刚上传的，最后才是 Session 的主媒体。 */
+/** 当前要处理的媒体：按选择意图决定（N06）。 */
 export function processingMediaId(state: ActionState, sessionPrimaryMediaId: string | null): string | null {
-  return state.selectedMediaId ?? state.uploadedMediaId ?? sessionPrimaryMediaId;
+  switch (state.mediaChoice.kind) {
+    case 'asset':
+      return state.mediaChoice.mediaId;
+    case 'primary':
+      // 明确选了主媒体：没有主媒体就不能退回刚上传的媒体。
+      return sessionPrimaryMediaId;
+    default:
+      return state.uploadedMediaId ?? sessionPrimaryMediaId;
+  }
 }
