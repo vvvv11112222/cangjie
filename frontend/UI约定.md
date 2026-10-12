@@ -96,4 +96,14 @@ npm run check
 
 它会依次做类型检查、单元测试和构建。
 
+改了按钮、输入控件、焦点样式或 `<details>` 折叠区时，再跑一次键盘/焦点探针（零依赖，用本机 Edge）：
+
+```powershell
+# 先构建并起一个静态服务：python -m http.server 18767 --directory frontend/dist
+node frontend/tools/a11y-probe.mjs http://127.0.0.1:18767
+```
+
+它检查 Tab 顺序、焦点是否可见、`<details>` 能否用键盘展开，并在真实布局里量一遍控件尺寸——
+这些是单元测试（jsdom 不算布局）证明不了的。
+
 `src/pages/pages.test.tsx` 里断言的页面文案（例如"阶段完成 4/6"）不要为了视觉好看删改；确实要改文案时，测试一起改，并在提交说明里写清楚。

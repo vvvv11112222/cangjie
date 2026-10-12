@@ -38,6 +38,7 @@
   /* 形状与层次 */
   --radius-card: 12px;
   --radius-control: 8px;
+  --control-height: 35px;     /* 输入框与下拉框的统一高度（select 固有高度会差 2px） */
   --shadow-card: 0 1px 2px #15383d08, 0 8px 24px #15383d0a;
 
   /* 交互态与分隔线：hover 面、下沉面、加粗边框 */
@@ -394,6 +395,15 @@ code {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+/*
+ * 同一高度：<select> 的固有高度比同样式的 <input> 高 2px（真实布局实测），
+ * 不钉住的话两个控件并排就会差一截。文件选择框保持自身高度，不强行拉平。
+ */
+.account-field input:not([type='file']),
+.account-field select {
+  height: var(--control-height);
+}
+
 .account-bar .account-field {
   gap: 4px;
   font-size: 11px;
@@ -406,6 +416,12 @@ code {
   color: var(--side-strong);
   padding: 7px 9px;
   font-size: 12px;
+}
+
+/* 侧栏表单比页面表单紧凑一档，高度同样钉住，免得和 select 不一致。 */
+.account-bar .account-field input:not([type='file']),
+.account-bar .account-field select {
+  height: 32px;
 }
 
 .account-bar .account-field input:focus {
