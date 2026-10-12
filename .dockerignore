@@ -1,8 +1,13 @@
 .git
 .env
+.env.*
+!.env.example
 var
 output
-node_modules
+pytest-of-ASUS
 .venv
-__pycache__
-*.pyc
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/dist
+node_modules

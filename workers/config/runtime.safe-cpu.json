@@ -1,0 +1,14 @@
+{
+  "engine": "cpu",
+  "cpu_threads": 4,
+  "cpu_allow_spinning": false,
+  "pose_batch_size": 1,
+  "fixed_pose_batches": false,
+  "prefetch_detection": false,
+  "gpu_threads": 1,
+  "opencv_threads": 2,
+  "gpu_detection": false,
+  "gpu_yolox": false,
+  "decoded_poses": false,
+  "use_tf32": 0
+}
