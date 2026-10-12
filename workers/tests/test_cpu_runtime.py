@@ -52,3 +52,87 @@ def test_cpu_status_does_not_present_available_gpu_as_active(monkeypatch):
     monkeypatch.setattr(models, "selected_device", forbidden)
     assert models.runtime_status()["device"] is None
     assert models.runtime_status()["execution_engine"] == "cpu"
+
+
+@pytest.fixture
+def clean_session_records(monkeypatch):
+    monkeypatch.setattr(models, "_session_records", {})
+    monkeypatch.setattr(models, "_instance", None)
+
+
+@pytest.mark.parametrize("device_id", [0, 2])
+def test_cuda_status_uses_actual_session_options_without_dxgi(monkeypatch, clean_session_records, device_id):
+    captured = {}
+    def forbidden():
+        pytest.fail("CUDA must not use the DirectML/DXGI device inventory")
+    def construct(path, sess_options, providers):
+        captured["providers"] = providers
+        return SimpleNamespace(get_providers=lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                               get_provider_options=lambda: {"CUDAExecutionProvider": {"device_id": str(device_id)}})
+    monkeypatch.setattr(models, "runtime_kind", "cuda")
+    monkeypatch.setattr(models, "selected_device", forbidden)
+    monkeypatch.setattr(models.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    monkeypatch.setattr(models.ort, "InferenceSession", construct)
+    models.session(Path("cuda.onnx"), use_gpu=True)
+    status = models.runtime_status()
+    assert captured["providers"][0][1]["device_id"] == 0
+    assert status["device"] == {"provider": "CUDAExecutionProvider", "device_id": device_id}
+    assert status["sessions"][0]["device"] == status["device"]
+    assert status["execution_engine"] == "cuda" and status["warnings"] == []
+
+
+@pytest.mark.parametrize("options", [{}, {"device_id": "invalid"}, {"device_id": "-1"}])
+def test_unknown_cuda_device_is_explicit_not_a_candidate(monkeypatch, clean_session_records, options):
+    monkeypatch.setattr(models, "runtime_kind", "cuda")
+    monkeypatch.setattr(models.ort, "get_available_providers", lambda: ["CUDAExecutionProvider"])
+    monkeypatch.setattr(models.ort, "InferenceSession", lambda *args, **kwargs:
+                        SimpleNamespace(get_providers=lambda: ["CUDAExecutionProvider"],
+                                        get_provider_options=lambda: {"CUDAExecutionProvider": options}))
+    monkeypatch.setattr(models, "selected_device", lambda: pytest.fail("CUDA does not select DXGI adapters"))
+    models.session(Path("cuda.onnx"), use_gpu=True)
+    status = models.runtime_status()
+    assert status["device"] is None and status["sessions"][0]["device"] is None
+    assert status["execution_engine"] == "cuda" and status["warnings"]
+
+
+@pytest.mark.parametrize("fallback", ["unavailable", "silent", "exception"])
+def test_cuda_cpu_fallback_records_no_gpu(monkeypatch, clean_session_records, fallback):
+    monkeypatch.setattr(models, "runtime_kind", "cuda")
+    monkeypatch.setattr(models, "selected_device", lambda: pytest.fail("CUDA fallback does not use DXGI"))
+    monkeypatch.setattr(models.ort, "get_available_providers", lambda:
+                        ["CPUExecutionProvider"] if fallback == "unavailable" else ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    def construct(path, sess_options, providers):
+        if fallback == "exception" and providers != ["CPUExecutionProvider"]:
+            raise RuntimeError("CUDA initialization failed")
+        return SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
+    monkeypatch.setattr(models.ort, "InferenceSession", construct)
+    models.session(Path("cuda.onnx"), use_gpu=True)
+    status = models.runtime_status()
+    assert status["device"] is None and status["sessions"][0]["device"] is None
+    assert status["execution_engine"] == "cpu" and status["configured_engine"] == "cuda"
+    assert status["warnings"]
+
+
+def test_directml_status_records_the_adapter_used_to_create_session(monkeypatch, clean_session_records):
+    adapter = {"device_id": 1, "name": "DirectML adapter", "dedicated_mb": 8192}
+    captured = {}
+    monkeypatch.setattr(models, "runtime_kind", "directml")
+    monkeypatch.setattr(models, "selected_device", lambda: {"selected": adapter, "error": None})
+    monkeypatch.setattr(models.ort, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
+    def construct(path, sess_options, providers):
+        captured["providers"] = providers
+        return SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
+    monkeypatch.setattr(models.ort, "InferenceSession", construct)
+    models.session(Path("dml.onnx"), use_gpu=True)
+    monkeypatch.setattr(models, "selected_device", lambda: pytest.fail("status uses recorded session, not a fresh candidate"))
+    status = models.runtime_status()
+    assert captured["providers"][0][1]["device_id"] == 1
+    assert status["device"] == {**adapter, "provider": "DmlExecutionProvider"}
+    assert status["execution_engine"] == "directml"
+
+
+def test_no_cuda_session_does_not_report_an_active_device(monkeypatch, clean_session_records):
+    monkeypatch.setattr(models, "runtime_kind", "cuda")
+    monkeypatch.setattr(models, "selected_device", lambda: pytest.fail("no CUDA session means no selected device"))
+    status = models.runtime_status()
+    assert status["device"] is None and status["execution_engine"] == "unknown"

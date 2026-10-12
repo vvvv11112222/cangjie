@@ -50,10 +50,34 @@ def runtime_status():
     warnings = [r['warning'] for r in records if r.get('warning')]
     if _instance is not None and _instance.provenance.get('batch_fallback'):
         warnings.append('批量加速失败，已改为逐人计算：'+_instance.provenance['batch_fallback'])
-    if runtime_kind != 'cpu' and selected_device()['error']:
-        warnings.append('无法确认加速显卡：' + selected_device()['error'])
-    return {'device': selected_device()['selected'] if runtime_kind != 'cpu' else None,
-            'execution_engine': runtime_kind, 'sessions': records, 'warnings': list(dict.fromkeys(warnings))}
+    devices = []
+    gpu_records = [r for r in records if r['provider'] != 'CPUExecutionProvider']
+    for record in gpu_records:
+        if record['device'] is not None and record['device'] not in devices:
+            devices.append(record['device'])
+    if len(devices) > 1:
+        warnings.append('会话使用多个加速设备；逐会话设备见 sessions')
+    device = devices[0] if len(devices) == 1 and all(r['device'] is not None for r in gpu_records) else None
+    engines = {'CPUExecutionProvider': 'cpu', 'CUDAExecutionProvider': 'cuda', 'DmlExecutionProvider': 'directml'}
+    active = {engines.get(r['provider'], 'unknown') for r in gpu_records or records}
+    engine = next(iter(active)) if len(active) == 1 else ('mixed' if active else ('cpu' if runtime_kind == 'cpu' else 'unknown'))
+    return {'device': device, 'execution_engine': engine, 'configured_engine': runtime_kind,
+            'sessions': records, 'warnings': list(dict.fromkeys(warnings))}
+
+
+def _session_device(result, provider, dml_device):
+    if provider == 'CUDAExecutionProvider':
+        try:
+            device_id = int(result.get_provider_options()[provider]['device_id'])
+            if device_id < 0:
+                raise ValueError('negative CUDA device_id')
+        except (KeyError, TypeError, ValueError, RuntimeError):
+            return None, '无法确认 CUDA 会话设备编号；不使用 DXGI 候选显卡替代'
+        # CUDA ordinals and DXGI indices describe different device inventories.
+        return {'provider': provider, 'device_id': device_id}, None
+    if provider == 'DmlExecutionProvider' and dml_device is not None:
+        return {**dml_device, 'provider': provider}, None
+    return None, None
 POSE_MEAN=np.array([123.675,116.28,103.53])
 POSE_STD=np.array([58.395,57.12,57.375])
 POSE_LUT=((np.arange(256,dtype=np.float32)[:,None]-POSE_MEAN)/POSE_STD).astype(np.float32).reshape(256,1,3)
@@ -79,6 +103,7 @@ def session(path, use_gpu=False, batch_override=None):
         options.add_session_config_entry('session.inter_op.allow_spinning','0')
     providers=['CPUExecutionProvider']
     warning = None
+    dml_device = None
     if use_gpu and runtime_kind == 'cuda' and 'CUDAExecutionProvider' in ort.get_available_providers():
         providers=[('CUDAExecutionProvider',{'device_id':0,'use_tf32':int(os.environ.get('VISION_TF32',runtime_settings.get('use_tf32',0))),
                     'cudnn_conv_algo_search':os.environ.get('VISION_CUDA_ALGO',runtime_settings.get('cuda_algo','HEURISTIC')),
@@ -87,9 +112,9 @@ def session(path, use_gpu=False, batch_override=None):
     elif use_gpu and runtime_kind == 'directml' and 'DmlExecutionProvider' in ort.get_available_providers():
         options.enable_mem_pattern=False
         options.execution_mode=ort.ExecutionMode.ORT_SEQUENTIAL
-        device=selected_device()['selected']
-        if device:
-            providers=[('DmlExecutionProvider',{'device_id':device['device_id']}),'CPUExecutionProvider']
+        dml_device=selected_device()['selected']
+        if dml_device:
+            providers=[('DmlExecutionProvider',{'device_id':dml_device['device_id']}),'CPUExecutionProvider']
         else:
             warning=f'{path.name}：未找到可确认的显卡，正在使用 CPU'
     elif use_gpu and runtime_kind != 'cpu':
@@ -102,12 +127,16 @@ def session(path, use_gpu=False, batch_override=None):
         options.enable_mem_pattern=True
         warning=f'{path.name}：显卡启动失败，已改用 CPU（{str(error)[:200]}）'
         result=ort.InferenceSession(str(path),sess_options=options,providers=['CPUExecutionProvider'])
-    if use_gpu and runtime_kind != 'cpu' and result.get_providers()[0]=='CPUExecutionProvider' and not warning:
+    provider = result.get_providers()[0]
+    device, device_warning = _session_device(result, provider, dml_device)
+    if device_warning:
+        warning = device_warning if warning is None else warning + '；' + device_warning
+    if use_gpu and runtime_kind != 'cpu' and provider=='CPUExecutionProvider' and not warning:
         warning=f'{path.name}：实际未启用显卡，正在使用 CPU'
     if warning:print(warning,flush=True)
     with _records_lock:
         _session_records[(path.name,batch_override)]={'model':path.name,'batch':batch_override,
-            'provider':result.get_providers()[0],'gpu_requested':use_gpu and runtime_kind != 'cpu',
+            'provider':provider,'device':device,'gpu_requested':use_gpu and runtime_kind != 'cpu',
             'intra_op_threads':options.intra_op_num_threads,'warning':warning}
     return result
 

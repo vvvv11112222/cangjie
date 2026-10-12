@@ -6,7 +6,7 @@ import av
 import cv2
 
 from workers.common.contracts import WorkerError
-from workers.vision_core.media import inspect_media, make_proxy, sampled_frames, half_up_ms
+from workers.vision_core.media import inspect_media, make_proxy, sampled_frames, half_up_ms, TimelineError
 
 
 def inspect_source(path, settings):
@@ -122,6 +122,8 @@ def video_analysis(claim, directory, settings, transport, guard):
             guard.update(progress=int(timestamp / duration * 95))
             if len(frames) >= limit:
                 break
+    except TimelineError as error:
+        raise WorkerError("TIMELINE_INVALID", str(error)) from error
     finally:
         iterator.close()
     if not frames:

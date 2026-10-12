@@ -14,6 +14,10 @@ class Cancelled(Exception):
     pass
 
 
+class TimelineError(ValueError):
+    """Decoded timestamps cannot establish the source recording timeline."""
+
+
 def check_cancel(cancel):
     if hasattr(cancel, "check"):
         cancel.check()  # A Worker Guard must preserve timeout vs lease-loss exceptions.
@@ -137,10 +141,10 @@ def sampled_frames(path, start_ms, end_ms, fps, cancel, audit=None):
         for frame in container.decode(video):
             check_cancel(cancel)
             if frame.pts is None:
-                raise ValueError("解码帧缺少 PTS，停止生成不可靠时间证据")
+                raise TimelineError("解码帧缺少 PTS，停止生成不可靠时间证据")
             timestamp = half_up_ms(Fraction(frame.pts) * frame.time_base - origin)
             if timestamp < 0 or timestamp < previous:
-                raise ValueError("检测到非单调视频时间轴")
+                raise TimelineError("检测到非单调视频时间轴")
             previous = timestamp
             if audit is not None:
                 audit["decoded_frames"] = audit.get("decoded_frames", 0) + 1

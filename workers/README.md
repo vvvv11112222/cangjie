@@ -1,5 +1,13 @@
 # 视频工程师交付
 
+## 2026-10-12 审查整改
+
+处理器版本为 `cangjie-video-worker-1.0.5`。正式关键帧采样中的缺失 PTS、负时间及时间倒退返回 `TIMELINE_INVALID`；撤租、取消、本地超时和其他处理错误保持各自分类。
+
+本地分析的 `runtime_status` 根据已创建会话记录设备：CUDA 使用会话的 provider options 中的设备编号，不与 DirectML/DXGI 编号混用，也不猜测物理显卡名称；DirectML 记录创建会话时采用的适配器。CPU 回退不显示活动显卡，尚未创建加速会话时标记 unknown。每个 session 包含 device，顶层 device 只在已确认同一个加速设备时汇总；多设备或编号未知时保持 null 并给出说明。execution_engine 表示实际会话执行器，configured_engine 保留配置选择。这些信息属于本地 P1 报告，不扩展正式 P0 DTO。
+
+部署前运行 `python -m workers runtime-info`，让 Go 固定新处理器版本和本平台 FFmpeg 摘要；不改写旧批次。CUDA/DirectML 测试使用受控会话验证设备记录，不代表真实 GPU 推理或性能验收通过。
+
 本模块复用 vision-lab 0.4.3 的检测、姿态、头姿、追踪、座位和行为规则。核心来源及摘要见 [source-port.json](source-port.json)，模型来源、版本、许可证说明及摘要见 [models.manifest.json](config/models.manifest.json)。没有重新训练模型或改变识别门槛。
 
 ## 交付范围
@@ -64,7 +72,7 @@ python -m workers run
 
 当前 Go 只配置一个 Worker 编号及能力许可集合。Go 的 `WORKER_CAPABILITIES` 保持公共模板的三个阶段；视频进程仅声明 `probe,video_analysis`，音频进程声明自身实际能力。相同凭据与编号须由后端分配，不以在视频配置中添加 `audio_analysis` 假装实现 ASR。
 
-处理器版本已更新为 `cangjie-video-worker-1.0.3`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
+处理器版本已更新为 `cangjie-video-worker-1.0.5`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
 
 已领取任务的媒体访问、心跳、上传与回传每次操作最多尝试 3 次，遵循 `Retry-After`（秒数或 HTTP 日期），并持续检查租约、取消及截止时间。重传产物复用同一键与内容，完成请求保留原字节；超过次数报告可重试失败，由 Go 决定重新调度。本地超时报告 `PROCESSING_TIMEOUT`，不会清除外部撤租或取消信号。
 
