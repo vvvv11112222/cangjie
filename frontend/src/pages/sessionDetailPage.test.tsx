@@ -53,6 +53,7 @@ vi.mock('../auth', () => ({
 }));
 
 import { SessionDetailPage } from './SessionDetailPage';
+import { pendingIntent } from './pendingIntent';
 
 const SESSION = fixturesSessionPage.items[0]!;
 /** 故意与课堂主媒体（…0002）不同：用来确认"重试"用的是批次自己的媒体。 */
@@ -60,6 +61,7 @@ const RUN_MEDIA_ID = '00000000-0000-4000-8000-000000000009';
 
 let container: HTMLDivElement;
 let root: Root;
+let submitted: { body: string; key: string }[];
 
 function page(): ReactElement {
   return <SessionDetailPage sessionId={SESSION.id} />;
@@ -98,6 +100,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  submitted = [];
 });
 
 afterEach(async () => {
@@ -105,7 +108,30 @@ afterEach(async () => {
     root.unmount();
   });
   container.remove();
+  for (const request of submitted) {
+    pendingIntent.resolve(hoisted.sessionKey, SESSION.id, request.key);
+  }
+  vi.unstubAllGlobals();
 });
+
+async function reenterDetail(): Promise<void> {
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await renderAndSettle();
+}
+
+function mediaOptions(): void {
+  hoisted.getSessionMedia.mockResolvedValue({
+    items: [SESSION.primary_media_asset_id!, RUN_MEDIA_ID].map((id) => ({
+      id, kind: 'source', status: 'ready', allowed_actions: ['analyze', 'prepare_media'],
+    })),
+    nextCursor: null,
+  });
+}
+
+function capture(init?: RequestInit): void {
+  submitted.push({ body: String(init?.body), key: (init?.headers as Record<string, string>)['Idempotency-Key']! });
+}
 
 describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
   it('账号切换后仍然能打开上传表单（新 scope 可写）', async () => {
@@ -200,5 +226,68 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
     expect(bodies).toHaveLength(1);
     expect(JSON.parse(bodies[0]!).media_asset_id).toBe(RUN_MEDIA_ID);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('不同未确定请求的交错与重发（R17-01/R17-02）', () => {
+  it('离开详情后旧成功响应不清除新媒体请求，新媒体重发复用原键', async () => {
+    hoisted.sessionKey = 'review-late-response';
+    mediaOptions();
+    let acceptOld!: (response: Response) => void;
+    const oldResponse = new Promise<Response>((resolve) => { acceptOld = resolve; });
+    vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
+      capture(init);
+      if (submitted.length === 1) return oldResponse;
+      throw new TypeError('accepted but response lost');
+    });
+    await renderAndSettle();
+    await act(async () => buttonByText('提交分析').click());
+    await reenterDetail();
+    await act(async () => {
+      const select = container.querySelector('select')!;
+      select.value = RUN_MEDIA_ID;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => buttonByText('提交分析').click());
+    expect(submitted).toHaveLength(2);
+    await act(async () => acceptOld({
+      ok: true, status: 202,
+      text: async () => JSON.stringify({ data: fixturesRun, request_id: 'old-accepted' }),
+    } as Response));
+    await act(async () => buttonByText('提交分析').click());
+    expect(submitted).toHaveLength(3);
+    expect(submitted[2]!.body).toBe(submitted[1]!.body);
+    expect(submitted[2]!.key).toBe(submitted[1]!.key);
+    expect(submitted[2]!.key).not.toBe(submitted[0]!.key);
+  });
+
+  it('report_only 换修订后用新键，返回原修订仍复用原键', async () => {
+    hoisted.sessionKey = 'review-revision-retry';
+    mediaOptions();
+    const r1 = '00000000-0000-4000-8000-000000000091';
+    const r2 = '00000000-0000-4000-8000-000000000092';
+    const failed = {
+      ...fixturesRun, status: 'failed', mode: 'report_only',
+      input_transcript_revision_id: r1, allowed_actions: ['retry'],
+    };
+    hoisted.getRun.mockResolvedValue(failed);
+    vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
+      capture(init);
+      throw new TypeError('accepted but response lost');
+    });
+    await renderAndSettle();
+    await act(async () => buttonWithExactText('重试')!.click());
+    hoisted.getRun.mockResolvedValue({ ...failed, input_transcript_revision_id: r2 });
+    await reenterDetail();
+    await act(async () => buttonWithExactText('重试')!.click());
+    expect(submitted[0]!.body).not.toBe(submitted[1]!.body);
+    expect(submitted[0]!.key).not.toBe(submitted[1]!.key);
+    expect(JSON.parse(submitted[0]!.body).input_transcript_revision_id).toBe(r1);
+    expect(JSON.parse(submitted[1]!.body).input_transcript_revision_id).toBe(r2);
+    hoisted.getRun.mockResolvedValue(failed);
+    await reenterDetail();
+    await act(async () => buttonWithExactText('重试')!.click());
+    expect(submitted[2]!.body).toBe(submitted[0]!.body);
+    expect(submitted[2]!.key).toBe(submitted[0]!.key);
   });
 });

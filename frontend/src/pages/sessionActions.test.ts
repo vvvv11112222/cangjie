@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { CreateRun } from '../types';
 import {
   actionStateFor,
   emptyActionState,
@@ -43,11 +44,41 @@ describe('动作状态按认证会话隔离（评审意见 F01）', () => {
 
 describe('幂等键与处理媒体（评审意见 F02/F03）', () => {
   it('同课堂+模式+媒体的签名相同，换任一项就不同', () => {
-    const base = intentSignature('s1', 'full', 'm1');
-    expect(intentSignature('s1', 'full', 'm1')).toBe(base);
-    expect(intentSignature('s1', 'media_prepare', 'm1')).not.toBe(base);
-    expect(intentSignature('s1', 'full', 'm2')).not.toBe(base);
-    expect(intentSignature('s2', 'full', 'm1')).not.toBe(base);
+    const input: CreateRun = {
+      mode: 'full', media_asset_id: 'm1', input_transcript_revision_id: null, config_profile: 'p0-v1',
+    };
+    const base = intentSignature('s1', input);
+    expect(intentSignature('s1', { ...input })).toBe(base);
+    expect(intentSignature('s1', { ...input, mode: 'media_prepare' })).not.toBe(base);
+    expect(intentSignature('s1', { ...input, media_asset_id: 'm2' })).not.toBe(base);
+    expect(intentSignature('s2', input)).not.toBe(base);
+  });
+
+  it('report_only 的修订、null 和配置均参与完整签名（R17-02）', () => {
+    const input: CreateRun = {
+      mode: 'report_only', media_asset_id: 'm1', input_transcript_revision_id: 'r1', config_profile: 'p0-v1',
+    };
+    const base = intentSignature('s1', input);
+    expect(intentSignature('s1', { ...input, input_transcript_revision_id: 'r2' })).not.toBe(base);
+    expect(intentSignature('s1', { ...input, input_transcript_revision_id: null })).not.toBe(base);
+    // 当前公共协议只允许 p0-v1；检查签名在未来新增合法配置时也不会忽略它。
+    expect(intentSignature('s1', { ...input, config_profile: 'future-profile' } as unknown as CreateRun)).not.toBe(base);
+    expect(JSON.parse(base)[1].input_transcript_revision_id).toBe('r1');
+    expect(JSON.parse(intentSignature('s1', { ...input, input_transcript_revision_id: null }))[1].input_transcript_revision_id).toBeNull();
+  });
+
+  it('UUID 大小写和请求对象字段顺序不改变同值签名', () => {
+    const input: CreateRun = {
+      mode: 'report_only', media_asset_id: 'ABCDEF00-0000-4000-8000-000000000001',
+      input_transcript_revision_id: 'ABCDEF00-0000-4000-8000-000000000002', config_profile: 'p0-v1',
+    };
+    expect(intentSignature('ABCDEF00-0000-4000-8000-000000000003', input)).toBe(intentSignature(
+      'abcdef00-0000-4000-8000-000000000003', {
+        config_profile: input.config_profile,
+        input_transcript_revision_id: input.input_transcript_revision_id!.toLowerCase(),
+        media_asset_id: input.media_asset_id.toLowerCase(), mode: input.mode,
+      },
+    ));
   });
 
   it('处理媒体按选择意图决定：auto 优先刚上传，primary 必须用主媒体（评审意见 N06）', () => {
