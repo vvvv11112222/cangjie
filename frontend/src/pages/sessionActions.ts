@@ -10,7 +10,7 @@
  * 按"认证会话 + 课堂"保存（跨组件卸载仍有效），本模块只负责"选哪个媒体、按什么规则算"。
  */
 
-import type { Run, RunMode } from '../types';
+import type { CreateRun, Run } from '../types';
 
 /**
  * 处理目标的选择意图（评审意见 N06）：
@@ -73,9 +73,15 @@ export function writeActionState(
   return state.scope === fromScope ? update(state) : state;
 }
 
-/** 提交内容签名：签名相同表示同一次逻辑提交，重发要复用幂等键。 */
-export function intentSignature(sessionId: string, mode: RunMode, mediaAssetId: string): string {
-  return `${sessionId}:${mode}:${mediaAssetId}`;
+/** 固定字段顺序及 UUID 大小写，按完整 CreateRun 区分重发与不同请求。 */
+export function intentSignature(sessionId: string, input: CreateRun): string {
+  const normalized: CreateRun = {
+    media_asset_id: input.media_asset_id.toLowerCase(),
+    mode: input.mode,
+    input_transcript_revision_id: input.input_transcript_revision_id?.toLowerCase() ?? null,
+    config_profile: input.config_profile,
+  };
+  return JSON.stringify([sessionId.toLowerCase(), normalized]);
 }
 
 /** 当前要处理的媒体：按选择意图决定（N06）。 */

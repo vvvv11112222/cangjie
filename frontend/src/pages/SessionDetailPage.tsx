@@ -149,9 +149,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       write(fromScope, (base) => ({ ...base, error: '该课堂还没有可处理的媒体，请先上传录像。' }));
       return;
     }
-    // 评审意见 F03/N02：同一逻辑提交（同课堂+模式+媒体）复用同一个键。
-    // 键由 pendingIntent 按"认证会话 + 课堂"保存，离开详情再回来也不会丢。
-    const signature = intentSignature(session.id, mode, mediaAssetId);
+    // 按实际发送的完整请求保存意图，离开详情后仍能重发同一份提交。
+    const input = analyzeInput(mediaAssetId, mode);
+    const signature = intentSignature(session.id, input);
     const key = pendingIntent.keyFor(accountScope, session.id, signature);
 
     write(fromScope, (base) => ({
@@ -161,9 +161,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       note: null,
     }));
     try {
-      const run = await createRun(session.id, analyzeInput(mediaAssetId, mode), key);
+      const run = await createRun(session.id, input, key);
       // 服务端已受理：清除未确定意图，下一次提交才算新的分析。
-      pendingIntent.resolve(accountScope, session.id);
+      pendingIntent.resolve(accountScope, session.id, key);
       write(fromScope, (base) => ({
         ...base,
         busy: false,
@@ -213,13 +213,13 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       input_transcript_revision_id: shownRun.input_transcript_revision_id,
       config_profile: 'p0-v1',
     };
-    const signature = intentSignature(session.id, input.mode, input.media_asset_id);
+    const signature = intentSignature(session.id, input);
     const key = pendingIntent.keyFor(accountScope, session.id, signature);
 
     write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
     try {
       const run = await createRun(session.id, input, key);
-      pendingIntent.resolve(accountScope, session.id);
+      pendingIntent.resolve(accountScope, session.id, key);
       write(fromScope, (base) => ({
         ...base,
         busy: false,
