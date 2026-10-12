@@ -18,10 +18,9 @@ import type { MediaAction } from '../data/sources';
 import type { CreateRun, RunMode } from '../types';
 import {
   formatDateTime,
-  jobStageLabel,
-  jobStatusBadge,
   runModeLabel,
   runStatusBadge,
+  sessionActionLabel,
   sessionStatusBadge,
   shortId,
 } from '../format';
@@ -33,7 +32,12 @@ import {
   IdChip,
   LoadControls,
   LoadStateNote,
+  RunErrorBox,
+  RunFields,
+  StageFlow,
+  TechDetails,
 } from '../components/ui';
+import { IconAlert } from '../components/icons';
 import {
   actionStateFor,
   emptyActionState,
@@ -355,18 +359,45 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   <Field label="当前报告">
                     {session.current_report_id === null ? <span className="muted">null</span> : <IdChip id={session.current_report_id} />}
                   </Field>
+                  <Field label="允许操作">
+                    {session.allowed_actions.length === 0
+                      ? '无'
+                      : session.allowed_actions.map(sessionActionLabel).join('、')}
+                  </Field>
                   <Field label="处理目标媒体">
                     {mediaTarget === null ? <span className="muted">尚无（先上传录像）</span> : <IdChip id={mediaTarget} />}
                   </Field>
                 </div>
+                {/* 协议字段原样保留，只是从业务视线里下沉到折叠区。 */}
+                <TechDetails>
+                  <ul className="tech-list">
+                    <li className="mono">session.id = {session.id}</li>
+                    <li className="mono">session.offering_id = {session.offering_id}</li>
+                    <li className="mono">session.schedule_entry_id = {session.schedule_entry_id ?? 'null'}</li>
+                    <li className="mono">session.status = {session.status}</li>
+                    <li className="mono">session.is_demo = {String(session.is_demo)}</li>
+                    <li className="mono">session.transcript_lock_version = {session.transcript_lock_version}</li>
+                    <li className="mono">session.primary_media_asset_id = {session.primary_media_asset_id ?? 'null'}</li>
+                    <li className="mono">session.latest_run_id = {session.latest_run_id ?? 'null'}</li>
+                    <li className="mono">session.current_report_id = {session.current_report_id ?? 'null'}</li>
+                    <li className="mono">
+                      session.allowed_actions = [{session.allowed_actions.join(', ')}]
+                    </li>
+                  </ul>
+                </TechDetails>
               </Card>
 
               {detail.runError === null ? null : (
                 <Card title="批次读取失败" subtitle="这是读取错误，不等于该课堂没有批次。">
-                  <p className="callout callout-amber">{detail.runError}</p>
-                  <button type="button" className="account-button" onClick={() => detail.reload()}>
-                    重试读取
-                  </button>
+                  <p className="notice-strip">
+                    <IconAlert size={14} aria-hidden="true" />
+                    {detail.runError}
+                  </p>
+                  <div className="action-row">
+                    <button type="button" className="btn btn-secondary" onClick={() => detail.reload()}>
+                      重试读取
+                    </button>
+                  </div>
                 </Card>
               )}
 
@@ -391,7 +422,8 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 actions={shownRun === null ? undefined : <BadgeTag badge={runStatusBadge(shownRun.status)} />}
               >
                 {poll.error === null ? null : (
-                  <p className="callout callout-amber">
+                  <p className="notice-strip">
+                    <IconAlert size={14} aria-hidden="true" />
                     轮询失败：{poll.error}
                     {poll.polling ? '（会自动重试）' : '（已停止轮询，请重新登录或刷新页面）'}
                   </p>
@@ -402,44 +434,30 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   ) : null
                 ) : (
                   <>
-                    <ol className="stage-list">
-                      {shownRun.stage_plan.map((stage) => {
-                        const job = shownRun.jobs.find((item) => item.stage === stage) ?? null;
-                        return (
-                          <li key={stage} className="stage">
-                            <span className="stage-name">{jobStageLabel(stage)}</span>
-                            {job === null ? (
-                              <span className="muted small">阶段计划中未返回任务</span>
-                            ) : (
-                              <>
-                                <BadgeTag badge={jobStatusBadge(job.status)} />
-                                <span className="muted tiny">
-                                  尝试 {job.attempts}/{job.max_attempts}
-                                  {job.status === 'running' ? ` · 本阶段 ${job.progress}%` : ''}
-                                  {job.error_code === null ? '' : ` · ${job.error_code}`}
-                                </span>
-                              </>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ol>
-                    {shownRun.error_code === null ? null : (
-                      <p className="callout callout-amber">批次错误：{shownRun.error_code}</p>
+                    {/* 与课堂任务页共用同一套阶段流程和错误区，避免同一批次两种样子。 */}
+                    <StageFlow run={shownRun} />
+                    {shownRun.error_code === null ? (
+                      <RunFields run={shownRun} />
+                    ) : (
+                      <RunErrorBox run={shownRun} />
                     )}
                     {shownRun.limitations.length > 0 ? (
-                      <p className="callout callout-amber">批次限制：{shownRun.limitations.join('；')}</p>
+                      <p className="notice-strip">
+                        <IconAlert size={14} aria-hidden="true" />
+                        批次限制：{shownRun.limitations.join('；')}
+                      </p>
                     ) : null}
                   </>
                 )}
               </Card>
 
               <Card title="操作" subtitle="按钮按资源 allowed_actions 显示；样例模式下不可提交。">
-                <div className="pill-row">
+                {/* 主次分明：提交分析是主操作，上传/媒体准备/重试是次操作，取消批次是危险操作。 */}
+                <div className="action-row">
                   {canUpload ? (
                     <button
                       type="button"
-                      className="account-button"
+                      className="btn btn-secondary"
                       disabled={!api || action.busy}
                       onClick={() => write(scope, (base) => ({ ...base, uploadOpen: !base.uploadOpen }))}
                     >
@@ -449,7 +467,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   {showPrepare ? (
                     <button
                       type="button"
-                      className="account-button"
+                      className="btn btn-secondary"
                       disabled={prepareDisabled}
                       onClick={() => void submitAnalyze('media_prepare')}
                     >
@@ -459,7 +477,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   {showAnalyze ? (
                     <button
                       type="button"
-                      className="account-button"
+                      className="btn btn-primary"
                       disabled={analyzeDisabled}
                       onClick={() => void submitAnalyze('full')}
                     >
@@ -467,14 +485,14 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     </button>
                   ) : null}
                   {canCancel ? (
-                    <button type="button" className="account-button" disabled={!api || action.busy} onClick={() => void submitCancel()}>
+                    <button type="button" className="btn btn-danger" disabled={!api || action.busy} onClick={() => void submitCancel()}>
                       取消批次
                     </button>
                   ) : null}
                   {showRetry ? (
                     <button
                       type="button"
-                      className="account-button"
+                      className="btn btn-secondary"
                       disabled={retryDisabled}
                       onClick={() => void submitRetry()}
                     >
@@ -548,7 +566,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 {action.uploadOpen ? (
                   <div className="upload-form">
                     <label className="account-field">
-                      <span>录像文件</span>
+                      <span>录像文件（必填）</span>
                       <input
                         type="file"
                         onChange={(event) =>
@@ -557,19 +575,23 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       />
                     </label>
                     <label className="account-field">
-                      <span>来源 source_record_id</span>
+                      <span>来源编号（必填）</span>
                       <input
                         value={action.sourceRecordId}
                         onChange={(event) =>
                           write(scope, (base) => ({ ...base, sourceRecordId: event.target.value }))
                         }
                         placeholder="已登记来源的 UUID"
+                        aria-describedby="upload-source-hint"
                       />
+                      <span className="field-hint" id="upload-source-hint">
+                        对应 source_record_id：录像必须先登记来源，上传时才有关联对象。
+                      </span>
                     </label>
                     <button
                       type="button"
-                      className="account-button"
-                      disabled={!api || action.busy || action.file === null}
+                      className="btn btn-primary"
+                      disabled={!api || action.busy || action.file === null || action.sourceRecordId.trim() === ''}
                       onClick={() => void submitUpload()}
                     >
                       提交上传

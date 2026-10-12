@@ -3,16 +3,14 @@ import type { SessionTaskView } from '../data/viewModel';
 import { useSessionTasks } from '../data/hooks';
 import {
   formatDateTime,
-  jobStageLabel,
-  jobStatusBadge,
-  runActionLabel,
   runModeLabel,
   runStatusBadge,
   sessionActionLabel,
   sessionStatusBadge,
   shortId,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, IdChip, LoadControls, LoadStateNote, Pill, RunErrorBox, RunFields, StageFlow } from '../components/ui';
+import { IconAlert, IconHistory, IconList, IconPlay, IconShield } from '../components/icons';
 
 function Reference({ label, id }: { label: string; id: string | null }): ReactElement {
   return (
@@ -68,6 +66,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
 
       <Card
         title="课堂列表"
+        icon={<IconList size={16} />}
         subtitle={
           truncated
             ? `已加载 ${tasks.length} 个课堂，还有更多课堂可加载`
@@ -95,6 +94,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                   <tr key={session.id}>
                     <td>
                       <div className="cell-title">
+                        <span className="cell-mark" aria-hidden="true">
+                          <IconPlay size={14} />
+                        </span>
                         <strong>{session.title}</strong>
                         {session.is_demo ? <Pill label="示范数据" tone="blue" /> : null}
                         <a className="cell-link" href={`#/sessions/${session.id}`}>
@@ -102,10 +104,12 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                         </a>
                       </div>
                       <div className="cell-meta mono">
-                        <span title={session.id}>课堂 {shortId(session.id)}</span>
-                        <span title={session.offering_id}>开课 {shortId(session.offering_id)}</span>
-                        <span>
-                          schedule_entry_id {session.schedule_entry_id === null ? 'null' : shortId(session.schedule_entry_id)}
+                        <span title={`session.id = ${session.id}`}>课堂编号 {shortId(session.id)}</span>
+                        <span title={`session.offering_id = ${session.offering_id}`}>开课 {shortId(session.offering_id)}</span>
+                        <span title="session.schedule_entry_id">
+                          {session.schedule_entry_id === null
+                            ? '未关联排课'
+                            : `排课 ${shortId(session.schedule_entry_id)}`}
                         </span>
                       </div>
                     </td>
@@ -115,7 +119,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                     </td>
                     <td>
                       <BadgeTag badge={sessionStatusBadge(session.status)} />
-                      <div className="muted tiny">转写锁 v{session.transcript_lock_version}</div>
+                      <div className="muted tiny" title="session.transcript_lock_version">
+                        转写版本 v{session.transcript_lock_version}
+                      </div>
                     </td>
                     <td>
                       <div className="reference-list">
@@ -148,16 +154,30 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
           <Card
             key={run.id}
             title={`最近批次 ${shortId(run.id)}`}
+            icon={<IconHistory size={16} />}
             subtitle={`${session.title} · ${runModeLabel(run.mode)} · 状态 ${run.status}`}
             actions={<BadgeTag badge={runStatusBadge(run.status)} />}
           >
             <div className="stage-summary">
-              <strong>
-                阶段完成 {stages.succeeded}/{stages.total}
-              </strong>
-              <span className="muted small">
-                失败 {stages.failed} · 跳过 {stages.skipped} · 待处理 {stages.pending}
-              </span>
+              <div className="stage-summary-head">
+                <strong>
+                  阶段完成 {stages.succeeded}/{stages.total}
+                </strong>
+                <span className="muted small">
+                  失败 {stages.failed} · 跳过 {stages.skipped} · 待处理 {stages.pending}
+                </span>
+              </div>
+              {/* 进度只按真实阶段状态算，跳过不计入完成，也不当作"未开始"。 */}
+              <div
+                className="progress"
+                role="img"
+                aria-label={`阶段完成 ${stages.succeeded}/${stages.total}`}
+              >
+                <span
+                  className="progress-fill"
+                  style={{ width: `${stages.total === 0 ? 0 : Math.round((stages.succeeded / stages.total) * 100)}%` }}
+                />
+              </div>
               <span className="muted tiny">
                 {stages.active
                   ? '活动批次：接入后端后每 2 秒轮询，进入终态即停止。'
@@ -165,45 +185,16 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
               </span>
             </div>
 
-            <ol className="stage-list">
-              {run.stage_plan.map((stage) => {
-                const job = run.jobs.find((item) => item.stage === stage) ?? null;
-                return (
-                  <li key={stage} className="stage">
-                    <span className="stage-name">{jobStageLabel(stage)}</span>
-                    {job === null ? (
-                      <span className="muted small">阶段计划中未返回任务</span>
-                    ) : (
-                      <>
-                        <BadgeTag badge={jobStatusBadge(job.status)} />
-                        <span className="muted tiny">
-                          尝试 {job.attempts}/{job.max_attempts}
-                          {job.status === 'running' ? ` · 本阶段 ${job.progress}%` : ''}
-                          {job.error_code === null ? '' : ` · ${job.error_code}`}
-                        </span>
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+            <StageFlow run={run} />
 
-            <div className="field-grid">
-              <Field label="run.error_code">
-                <span className={run.error_code === null ? 'muted' : 'danger'}>{run.error_code ?? 'null'}</span>
-              </Field>
-              <Field label="run.report_id">
-                <span className="muted">{run.report_id ?? 'null'}</span>
-              </Field>
-              <Field label="run.allowed_actions">
-                {run.allowed_actions.length === 0
-                  ? '无'
-                  : run.allowed_actions.map(runActionLabel).join('、')}
-              </Field>
-            </div>
+            {/* 没出错时直接显示三项协议字段；出错时收进错误区的技术详情。 */}
+            {run.error_code === null ? <RunFields run={run} /> : <RunErrorBox run={run} />}
 
             {run.limitations.length > 0 ? (
-              <p className="callout callout-amber">批次限制：{run.limitations.join('；')}</p>
+              <p className="notice-strip">
+                <IconAlert size={14} aria-hidden="true" />
+                批次限制：{run.limitations.join('；')}
+              </p>
             ) : null}
           </Card>
         ),
@@ -214,6 +205,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
           <Card
             key={`notes-${session.id}`}
             title="样例数据核对"
+            icon={<IconShield size={16} />}
             subtitle={`${session.title}：这些提示来自数据本身，接入后端后应由服务端状态替代。`}
           >
             <DisclosureList items={disclosures} />

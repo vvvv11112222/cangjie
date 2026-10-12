@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { AccountBar } from './components/AccountBar';
+import { IconHome, IconReport, IconTask, IconTranscript } from './components/icons';
 import { parseSessionRoute } from './data/route';
 import { DATA_SOURCE_KIND, DATA_SOURCE_LABEL } from './data/sources';
 import { ReportPage } from './pages/ReportPage';
@@ -27,6 +28,13 @@ const PAGES: Record<(typeof NAV_ROUTES)[number]['path'], () => ReactElement> = {
 
 const DEFAULT_ROUTE = NAV_ROUTES[0].path;
 
+/** 导航图标按路由固定；图标只是视觉标记，点击行为仍然完全由上面的 <a> 决定。 */
+const NAV_ICONS: Record<(typeof NAV_ROUTES)[number]['path'], ReactElement> = {
+  '#/sessions': <IconTask size={16} />,
+  '#/transcript': <IconTranscript size={16} />,
+  '#/reports': <IconReport size={16} />,
+};
+
 /**
  * 唯一的页面导航入口，宽屏在侧栏、窄屏在顶部导航条（见 styles.css 的 900px 断点）。
  * 三个页面的链接都从这里渲染，避免出现某一种布局下没有入口的情况。
@@ -42,6 +50,7 @@ export function NavLinks({ current }: { current: string }): ReactElement {
           href={item.path}
           aria-current={item.path === current ? 'page' : undefined}
         >
+          <span className="nav-icon" aria-hidden="true">{NAV_ICONS[item.path]}</span>
           {item.label}
         </a>
       ))}
@@ -95,6 +104,7 @@ export function App(): ReactElement {
       <div className="workspace">
         <header className="topbar">
           <div className="breadcrumb">
+            <IconHome size={15} className="crumb-icon" />
             <span className="muted">教学工作空间</span>
             <span className="crumb-divider">/</span>
             <strong>{breadcrumbTitle}</strong>
