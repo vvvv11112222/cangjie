@@ -438,6 +438,74 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	if withdrawn["status"] != "withdrawn" {
 		t.Fatalf("withdrawn report=%#v", withdrawn)
 	}
+	// Exercise the real HTTP/service/database path with two valid drafts racing.
+	// The earlier stale-version assertion is sequential; this verifies locking.
+	concurrentDrafts := make([]map[string]any, 0, 2)
+	for i := 0; i < 2; i++ {
+		copyFromID := withdrawn["id"].(string)
+		baseReport := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/reports/"+copyFromID, nil, "", http.StatusOK)
+		copy := requestJSON(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+copyFromID+"/revisions", map[string]any{"lock_version": baseReport["lock_version"], "reason": "concurrent database acceptance"}, csrf, http.StatusCreated)
+		concurrentDrafts = append(concurrentDrafts, prepareForPublish(copy, supervisor, supervisorCSRF))
+	}
+	type publishOutcome struct {
+		status int
+		body   []byte
+		err    error
+	}
+	outcomes := make(chan publishOutcome, 2)
+	startPublish := make(chan struct{})
+	for _, draft := range concurrentDrafts {
+		body, marshalErr := json.Marshal(map[string]any{"lock_version": draft["lock_version"], "expected_current_report_id": nil})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		req, requestErr := http.NewRequest(http.MethodPost, server.URL+"/api/v1/reports/"+draft["id"].(string)+"/publish", bytes.NewReader(body))
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "http://frontend.test")
+		req.Header.Set("X-CSRF-Token", supervisorCSRF)
+		go func() {
+			<-startPublish
+			response, requestErr := supervisor.Do(req)
+			if requestErr != nil {
+				outcomes <- publishOutcome{err: requestErr}
+				return
+			}
+			defer response.Body.Close()
+			raw, readErr := io.ReadAll(response.Body)
+			outcomes <- publishOutcome{status: response.StatusCode, body: raw, err: readErr}
+		}()
+	}
+	close(startPublish)
+	var winner map[string]any
+	publicationStatuses := make([]int, 0, 2)
+	for i := 0; i < 2; i++ {
+		outcome := <-outcomes
+		if outcome.err != nil {
+			t.Fatal(outcome.err)
+		}
+		publicationStatuses = append(publicationStatuses, outcome.status)
+		var envelope map[string]any
+		if err := json.Unmarshal(outcome.body, &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if outcome.status == http.StatusOK {
+			winner = envelope["data"].(map[string]any)
+		}
+		if outcome.status == http.StatusConflict && envelope["error"].(map[string]any)["code"] != "REVISION_CONFLICT" {
+			t.Fatalf("unexpected conflict: %s", outcome.body)
+		}
+	}
+	slices.Sort(publicationStatuses)
+	if !slices.Equal(publicationStatuses, []int{http.StatusOK, http.StatusConflict}) {
+		t.Fatalf("concurrent publication statuses=%v", publicationStatuses)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM teaching.reports WHERE session_id=$1 AND status='published'`, sessionID).Scan(&currentReportID); err != nil || currentReportID != winner["id"] {
+		t.Fatalf("concurrent winner mismatch: %s %v", currentReportID, err)
+	}
+	requestJSON(t, supervisor, http.MethodPost, server.URL+"/api/v1/reports/"+winner["id"].(string)+"/withdraw", map[string]any{"lock_version": winner["lock_version"], "reason": "finish concurrent acceptance"}, supervisorCSRF, http.StatusOK)
 
 	partialRun := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/analysis-runs", full, csrf, map[string]string{"Idempotency-Key": "partial-video-1"}, http.StatusAccepted)
 	partialID := partialRun["id"].(string)

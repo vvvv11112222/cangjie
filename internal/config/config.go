@@ -19,6 +19,7 @@ type Config struct {
 	APIListenAddr             string
 	PublicOrigin              string
 	DatabaseURL               string
+	DatabaseMigrationsDir     string
 	MediaRoot                 string
 	WorkerTempRoot            string
 	DeletionLedgerPath        string
@@ -209,11 +210,20 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	migrationsDir := value("DATABASE_MIGRATIONS_DIR", "database")
+	if migrationsDir == "" {
+		return Config{}, fmt.Errorf("DATABASE_MIGRATIONS_DIR must name the packaged migration directory")
+	}
+	migrationsDir, err = filepath.Abs(migrationsDir)
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve DATABASE_MIGRATIONS_DIR: %w", err)
+	}
 	cfg := Config{
 		AppEnv:                    value("APP_ENV", "development"),
 		APIListenAddr:             value("API_LISTEN_ADDR", "127.0.0.1:8080"),
 		PublicOrigin:              value("PUBLIC_ORIGIN", "http://localhost:8080"),
 		DatabaseURL:               value("DATABASE_URL", ""),
+		DatabaseMigrationsDir:     migrationsDir,
 		MediaRoot:                 value("MEDIA_ROOT", "./var/media"),
 		WorkerTempRoot:            value("WORKER_TEMP_ROOT", "./var/worker-tmp"),
 		DeletionLedgerPath:        value("DELETION_LEDGER_PATH", "./var/governance/deletions.jsonl"),
