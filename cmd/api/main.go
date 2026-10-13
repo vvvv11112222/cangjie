@@ -58,7 +58,7 @@ func run() error {
 	defer pool.Close()
 	// Do not start background writers against an incomplete or unverified upgrade.
 	schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	schemaErr := pool.CheckSchema(schemaCtx, "database")
+	schemaErr := pool.CheckSchema(schemaCtx, cfg.DatabaseMigrationsDir)
 	schemaCancel()
 	if schemaErr != nil {
 		return schemaErr
@@ -91,7 +91,7 @@ func run() error {
 	}
 
 	checks := httpapi.ReadinessChecks{
-		"database": func(ctx context.Context) error { return pool.CheckSchema(ctx, "database") },
+		"database": func(ctx context.Context) error { return pool.CheckSchema(ctx, cfg.DatabaseMigrationsDir) },
 		"media_storage": func(ctx context.Context) error {
 			return mediaStore.Check(ctx)
 		},

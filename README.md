@@ -71,6 +71,8 @@ Remove-Item Env:BOOTSTRAP_ADMIN_PASSWORD
 go run ./cmd/api
 ```
 
+编译后的 API 可以从其他工作目录启动。将 `DATABASE_MIGRATIONS_DIR` 设置为部署时打包的迁移目录绝对路径，例如 `D:/services/cangjie/database`；启动检查与 `/health/ready` 共用这个目录。默认 `database` 保留仓库根目录开发用法，相对配置在读取配置时解析一次。迁移工具仍可用 `-dir` 指定相同目录；Docker Compose 固定为 `/app/database`。
+
 管理员初始化命令可以重复执行；已有同名管理员时不会覆盖密码。启动后检查：
 
 ```powershell

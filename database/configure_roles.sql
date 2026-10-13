@@ -48,9 +48,28 @@ BEGIN
     EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA teaching GRANT USAGE,SELECT ON SEQUENCES TO %I',migration_role,app_role);
     EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC',migration_role);
     EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA teaching GRANT EXECUTE ON FUNCTIONS TO %I',migration_role,app_role);
-    IF has_schema_privilege(app_role,'teaching','CREATE') OR has_schema_privilege(app_role,'public','CREATE')
-        OR has_table_privilege(app_role,'public.schema_migrations','UPDATE') THEN
-        RAISE EXCEPTION 'Application role still inherits DDL/history-write privileges; fix existing grants before proceeding';
-    END IF;
+    -- Effective ACL checks include inherited/PUBLIC grants. SET-only membership
+    -- does not: inspect each role the login can assume, including indirect chains.
+    -- ADMIN membership can let the login grant itself SET, so inspect it as well.
+    FOR item IN SELECT oid,rolname,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
+        FROM pg_roles WHERE rolname=app_role OR pg_has_role(app_role,oid,'SET')
+            OR pg_has_role(app_role,oid,'MEMBER WITH ADMIN OPTION') LOOP
+        IF item.rolsuper OR item.rolcreatedb OR item.rolcreaterole
+            OR item.rolreplication OR item.rolbypassrls
+            OR has_database_privilege(item.oid,current_database(),'CREATE')
+            OR has_schema_privilege(item.oid,'teaching','CREATE')
+            OR has_schema_privilege(item.oid,'public','CREATE')
+            OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='teaching' AND pg_has_role(item.oid,c.relowner,'USAGE'))
+            OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname='teaching' AND pg_has_role(item.oid,p.proowner,'USAGE')) THEN
+            RAISE EXCEPTION 'Application role can access elevated/DDL role %; fix existing grants before proceeding',item.rolname;
+        END IF;
+        IF has_table_privilege(item.oid,'public.schema_migrations',
+                'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
+            OR has_any_column_privilege(item.oid,'public.schema_migrations','INSERT,UPDATE,REFERENCES') THEN
+            RAISE EXCEPTION 'Application role can access history-write role %; fix existing grants before proceeding',item.rolname;
+        END IF;
+    END LOOP;
 END $$;
 COMMIT;
