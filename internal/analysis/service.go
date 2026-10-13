@@ -21,7 +21,11 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/storage"
 )
 
-const pipelineVersion = "p0-v1"
+const (
+	pipelineVersion                = "p0-v1"
+	legacyMaxMediaDurationMS int64 = 7_200_000
+	legacyMaxVideoHeight           = 1080
+)
 
 type snapshot struct {
 	StagePlan               []string             `json:"stage_plan"`
@@ -698,15 +702,10 @@ func (s *Service) lockJobForCompletion(ctx context.Context, tx pgx.Tx, jobID, to
 		}
 		return v, false, apperror.New(http.StatusConflict, "COMPLETION_CONFLICT", "completed job has different content or token")
 	}
-	// Runs created before media limits were pinned in config_snapshot used the
-	// service limits at completion time. Keep that compatibility for active
-	// legacy jobs; new runs always carry explicit pinned values.
-	if v.Snapshot.MediaLimits.MaxDurationMS <= 0 && s.cfg.MaxMediaDurationMS > 0 {
-		v.Snapshot.MediaLimits.MaxDurationMS = s.cfg.MaxMediaDurationMS
-	}
-	if v.Snapshot.MediaLimits.MaxVideoHeight <= 0 && s.cfg.MaxVideoHeight > 0 {
-		v.Snapshot.MediaLimits.MaxVideoHeight = s.cfg.MaxVideoHeight
-	}
+	// Runs created before media limits were pinned must keep the limits that
+	// were in effect for that historical pipeline. Reading today's service
+	// configuration here would silently change an in-flight run after restart.
+	v.Snapshot.MediaLimits = compatibleMediaLimits(v.Snapshot.MediaLimits)
 	if v.Snapshot.MediaLimits.MaxDurationMS <= 0 || v.Snapshot.MediaLimits.MaxVideoHeight <= 0 {
 		return v, false, state("analysis run is missing usable media limits")
 	}
@@ -715,6 +714,16 @@ func (s *Service) lockJobForCompletion(ctx context.Context, tx pgx.Tx, jobID, to
 	}
 	v.Deadline = *deadline
 	return v, false, nil
+}
+
+func compatibleMediaLimits(limits mediaLimits) mediaLimits {
+	if limits.MaxDurationMS <= 0 {
+		limits.MaxDurationMS = legacyMaxMediaDurationMS
+	}
+	if limits.MaxVideoHeight <= 0 {
+		limits.MaxVideoHeight = legacyMaxVideoHeight
+	}
+	return limits
 }
 
 func resultArtifactIDs(state lockedJob, result any) []string {
@@ -1416,7 +1425,12 @@ func (s *Service) failAfterProbe(ctx context.Context, tx pgx.Tx, runID, code str
 
 func (s *Service) newSnapshot(mode string) snapshot {
 	params := Parameters{ConfigProfile: pipelineVersion, KeyframeIntervalMS: s.cfg.KeyframeIntervalMS, MaxKeyframes: s.cfg.MaxKeyframes, ASRDevice: s.cfg.ASRDevice}
-	paramHash := digestJSON(params)
+	// Match the contract's sorted-key, compact JSON used by Python workers.
+	// Keep execution/result digests unchanged for already persisted leases.
+	paramHash := digestJSON(map[string]any{
+		"asr_device": params.ASRDevice, "config_profile": params.ConfigProfile,
+		"keyframe_interval_ms": params.KeyframeIntervalMS, "max_keyframes": params.MaxKeyframes,
+	})
 	base := Execution{ProcessorVersion: s.cfg.ProcessorVersion, FFmpegBuildSHA256: s.cfg.FFmpegSHA256, ParametersSHA256: paramHash}
 	probe := base
 	video := base
