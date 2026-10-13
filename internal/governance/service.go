@@ -36,11 +36,12 @@ type Config struct {
 }
 
 type Service struct {
-	pool   *pgxpool.Pool
-	store  storage.Backend
-	ledger *Ledger
-	cfg    Config
-	now    func() time.Time
+	pool           *pgxpool.Pool
+	store          storage.Backend
+	ledger         *Ledger
+	cfg            Config
+	now            func() time.Time
+	commitExportTx func(context.Context, pgx.Tx) error
 }
 
 type CreateExport struct {
@@ -420,7 +421,11 @@ func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
 		// Once COMMIT is sent its result may be uncertain. Preserve the object so
 		// a transaction that actually committed never points at deleted bytes.
 		removeOnFailure = false
-		err = tx.Commit(ctx)
+		if s.commitExportTx != nil {
+			err = s.commitExportTx(ctx, tx)
+		} else {
+			err = tx.Commit(ctx)
+		}
 	}
 	if err != nil && removeOnFailure {
 		s.store.Remove(key)
@@ -442,6 +447,14 @@ func renderPDF(s exportSnapshot) []byte {
 	pages := make([][]string, 0, (len(lines)+linesPerPage-1)/linesPerPage)
 	for len(lines) > 0 {
 		count := min(linesPerPage, len(lines))
+		if count < len(lines) {
+			for i := count - 1; i > 0; i-- {
+				if strings.HasPrefix(lines[i], "维度/状态: ") || strings.HasPrefix(lines[i], "观察/复核: ") {
+					count = i
+					break
+				}
+			}
+		}
 		pages = append(pages, lines[:count])
 		lines = lines[count:]
 	}
@@ -455,11 +468,17 @@ func renderPDF(s exportSnapshot) []byte {
 	}
 	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), len(pages))}
 	for i, pageLines := range pages {
-		content := "BT /F1 11 Tf 42 800 Td 16 TL "
+		content := ""
+		contentY := 810
+		if i > 0 {
+			content = "BT /F1 9 Tf 42 820 Td <" + utf16Hex("教学质量报告（续）") + "> Tj ET "
+			contentY = 794
+		}
+		content += fmt.Sprintf("BT /F1 11 Tf 42 %d Td 16 TL ", contentY)
 		for _, line := range pageLines {
 			content += "<" + utf16Hex(line) + "> Tj T* "
 		}
-		content += "ET"
+		content += "ET BT /F1 9 Tf 260 28 Td <" + utf16Hex(fmt.Sprintf("第 %d / %d 页", i+1, len(pages))) + "> Tj ET"
 		contentObject := 4 + i*2
 		objects = append(objects,
 			fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>", fontObject, contentObject),

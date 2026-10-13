@@ -3,6 +3,8 @@ package governance
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -29,5 +31,13 @@ func TestRenderPDFIncludesFullReportAndPaginates(t *testing.T) {
 	pdf := renderPDF(snap)
 	if !bytes.HasPrefix(pdf, []byte("%PDF-1.4")) || bytes.Contains(pdf, []byte("/Count 1 >>")) {
 		t.Fatalf("expected a valid multi-page PDF, bytes=%d", len(pdf))
+	}
+	if output := os.Getenv("PDF_VALIDATION_OUTPUT"); output != "" {
+		if err := os.MkdirAll(filepath.Dir(output), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(output, pdf, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

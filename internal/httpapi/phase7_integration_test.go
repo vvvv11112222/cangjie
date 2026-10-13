@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/academic"
+	"github.com/vvvv11112222/cangjie/internal/analysis"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/database"
 	"github.com/vvvv11112222/cangjie/internal/governance"
@@ -83,7 +84,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	reportID := queryID(t, pool, `INSERT INTO teaching.reports(run_id,session_id,revision,status,summary,content_sha256,reviewed_content_sha256,reviewed_by,reviewed_at,created_by,published_by,published_at,provenance) VALUES('`+runID+`','`+sessionID+`',1,'published','阶段七固定报告','`+strings.Repeat("d", 64)+`','`+strings.Repeat("d", 64)+`','`+adminID+`',now(),'`+teacherID+`','`+adminID+`',now(),'{}') RETURNING id::text`)
 	jobID := queryID(t, pool, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','report','succeeded',1,100) RETURNING id::text`)
 	queryID(t, pool, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','video_analysis','succeeded',3,100) RETURNING id::text`)
-	modelCallID := queryID(t, pool, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,reserved_cost,actual_cost,status,settled_at,billing_period,price_version,request_sha256) VALUES('`+runID+`','`+jobID+`','p7-call','fixture','fixture','p0-v1',1.000000,0.500000,'succeeded',now(),date_trunc('month',now() AT TIME ZONE 'Asia/Shanghai')::date,'p7-price','`+strings.Repeat("e", 64)+`') RETURNING id::text`)
+	modelCallID := queryID(t, pool, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,reserved_cost,status,dispatch_started_at,billing_period,price_version,request_sha256) VALUES('`+runID+`','`+jobID+`','report:`+jobID+`','fixture','fixture','p0-v1',1.000000,'reserved',now(),date_trunc('month',now() AT TIME ZONE 'Asia/Shanghai')::date,'p7-price','`+strings.Repeat("e", 64)+`') RETURNING id::text`)
 	ledger, err := governance.InitializeLedger(filepath.Join(t.TempDir(), "deletions.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +101,10 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	if err = gov.RecordWorker(ctx, "worker-01", []string{"video_analysis", "probe"}); err != nil {
 		t.Fatal(err)
 	}
-	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Governance: gov, PublicOrigin: "http://frontend.test"})
+	if err = gov.RecordWorker(ctx, "worker-02", []string{"audio_analysis"}); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Analysis: analysis.NewService(pool, store, analysis.Config{}), Governance: gov, PublicOrigin: "http://frontend.test"})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	teacher := newTestClient(t)
@@ -154,7 +158,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	}
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusForbidden)
 	operations := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusOK)
-	if operations["budget"].(map[string]any)["limit"] != "10.000000" || operations["budget"].(map[string]any)["charged"] != "0.500000" || len(operations["workers"].([]any)) != 1 || operations["storage_free_bytes"].(float64) <= 0 {
+	if operations["budget"].(map[string]any)["limit"] != "10.000000" || operations["budget"].(map[string]any)["charged"] != "0.000000" || operations["budget"].(map[string]any)["reserved"] != "1.000000" || len(operations["workers"].([]any)) != 2 || operations["storage_free_bytes"].(float64) <= 0 {
 		t.Fatalf("operations=%#v", operations)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE teaching.media_assets SET expires_at=now()-interval '1 second' WHERE id=$1`, mediaID); err != nil {
@@ -179,9 +183,27 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	}
 	deletion := requestWithHeaders(t, admin, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/deletion-requests", map[string]any{"reason": "retention request"}, adminCSRF, map[string]string{"Idempotency-Key": "delete-1"}, http.StatusAccepted)
 	deletionID := deletion["id"].(string)
+	var inFlightStatus string
+	if err = pool.QueryRow(ctx, `SELECT status FROM teaching.model_calls WHERE id=$1`, modelCallID).Scan(&inFlightStatus); err != nil || inFlightStatus != "unknown" {
+		t.Fatalf("in-flight model call was not transferred to recovery: status=%s err=%v", inFlightStatus, err)
+	}
 	pendingCleanup, err := gov.PendingWorkerCleanup(ctx, "worker-01")
 	if err != nil || pendingCleanup == nil || pendingCleanup.DeletionRequestID != deletionID {
 		t.Fatalf("pending worker cleanup=%#v err=%v", pendingCleanup, err)
+	}
+	pendingCleanupTwo, err := gov.PendingWorkerCleanup(ctx, "worker-02")
+	if err != nil || pendingCleanupTwo == nil || pendingCleanupTwo.DeletionRequestID != deletionID || pendingCleanupTwo.StorageGeneration != pendingCleanup.StorageGeneration {
+		t.Fatalf("second pending worker cleanup=%#v err=%v", pendingCleanupTwo, err)
+	}
+	remoteWorkerOne := filepath.Join(t.TempDir(), "worker-01", jobID)
+	remoteWorkerTwo := filepath.Join(t.TempDir(), "worker-02", jobID)
+	for _, directory := range []string{remoteWorkerOne, remoteWorkerTwo} {
+		if err = os.MkdirAll(directory, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(directory, "late-old-lease.tmp"), []byte("old executor wrote after deletion started"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if worked, processErr := gov.ProcessDeletion(ctx); processErr != nil || !worked {
 		t.Fatalf("worker-unconfirmed deletion worked=%v err=%v", worked, processErr)
@@ -190,7 +212,32 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	if blocked["status"] != "blocked" || blocked["error_code"] != "WORKER_CLEANUP_PENDING" {
 		t.Fatalf("unconfirmed worker cleanup did not block deletion: %#v", blocked)
 	}
+	if err = gov.ConfirmWorkerCleanup(ctx, deletionID, "worker-01", pendingCleanup.StorageGeneration+1); err == nil {
+		t.Fatal("worker cleanup receipt with the wrong storage generation was accepted")
+	}
+	if err = os.RemoveAll(filepath.Dir(remoteWorkerOne)); err != nil {
+		t.Fatal(err)
+	}
 	if err = gov.ConfirmWorkerCleanup(ctx, deletionID, "worker-01", pendingCleanup.StorageGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE teaching.data_deletion_requests SET available_at=now() WHERE id=$1`, deletionID); err != nil {
+		t.Fatal(err)
+	}
+	if worked, processErr := gov.ProcessDeletion(ctx); processErr != nil || !worked {
+		t.Fatalf("single-worker receipt deletion worked=%v err=%v", worked, processErr)
+	}
+	stillBlocked := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/deletion-requests/"+deletionID, nil, "", http.StatusOK)
+	if stillBlocked["status"] != "blocked" || stillBlocked["error_code"] != "WORKER_CLEANUP_PENDING" {
+		t.Fatalf("deletion completed before every worker confirmed cleanup: %#v", stillBlocked)
+	}
+	if _, statErr := os.Stat(filepath.Join(remoteWorkerTwo, "late-old-lease.tmp")); statErr != nil {
+		t.Fatalf("independent offline worker fixture disappeared before its worker cleaned it: %v", statErr)
+	}
+	if err = os.RemoveAll(filepath.Dir(remoteWorkerTwo)); err != nil {
+		t.Fatal(err)
+	}
+	if err = gov.ConfirmWorkerCleanup(ctx, deletionID, "worker-02", pendingCleanupTwo.StorageGeneration); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE teaching.data_deletion_requests SET available_at=now() WHERE id=$1`, deletionID); err != nil {
@@ -215,10 +262,14 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	if _, statErr := os.Stat(workerJobDir); !os.IsNotExist(statErr) {
 		t.Fatalf("worker temp survived deletion: %v", statErr)
 	}
-	var retained int
+	var retained, modelCallLock int
 	var linked bool
-	if err = pool.QueryRow(ctx, `SELECT count(*),bool_or(run_id IS NOT NULL OR job_id IS NOT NULL) FROM teaching.model_calls WHERE id=$1`, modelCallID).Scan(&retained, &linked); err != nil || retained != 1 || linked {
+	if err = pool.QueryRow(ctx, `SELECT count(*),bool_or(run_id IS NOT NULL OR job_id IS NOT NULL),max(lock_version) FROM teaching.model_calls WHERE id=$1`, modelCallID).Scan(&retained, &linked, &modelCallLock); err != nil || retained != 1 || linked {
 		t.Fatalf("retained model call count=%d linked=%v err=%v", retained, linked, err)
+	}
+	reconciled := requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/model-calls/"+modelCallID+"/reconcile", map[string]any{"lock_version": modelCallLock, "status": "failed", "actual_cost": "0.250000", "provider_request_id": "deletion-late-bill", "reason": "删除后核对迟到费用"}, adminCSRF, http.StatusOK)
+	if reconciled["status"] != "failed" || reconciled["actual_cost"] != "0.250000" {
+		t.Fatalf("deleted classroom model call could not be reconciled: %#v", reconciled)
 	}
 	failingSession := queryID(t, pool, `INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by,status) VALUES('`+offering+`','Deletion retry target',now()+interval '4 hours',now()+interval '5 hours','`+teacherID+`','ready') RETURNING id::text`)
 	failingSource := queryID(t, pool, `INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,registered_by,verified_by,verified_at) VALUES('`+failingSession+`','self_recorded','retry source','team','verified','["playback"]','`+teacherID+`','`+adminID+`',now()) RETURNING id::text`)
