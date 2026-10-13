@@ -40,3 +40,16 @@ func TestLedgerAppendAndRead(t *testing.T) {
 		t.Fatalf("entries=%#v", got)
 	}
 }
+
+func TestOpenLedgerRejectsMissingInitializedLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deletions.jsonl")
+	if _, err := OpenLedger(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenLedger(path); err == nil {
+		t.Fatal("missing initialized ledger was silently recreated")
+	}
+}

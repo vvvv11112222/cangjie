@@ -497,7 +497,7 @@ func (s *Service) settleModelCall(ctx context.Context, jobID string, result mode
 	}
 	tag, err := tx.Exec(ctx, `UPDATE teaching.model_calls SET status='succeeded',actual_cost=$2::numeric/1000000,
 		input_tokens=$3,output_tokens=$4,provider_request_id=NULLIF($5,''),settled_at=now(),lock_version=lock_version+1
-		WHERE job_id=$1 AND status IN('reserved','unknown') AND reconciled_by IS NULL`,
+		WHERE (job_id=$1 OR call_key='report:'||$1) AND status IN('reserved','unknown') AND reconciled_by IS NULL`,
 		jobID, actualMicros, result.InputTokens, result.OutputTokens, result.ProviderRequestID)
 	if err != nil {
 		return err
@@ -510,7 +510,7 @@ func (s *Service) settleModelCall(ctx context.Context, jobID string, result mode
 
 func lockModelCallBudgetPeriod(ctx context.Context, tx pgx.Tx, jobID string) error {
 	var currency, period string
-	if err := tx.QueryRow(ctx, `SELECT currency,billing_period::text FROM teaching.model_calls WHERE job_id=$1`, jobID).Scan(&currency, &period); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT currency,billing_period::text FROM teaching.model_calls WHERE job_id=$1 OR call_key='report:'||$1`, jobID).Scan(&currency, &period); err != nil {
 		return err
 	}
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, currency+":"+period)

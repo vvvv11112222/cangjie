@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,10 +32,26 @@ func OpenLedger(path string) (*Ledger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve deletion ledger path: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
+	dir := filepath.Dir(abs)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("create deletion ledger directory: %w", err)
 	}
-	file, err := os.OpenFile(abs, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	marker := abs + ".initialized"
+	_, ledgerErr := os.Stat(abs)
+	_, markerErr := os.Stat(marker)
+	if errors.Is(ledgerErr, os.ErrNotExist) && markerErr == nil {
+		return nil, fmt.Errorf("deletion ledger is missing after initialization: %s", abs)
+	}
+	if ledgerErr != nil && !errors.Is(ledgerErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat deletion ledger: %w", ledgerErr)
+	}
+	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat deletion ledger marker: %w", markerErr)
+	}
+	file, err := os.OpenFile(abs, os.O_CREATE|os.O_EXCL|os.O_APPEND|os.O_WRONLY, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		file, err = os.OpenFile(abs, os.O_APPEND|os.O_WRONLY, 0o600)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open deletion ledger: %w", err)
 	}
@@ -44,6 +61,23 @@ func OpenLedger(path string) (*Ledger, error) {
 	}
 	if err := file.Close(); err != nil {
 		return nil, fmt.Errorf("close deletion ledger: %w", err)
+	}
+	markerFile, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return &Ledger{path: abs}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create deletion ledger marker: %w", err)
+	}
+	if _, err = markerFile.WriteString("deletion-ledger-v1\n"); err == nil {
+		err = markerFile.Sync()
+	}
+	closeErr := markerFile.Close()
+	if err != nil {
+		return nil, fmt.Errorf("sync deletion ledger marker: %w", err)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close deletion ledger marker: %w", closeErr)
 	}
 	return &Ledger{path: abs}, nil
 }

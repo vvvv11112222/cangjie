@@ -95,6 +95,7 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	var requestHashes sync.Map
 	var providerGates sync.Map
 	var omitUsageRuns sync.Map
+	var invalidCandidateRuns sync.Map
 	var reportCalls atomic.Int64
 	reportProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
@@ -138,6 +139,9 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 		}
 		candidate := map[string]any{"summary": "固定转写课堂摘要", "summary_evidence_ids": []string{evidenceID}, "dimensions": dimensions, "observations": []map[string]any{{"dimension_code": "content", "observation_type": "observation", "observation_text": "教师讲解了固定转写主题。", "suggestion": "", "evidence_ids": []string{evidenceID}}}}
 		content, _ := json.Marshal(candidate)
+		if _, invalid := invalidCandidateRuns.Load(input.RunID); invalid {
+			content = []byte("not-json")
+		}
 		response := map[string]any{"id": "fixture-request", "choices": []map[string]any{{"message": map[string]any{"content": string(content)}}}}
 		if _, omit := omitUsageRuns.Load(input.RunID); !omit {
 			response["usage"] = map[string]any{"prompt_tokens": 120, "completion_tokens": 80}
@@ -749,6 +753,21 @@ func TestPhaseFourAnalysisWorkerLeaseAndRecovery(t *testing.T) {
 	requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/model-calls/"+overageCallID+"/reconcile", map[string]any{
 		"lock_version": overageLock, "status": "succeeded", "actual_cost": "0.000280", "provider_request_id": "fixture-request", "reason": "确认超预留供应商账单",
 	}, adminCSRF, http.StatusOK)
+
+	invalidCandidateRunID := createReportReadyRun(t, pool, fullID, "invalid-candidate-billed")
+	invalidCandidateRuns.Store(invalidCandidateRunID, true)
+	if processed, processErr := analysisService.ProcessNextGoJob(ctx); processErr != nil || !processed {
+		t.Fatalf("process invalid billed candidate: processed=%v err=%v", processed, processErr)
+	}
+	invalidCandidateRuns.Delete(invalidCandidateRunID)
+	var invalidCallStatus, invalidActualCost, invalidProviderID string
+	if err = pool.QueryRow(ctx, `SELECT status,to_char(actual_cost,'FM999999999990.000000'),provider_request_id FROM teaching.model_calls WHERE run_id=$1`, invalidCandidateRunID).Scan(&invalidCallStatus, &invalidActualCost, &invalidProviderID); err != nil || invalidCallStatus != "succeeded" || invalidActualCost != "0.000280" || invalidProviderID != "fixture-request" {
+		t.Fatalf("invalid candidate billing status=%s actual=%s provider=%s err=%v", invalidCallStatus, invalidActualCost, invalidProviderID, err)
+	}
+	invalidCandidateRun := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/analysis-runs/"+invalidCandidateRunID, nil, "", http.StatusOK)
+	if invalidCandidateRun["status"] != "partial" || invalidCandidateRun["error_code"] != "INVALID_RESULT" {
+		t.Fatalf("invalid candidate run=%#v", invalidCandidateRun)
+	}
 
 	afterReconcileID := createReportReadyRun(t, pool, fullID, "budget-after-reconcile")
 	for _, stage := range []string{"report", "validate"} {

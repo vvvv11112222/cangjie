@@ -92,6 +92,12 @@ type Worker struct {
 	LastSeenAt   time.Time `json:"last_seen_at"`
 	Capabilities []string  `json:"capabilities"`
 }
+type WorkerCleanup struct {
+	DeletionRequestID string   `json:"deletion_request_id"`
+	SessionID         string   `json:"session_id"`
+	StorageGeneration int64    `json:"storage_generation"`
+	JobIDs            []string `json:"job_ids"`
+}
 type Budget struct{ Currency, BillingPeriod, Limit, Charged, Reserved string }
 
 func (b Budget) MarshalJSON() ([]byte, error) {
@@ -310,7 +316,7 @@ func (s *Service) buildExport(ctx context.Context, reportID string) (exportSnaps
 	snap.ExportedAt = s.now().UTC()
 	var reportRaw, sourceRaw []byte
 	err := s.pool.QueryRow(ctx, `SELECT jsonb_build_object('id',r.id,'session_id',r.session_id,'revision',r.revision,'status',r.status,'summary',r.summary,
-		'limitations',r.limitations,'published_at',r.published_at,'content_sha256',r.content_sha256,'provenance',r.provenance,
+		'summary_evidence_ids',r.summary_evidence_ids,'limitations',r.limitations,'published_at',r.published_at,'content_sha256',r.content_sha256,'provenance',r.provenance,
 		'dimensions',COALESCE((SELECT jsonb_agg(jsonb_build_object('dimension_code',d.dimension_code,'coverage_status',d.coverage_status,'summary',d.summary,'limitation',d.limitation,'coverage',d.coverage,'summary_evidence_ids',d.summary_evidence_ids) ORDER BY array_position(ARRAY['content','pace','thinking','expression','management','technology'],d.dimension_code)) FROM teaching.report_dimensions d WHERE d.report_id=r.id),'[]'::jsonb),
 		'observations',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',ro.id,'dimension_code',ro.dimension_code,'observation_type',ro.observation_type,'observation_text',ro.observation_text,'suggestion',ro.suggestion,'review_status',ro.review_status,'evidence_ids',COALESCE((SELECT jsonb_agg(oe.evidence_id ORDER BY oe.evidence_id) FROM teaching.observation_evidence oe WHERE oe.observation_id=ro.id),'[]'::jsonb)) ORDER BY ro.sort_order,ro.id) FROM teaching.report_observations ro WHERE ro.report_id=r.id AND ro.removed_at IS NULL AND ro.review_status<>'rejected'),'[]'::jsonb)),
 		jsonb_build_object('title',src.title,'source_type',src.source_type,'attribution',src.attribution,'license_name',src.license_name,'license_url',src.license_url,'rights_status',src.rights_status,'allowed_uses',src.allowed_uses)
@@ -374,10 +380,13 @@ func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
 		return true, s.failExport(ctx, id, token, err)
 	}
 	defer s.store.Discard(staged) //nolint:errcheck
-	key := "exports/" + id + "." + format
+	// Every lease writes to its own immutable key. A stale executor can then
+	// only remove its own attempt and can never clobber the winning object.
+	key := "exports/" + id + "/" + token + "." + format
 	if err = s.store.Commit(staged, key); err != nil {
 		return true, s.failExport(ctx, id, token, err)
 	}
+	removeOnFailure := true
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		s.store.Remove(key)
@@ -408,9 +417,12 @@ func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
 		_, err = tx.Exec(ctx, `INSERT INTO teaching.audit_logs(action,resource_type,resource_id,result,request_id,metadata) VALUES('report.export.complete','report_export',$1,'success','governance',jsonb_build_object('report_id',$2::text,'sha256',$3::text))`, id, reportID, staged.SHA256)
 	}
 	if err == nil {
+		// Once COMMIT is sent its result may be uncertain. Preserve the object so
+		// a transaction that actually committed never points at deleted bytes.
+		removeOnFailure = false
 		err = tx.Commit(ctx)
 	}
-	if err != nil {
+	if err != nil && removeOnFailure {
 		s.store.Remove(key)
 	}
 	return true, err
@@ -425,13 +437,37 @@ func (s *Service) failExport(ctx context.Context, id, token string, cause error)
 }
 
 func renderPDF(s exportSnapshot) []byte {
-	lines := []string{"教学质量报告", "报告ID: " + fmt.Sprint(s.Report["id"]), "版本: " + fmt.Sprint(s.Report["revision"]), "导出时间: " + s.ExportedAt.Format(time.RFC3339), "摘要: " + fmt.Sprint(s.Report["summary"])}
-	content := "BT /F1 12 Tf 50 790 Td 16 TL "
-	for _, line := range lines {
-		content += "<" + utf16Hex(line) + "> Tj T* "
+	lines := pdfLines(s)
+	const linesPerPage = 44
+	pages := make([][]string, 0, (len(lines)+linesPerPage-1)/linesPerPage)
+	for len(lines) > 0 {
+		count := min(linesPerPage, len(lines))
+		pages = append(pages, lines[:count])
+		lines = lines[count:]
 	}
-	content += "ET"
-	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>", fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content), "<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [6 0 R] >>", "<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> >>"}
+	if len(pages) == 0 {
+		pages = append(pages, []string{"教学质量报告"})
+	}
+	fontObject := 3 + len(pages)*2
+	kids := make([]string, 0, len(pages))
+	for i := range pages {
+		kids = append(kids, fmt.Sprintf("%d 0 R", 3+i*2))
+	}
+	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), len(pages))}
+	for i, pageLines := range pages {
+		content := "BT /F1 11 Tf 42 800 Td 16 TL "
+		for _, line := range pageLines {
+			content += "<" + utf16Hex(line) + "> Tj T* "
+		}
+		content += "ET"
+		contentObject := 4 + i*2
+		objects = append(objects,
+			fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>", fontObject, contentObject),
+			fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content))
+	}
+	objects = append(objects,
+		fmt.Sprintf("<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [%d 0 R] >>", fontObject+1),
+		"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> >>")
 	var out bytes.Buffer
 	out.WriteString("%PDF-1.4\n")
 	offsets := []int{0}
@@ -446,6 +482,42 @@ func renderPDF(s exportSnapshot) []byte {
 	}
 	fmt.Fprintf(&out, "trailer << /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xref)
 	return out.Bytes()
+}
+
+func pdfLines(s exportSnapshot) []string {
+	lines := []string{"教学质量报告", "报告ID: " + fmt.Sprint(s.Report["id"]), "版本: " + fmt.Sprint(s.Report["revision"]), "导出时间: " + s.ExportedAt.Format(time.RFC3339)}
+	appendWrapped := func(label string, value any) {
+		text := label + fmt.Sprint(value)
+		for len([]rune(text)) > 42 {
+			runes := []rune(text)
+			lines = append(lines, string(runes[:42]))
+			text = "  " + string(runes[42:])
+		}
+		lines = append(lines, text)
+	}
+	appendWrapped("总摘要: ", s.Report["summary"])
+	appendWrapped("总摘要证据: ", s.Report["summary_evidence_ids"])
+	appendWrapped("报告限制: ", s.Report["limitations"])
+	for _, raw := range anySlice(s.Report["dimensions"]) {
+		dimension, _ := raw.(map[string]any)
+		appendWrapped("维度/状态: ", fmt.Sprintf("%v / %v", dimension["dimension_code"], dimension["coverage_status"]))
+		appendWrapped("维度结论: ", dimension["summary"])
+		appendWrapped("不足原因: ", dimension["limitation"])
+		appendWrapped("维度证据: ", dimension["summary_evidence_ids"])
+	}
+	for _, raw := range anySlice(s.Report["observations"]) {
+		observation, _ := raw.(map[string]any)
+		appendWrapped("观察/复核: ", fmt.Sprintf("%v / %v", observation["dimension_code"], observation["review_status"]))
+		appendWrapped("观察内容: ", observation["observation_text"])
+		appendWrapped("改进建议: ", observation["suggestion"])
+		appendWrapped("观察证据: ", observation["evidence_ids"])
+	}
+	return lines
+}
+
+func anySlice(value any) []any {
+	items, _ := value.([]any)
+	return items
 }
 func utf16Hex(value string) string {
 	units := utf16.Encode([]rune(value))
@@ -483,14 +555,6 @@ func (s *Service) CreateDeletion(ctx context.Context, p identity.Principal, sess
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return Deletion{}, false, err
 	}
-	tombstone, err := newUUID()
-	if err != nil {
-		return Deletion{}, false, err
-	}
-	entry := Tombstone{TombstoneID: tombstone, SessionID: sessionID, RequestedBy: p.UserID, Reason: reason, IdempotencyKey: key, RequestSHA256: hash, RequestedAt: s.now().UTC()}
-	if err := s.ledger.Append(entry); err != nil {
-		return Deletion{}, false, fmt.Errorf("persist deletion tombstone: %w", err)
-	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Deletion{}, false, err
@@ -505,11 +569,41 @@ func (s *Service) CreateDeletion(ctx context.Context, p identity.Principal, sess
 	if status == "deleted" {
 		return Deletion{}, false, conflict("INVALID_STATE", "classroom is already deleted")
 	}
-	value, err := scanDeletion(tx.QueryRow(ctx, `INSERT INTO teaching.data_deletion_requests(session_id,requested_by,reason,idempotency_key,request_sha256,tombstone_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING id::text,session_id::text,status,error_code,completed_at`, sessionID, p.UserID, reason, key, hash, tombstone))
+	if old, scanErr := scanDeletion(tx.QueryRow(ctx, `SELECT id::text,session_id::text,status,error_code,completed_at FROM teaching.data_deletion_requests WHERE requested_by=$1 AND session_id=$2 AND idempotency_key=$3`, p.UserID, sessionID, key)); scanErr == nil {
+		var saved string
+		if err = tx.QueryRow(ctx, `SELECT request_sha256 FROM teaching.data_deletion_requests WHERE id=$1`, old.ID).Scan(&saved); err != nil {
+			return Deletion{}, false, err
+		}
+		if saved != hash {
+			return Deletion{}, false, conflict("IDEMPOTENCY_CONFLICT", "Idempotency-Key was used with different parameters")
+		}
+		return old, true, nil
+	} else if !errors.Is(scanErr, pgx.ErrNoRows) {
+		return Deletion{}, false, scanErr
+	}
+	tombstone, err := newUUID()
+	if err != nil {
+		return Deletion{}, false, err
+	}
+	entry := Tombstone{TombstoneID: tombstone, SessionID: sessionID, RequestedBy: p.UserID, Reason: reason, IdempotencyKey: key, RequestSHA256: hash, RequestedAt: s.now().UTC()}
+	if err := s.ledger.Append(entry); err != nil {
+		return Deletion{}, false, fmt.Errorf("persist deletion tombstone: %w", err)
+	}
+	var requiredWorkers []string
+	if err = tx.QueryRow(ctx, `SELECT CASE
+		WHEN NOT EXISTS(SELECT 1 FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id WHERE r.session_id=$1 AND j.stage IN('probe','audio_analysis','video_analysis'))
+		THEN '{}'::text[]
+		WHEN NOT EXISTS(SELECT 1 FROM teaching.governance_workers)
+		THEN ARRAY['__unverified_worker_history__']::text[]
+		ELSE COALESCE((SELECT array_agg(worker_id ORDER BY worker_id) FROM teaching.governance_workers),'{}'::text[]) END`, sessionID).Scan(&requiredWorkers); err != nil {
+		return Deletion{}, false, err
+	}
+	value, err := scanDeletion(tx.QueryRow(ctx, `INSERT INTO teaching.data_deletion_requests(session_id,requested_by,reason,idempotency_key,request_sha256,tombstone_id,required_worker_ids) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id::text,session_id::text,status,error_code,completed_at`, sessionID, p.UserID, reason, key, hash, tombstone, requiredWorkers))
 	if err != nil {
 		return Deletion{}, false, err
 	}
 	statements := []string{
+		`UPDATE teaching.model_calls SET status='unknown',lock_version=lock_version+1 WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status='reserved' AND dispatch_started_at IS NOT NULL`,
 		`UPDATE teaching.lesson_sessions SET status='deleting',storage_generation=storage_generation+1 WHERE id=$1`,
 		`UPDATE teaching.analysis_jobs SET status='cancelled',worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,execution_deadline_at=NULL,expected_execution_sha256=NULL,error_code='RESOURCE_DELETING',updated_at=now() WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status IN('queued','running')`,
 		`UPDATE teaching.analysis_runs SET status='cancelled',error_code='RESOURCE_DELETING',finished_at=now() WHERE session_id=$1 AND status IN('queued','running')`,
@@ -556,6 +650,30 @@ func (s *Service) ReplayLedger(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	ledgerIDs := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		ledgerIDs[entry.TombstoneID] = true
+	}
+	rows, err := s.pool.Query(ctx, `SELECT tombstone_id::text FROM teaching.data_deletion_requests`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var tombstoneID string
+		if err = rows.Scan(&tombstoneID); err != nil {
+			rows.Close()
+			return err
+		}
+		if !ledgerIDs[tombstoneID] {
+			rows.Close()
+			return fmt.Errorf("database deletion tombstone %s is missing from the independent ledger", tombstoneID)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
 	for _, e := range entries {
 		tx, beginErr := s.pool.BeginTx(ctx, pgx.TxOptions{})
 		if beginErr != nil {
@@ -566,7 +684,14 @@ func (s *Service) ReplayLedger(ctx context.Context) error {
 		if beginErr == nil && !exists {
 			_, beginErr = tx.Exec(ctx, `UPDATE teaching.lesson_sessions SET status='deleting',storage_generation=storage_generation+1 WHERE id=$1 AND status NOT IN('deleting','deleted')`, e.SessionID)
 			if beginErr == nil {
-				_, beginErr = tx.Exec(ctx, `INSERT INTO teaching.data_deletion_requests(session_id,requested_by,reason,idempotency_key,request_sha256,tombstone_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(requested_by,session_id,idempotency_key) DO NOTHING`, e.SessionID, e.RequestedBy, e.Reason, e.IdempotencyKey, e.RequestSHA256, e.TombstoneID)
+				_, beginErr = tx.Exec(ctx, `INSERT INTO teaching.data_deletion_requests(session_id,requested_by,reason,idempotency_key,request_sha256,tombstone_id,required_worker_ids)
+					VALUES($1,$2,$3,$4,$5,$6,CASE
+						WHEN NOT EXISTS(SELECT 1 FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id WHERE r.session_id=$1 AND j.stage IN('probe','audio_analysis','video_analysis'))
+						THEN '{}'::text[]
+						WHEN NOT EXISTS(SELECT 1 FROM teaching.governance_workers)
+						THEN ARRAY['__unverified_worker_history__']::text[]
+						ELSE COALESCE((SELECT array_agg(worker_id ORDER BY worker_id) FROM teaching.governance_workers),'{}'::text[]) END)
+					ON CONFLICT(requested_by,session_id,idempotency_key) DO NOTHING`, e.SessionID, e.RequestedBy, e.Reason, e.IdempotencyKey, e.RequestSHA256, e.TombstoneID)
 			}
 		}
 		if beginErr == nil {
@@ -583,7 +708,9 @@ func (s *Service) ReplayLedger(ctx context.Context) error {
 
 func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 	var id, sessionID, token string
-	err := s.pool.QueryRow(ctx, `WITH candidate AS (SELECT id FROM teaching.data_deletion_requests WHERE (status IN('requested','blocked') AND available_at<=now()) OR (status='processing' AND lease_expires_at<=now()) ORDER BY available_at,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE teaching.data_deletion_requests d SET status='processing',executor_id=$1,lease_token=gen_random_uuid(),lease_expires_at=now()+$2::interval,attempts=attempts+1,updated_at=now() FROM candidate c WHERE d.id=c.id RETURNING d.id::text,d.session_id::text,d.lease_token::text`, s.cfg.ExecutorID, s.cfg.Lease.String()).Scan(&id, &sessionID, &token)
+	err := s.pool.QueryRow(ctx, `WITH candidate AS (SELECT id FROM teaching.data_deletion_requests WHERE (status IN('requested','blocked') AND available_at<=now()) OR (status='processing' AND lease_expires_at<=now()) ORDER BY available_at,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE teaching.data_deletion_requests d SET status='processing',executor_id=$1,lease_token=gen_random_uuid(),lease_expires_at=now()+$2::interval,
+		attempts=attempts+CASE WHEN d.status='blocked' AND d.error_code='WORKER_CLEANUP_PENDING' THEN 0 ELSE 1 END,updated_at=now()
+		FROM candidate c WHERE d.id=c.id RETURNING d.id::text,d.session_id::text,d.lease_token::text`, s.cfg.ExecutorID, s.cfg.Lease.String()).Scan(&id, &sessionID, &token)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -592,31 +719,31 @@ func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 	}
 	rows, err := s.pool.Query(ctx, `SELECT object_key FROM teaching.media_assets WHERE session_id=$1 AND status<>'deleted'`, sessionID)
 	if err != nil {
-		return true, s.blockDeletion(ctx, id, token, "STORAGE_SCAN_FAILED")
+		return true, s.failDeletion(ctx, id, token, "STORAGE_SCAN_FAILED")
 	}
 	var keys []string
 	for rows.Next() {
 		var key string
 		if err = rows.Scan(&key); err != nil {
 			rows.Close()
-			return true, s.blockDeletion(ctx, id, token, "STORAGE_SCAN_FAILED")
+			return true, s.failDeletion(ctx, id, token, "STORAGE_SCAN_FAILED")
 		}
 		keys = append(keys, key)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return true, s.blockDeletion(ctx, id, token, "STORAGE_SCAN_FAILED")
+		return true, s.failDeletion(ctx, id, token, "STORAGE_SCAN_FAILED")
 	}
 	for _, key := range keys {
 		if err = s.store.Remove(key); err != nil {
-			return true, s.blockDeletion(ctx, id, token, "STORAGE_DELETE_FAILED")
+			return true, s.failDeletion(ctx, id, token, "STORAGE_DELETE_FAILED")
 		}
 	}
 	var jobIDs []string
 	jobRows, queryErr := s.pool.Query(ctx, `SELECT j.id::text FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id WHERE r.session_id=$1`, sessionID)
 	if queryErr != nil {
-		return true, s.blockDeletion(ctx, id, token, "WORKER_TEMP_SCAN_FAILED")
+		return true, s.failDeletion(ctx, id, token, "WORKER_TEMP_SCAN_FAILED")
 	}
 	for jobRows.Next() {
 		var jobID string
@@ -630,10 +757,23 @@ func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 	}
 	jobRows.Close()
 	if queryErr != nil {
-		return true, s.blockDeletion(ctx, id, token, "WORKER_TEMP_SCAN_FAILED")
+		return true, s.failDeletion(ctx, id, token, "WORKER_TEMP_SCAN_FAILED")
 	}
 	if err = s.removeWorkerTemp(jobIDs); err != nil {
-		return true, s.blockDeletion(ctx, id, token, "WORKER_TEMP_DELETE_FAILED")
+		return true, s.failDeletion(ctx, id, token, "WORKER_TEMP_DELETE_FAILED")
+	}
+	var workerCleanupPending bool
+	if err = s.pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM teaching.data_deletion_requests d
+		JOIN teaching.lesson_sessions ls ON ls.id=d.session_id
+		CROSS JOIN LATERAL unnest(d.required_worker_ids) required(worker_id)
+		LEFT JOIN teaching.worker_cleanup_receipts receipt ON receipt.deletion_request_id=d.id
+			AND receipt.worker_id=required.worker_id AND receipt.storage_generation=ls.storage_generation
+		WHERE d.id=$1 AND receipt.worker_id IS NULL)`, id).Scan(&workerCleanupPending); err != nil {
+		return true, s.failDeletion(ctx, id, token, "WORKER_CLEANUP_CHECK_FAILED")
+	}
+	if workerCleanupPending {
+		return true, s.blockDeletion(ctx, id, token, "WORKER_CLEANUP_PENDING")
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -714,10 +854,54 @@ func (s *Service) blockDeletion(ctx context.Context, id, token, code string) err
 	return err
 }
 
+func (s *Service) failDeletion(ctx context.Context, id, token, code string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE teaching.data_deletion_requests SET
+		status=CASE WHEN attempts>=$3 THEN 'failed' ELSE 'requested' END,error_code=$4,
+		available_at=now()+$5::interval,executor_id=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now()
+		WHERE id=$1 AND lease_token=$2::uuid`, id, token, s.cfg.MaxAttempts, code, s.cfg.Recheck.String())
+	return err
+}
+
 func (s *Service) RecordWorker(ctx context.Context, id string, capabilities []string) error {
 	sort.Strings(capabilities)
 	_, err := s.pool.Exec(ctx, `INSERT INTO teaching.governance_workers(worker_id,capabilities,last_seen_at) VALUES($1,$2,now()) ON CONFLICT(worker_id) DO UPDATE SET capabilities=EXCLUDED.capabilities,last_seen_at=now()`, id, capabilities)
 	return err
+}
+
+func (s *Service) ConfirmWorkerCleanup(ctx context.Context, deletionID, workerID string, generation int64) error {
+	if strings.TrimSpace(workerID) == "" || generation <= 0 {
+		return invalid("worker_id and storage_generation are required")
+	}
+	tag, err := s.pool.Exec(ctx, `INSERT INTO teaching.worker_cleanup_receipts(deletion_request_id,worker_id,storage_generation)
+		SELECT d.id,$2,$3 FROM teaching.data_deletion_requests d JOIN teaching.lesson_sessions ls ON ls.id=d.session_id
+		WHERE d.id=$1 AND d.status IN('requested','processing','blocked') AND ls.status='deleting'
+		AND ls.storage_generation=$3 AND $2=ANY(d.required_worker_ids)
+		ON CONFLICT(deletion_request_id,worker_id) DO UPDATE SET storage_generation=EXCLUDED.storage_generation,confirmed_at=now()`, deletionID, workerID, generation)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return conflict("INVALID_STATE", "worker cleanup does not match an active deletion generation")
+	}
+	return nil
+}
+
+func (s *Service) PendingWorkerCleanup(ctx context.Context, workerID string) (*WorkerCleanup, error) {
+	var value WorkerCleanup
+	err := s.pool.QueryRow(ctx, `SELECT d.id::text,d.session_id::text,ls.storage_generation,
+		COALESCE((SELECT array_agg(j.id::text ORDER BY j.id) FROM teaching.analysis_jobs j JOIN teaching.analysis_runs r ON r.id=j.run_id WHERE r.session_id=d.session_id),'{}'::text[])
+		FROM teaching.data_deletion_requests d JOIN teaching.lesson_sessions ls ON ls.id=d.session_id
+		WHERE d.status IN('requested','processing','blocked') AND $1=ANY(d.required_worker_ids)
+		AND NOT EXISTS(SELECT 1 FROM teaching.worker_cleanup_receipts receipt WHERE receipt.deletion_request_id=d.id
+			AND receipt.worker_id=$1 AND receipt.storage_generation=ls.storage_generation)
+		ORDER BY d.created_at,d.id LIMIT 1`, workerID).Scan(&value.DeletionRequestID, &value.SessionID, &value.StorageGeneration, &value.JobIDs)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
 }
 
 func (s *Service) SweepExpired(ctx context.Context) (int, error) {
@@ -797,7 +981,8 @@ func (s *Service) GetOperations(ctx context.Context, p identity.Principal) (Oper
 	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM teaching.analysis_jobs WHERE status='queued'`).Scan(&out.QueuedJobs); err != nil {
 		return out, err
 	}
-	period := s.now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format("2006-01-01")
+	local := s.now().In(time.FixedZone("Asia/Shanghai", 8*3600))
+	period := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, local.Location()).Format("2006-01-02")
 	var charged, reserved int64
 	err = s.pool.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN status IN('succeeded','failed') THEN round(actual_cost*1000000)::bigint ELSE 0 END),0),COALESCE(sum(CASE WHEN status IN('reserved','unknown') THEN round(reserved_cost*1000000)::bigint ELSE 0 END),0) FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date`, s.cfg.BudgetCurrency, period).Scan(&charged, &reserved)
 	if err != nil {

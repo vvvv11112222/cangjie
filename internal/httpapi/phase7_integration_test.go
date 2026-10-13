@@ -82,6 +82,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	evidenceID := queryID(t, pool, `INSERT INTO teaching.evidence_items(run_id,session_id,media_asset_id,transcript_segment_id,kind,start_ms,end_ms,description) VALUES('`+runID+`','`+sessionID+`','`+mediaID+`','`+segmentID+`','transcript',0,1000,'生命周期证据') RETURNING id::text`)
 	reportID := queryID(t, pool, `INSERT INTO teaching.reports(run_id,session_id,revision,status,summary,content_sha256,reviewed_content_sha256,reviewed_by,reviewed_at,created_by,published_by,published_at,provenance) VALUES('`+runID+`','`+sessionID+`',1,'published','阶段七固定报告','`+strings.Repeat("d", 64)+`','`+strings.Repeat("d", 64)+`','`+adminID+`',now(),'`+teacherID+`','`+adminID+`',now(),'{}') RETURNING id::text`)
 	jobID := queryID(t, pool, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','report','succeeded',1,100) RETURNING id::text`)
+	queryID(t, pool, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','video_analysis','succeeded',3,100) RETURNING id::text`)
 	modelCallID := queryID(t, pool, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,reserved_cost,actual_cost,status,settled_at,billing_period,price_version,request_sha256) VALUES('`+runID+`','`+jobID+`','p7-call','fixture','fixture','p0-v1',1.000000,0.500000,'succeeded',now(),date_trunc('month',now() AT TIME ZONE 'Asia/Shanghai')::date,'p7-price','`+strings.Repeat("e", 64)+`') RETURNING id::text`)
 	ledger, err := governance.OpenLedger(filepath.Join(t.TempDir(), "deletions.jsonl"))
 	if err != nil {
@@ -153,7 +154,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	}
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusForbidden)
 	operations := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusOK)
-	if operations["budget"].(map[string]any)["limit"] != "10.000000" || len(operations["workers"].([]any)) != 1 || operations["storage_free_bytes"].(float64) <= 0 {
+	if operations["budget"].(map[string]any)["limit"] != "10.000000" || operations["budget"].(map[string]any)["charged"] != "0.500000" || len(operations["workers"].([]any)) != 1 || operations["storage_free_bytes"].(float64) <= 0 {
 		t.Fatalf("operations=%#v", operations)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE teaching.media_assets SET expires_at=now()-interval '1 second' WHERE id=$1`, mediaID); err != nil {
@@ -167,8 +168,34 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 		t.Fatalf("availability=%s err=%v", availability, err)
 	}
 	requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/deletion-requests", map[string]any{"reason": "retention request"}, teacherCSRF, map[string]string{"Idempotency-Key": "delete-denied"}, http.StatusForbidden)
+	beforeMissing, err := ledger.ReadAll(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestWithHeaders(t, admin, http.MethodPost, server.URL+"/api/v1/sessions/11111111-1111-4111-8111-111111111119/deletion-requests", map[string]any{"reason": "missing classroom"}, adminCSRF, map[string]string{"Idempotency-Key": "delete-missing"}, http.StatusNotFound)
+	afterMissing, err := ledger.ReadAll(ctx)
+	if err != nil || len(afterMissing) != len(beforeMissing) {
+		t.Fatalf("missing classroom appended tombstone: before=%d after=%d err=%v", len(beforeMissing), len(afterMissing), err)
+	}
 	deletion := requestWithHeaders(t, admin, http.MethodPost, server.URL+"/api/v1/sessions/"+sessionID+"/deletion-requests", map[string]any{"reason": "retention request"}, adminCSRF, map[string]string{"Idempotency-Key": "delete-1"}, http.StatusAccepted)
 	deletionID := deletion["id"].(string)
+	pendingCleanup, err := gov.PendingWorkerCleanup(ctx, "worker-01")
+	if err != nil || pendingCleanup == nil || pendingCleanup.DeletionRequestID != deletionID {
+		t.Fatalf("pending worker cleanup=%#v err=%v", pendingCleanup, err)
+	}
+	if worked, processErr := gov.ProcessDeletion(ctx); processErr != nil || !worked {
+		t.Fatalf("worker-unconfirmed deletion worked=%v err=%v", worked, processErr)
+	}
+	blocked := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/deletion-requests/"+deletionID, nil, "", http.StatusOK)
+	if blocked["status"] != "blocked" || blocked["error_code"] != "WORKER_CLEANUP_PENDING" {
+		t.Fatalf("unconfirmed worker cleanup did not block deletion: %#v", blocked)
+	}
+	if err = gov.ConfirmWorkerCleanup(ctx, deletionID, "worker-01", pendingCleanup.StorageGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE teaching.data_deletion_requests SET available_at=now() WHERE id=$1`, deletionID); err != nil {
+		t.Fatal(err)
+	}
 	revokedExport := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/exports/"+exportID, nil, "", http.StatusOK)
 	if revokedExport["download_url"] != nil || revokedExport["status"] != "expired" {
 		t.Fatalf("revoked export=%#v", revokedExport)
@@ -192,6 +219,25 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	var linked bool
 	if err = pool.QueryRow(ctx, `SELECT count(*),bool_or(run_id IS NOT NULL OR job_id IS NOT NULL) FROM teaching.model_calls WHERE id=$1`, modelCallID).Scan(&retained, &linked); err != nil || retained != 1 || linked {
 		t.Fatalf("retained model call count=%d linked=%v err=%v", retained, linked, err)
+	}
+	failingSession := queryID(t, pool, `INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by,status) VALUES('`+offering+`','Deletion retry target',now()+interval '4 hours',now()+interval '5 hours','`+teacherID+`','ready') RETURNING id::text`)
+	failingSource := queryID(t, pool, `INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,registered_by,verified_by,verified_at) VALUES('`+failingSession+`','self_recorded','retry source','team','verified','["playback"]','`+teacherID+`','`+adminID+`',now()) RETURNING id::text`)
+	queryID(t, pool, `INSERT INTO teaching.media_assets(session_id,source_record_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,status) VALUES('`+failingSession+`','`+failingSource+`','source','filesystem','../unsafe','`+strings.Repeat("9", 64)+`','video/mp4',1,'ready') RETURNING id::text`)
+	failingDeletion := requestWithHeaders(t, admin, http.MethodPost, server.URL+"/api/v1/sessions/"+failingSession+"/deletion-requests", map[string]any{"reason": "retry exhaustion"}, adminCSRF, map[string]string{"Idempotency-Key": "delete-retry"}, http.StatusAccepted)
+	for attempt := 1; attempt <= 3; attempt++ {
+		if worked, processErr := gov.ProcessDeletion(ctx); processErr != nil || !worked {
+			t.Fatalf("deletion attempt %d worked=%v err=%v", attempt, worked, processErr)
+		}
+		if _, err = pool.Exec(ctx, `UPDATE teaching.data_deletion_requests SET available_at=now() WHERE id=$1`, failingDeletion["id"]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	failedDeletion := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/deletion-requests/"+failingDeletion["id"].(string), nil, "", http.StatusOK)
+	if failedDeletion["status"] != "failed" || failedDeletion["error_code"] != "STORAGE_DELETE_FAILED" {
+		t.Fatalf("deletion retries did not terminate: %#v", failedDeletion)
+	}
+	if err = pool.QueryRow(ctx, `SELECT status FROM teaching.lesson_sessions WHERE id=$1`, failingSession).Scan(&sessionStatus); err != nil || sessionStatus != "deleting" {
+		t.Fatalf("failed deletion reopened classroom: status=%s err=%v", sessionStatus, err)
 	}
 	replaySession := queryID(t, pool, `INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by) VALUES('`+offering+`','Replay target',now()+interval '2 hours',now()+interval '3 hours','`+teacherID+`') RETURNING id::text`)
 	if err = ledger.Append(governance.Tombstone{TombstoneID: "11111111-1111-4111-8111-111111111111", SessionID: replaySession, RequestedBy: adminID, Reason: "recovery replay", IdempotencyKey: "replay-1", RequestSHA256: strings.Repeat("f", 64), RequestedAt: time.Now().UTC()}); err != nil {
