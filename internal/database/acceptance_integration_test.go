@@ -68,7 +68,7 @@ func TestDatabaseUpgradeAcceptance(t *testing.T) {
 			t.Fatal(err)
 		}
 		var tables, validated int
-		if err := conn.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema='teaching'`).Scan(&tables); err != nil || tables != 30 {
+		if err := conn.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema='teaching'`).Scan(&tables); err != nil || tables != 31 {
 			t.Fatalf("tables=%d err=%v", tables, err)
 		}
 		if err := conn.QueryRow(ctx, `SELECT count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='teaching' AND NOT convalidated`).Scan(&validated); err != nil || validated != 0 {

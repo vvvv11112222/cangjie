@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/vvvv11112222/cangjie/internal/database"
+	"github.com/vvvv11112222/cangjie/internal/governance"
 )
 
 func TestInstalledAPIUsesConfiguredMigrations(t *testing.T) {
@@ -74,6 +75,10 @@ func TestInstalledAPIUsesConfiguredMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	scratch := t.TempDir()
+	ledgerPath := filepath.Join(scratch, "ledger", "deletions.jsonl")
+	if _, err := governance.InitializeLedger(ledgerPath); err != nil {
+		t.Fatal(err)
+	}
 	executable := "api"
 	goExecutable := "go"
 	if runtime.GOOS == "windows" {
@@ -102,7 +107,7 @@ func TestInstalledAPIUsesConfiguredMigrations(t *testing.T) {
 		"APP_ENV": "test", "DATABASE_URL": appURL, "DATABASE_MIGRATIONS_DIR": directory,
 		"API_LISTEN_ADDR": address, "PUBLIC_ORIGIN": "http://" + address,
 		"MEDIA_ROOT": filepath.Join(scratch, "media"), "WORKER_TEMP_ROOT": filepath.Join(scratch, "worker-tmp"),
-		"DELETION_LEDGER_PATH": filepath.Join(scratch, "ledger", "deletions.jsonl"),
+		"DELETION_LEDGER_PATH": ledgerPath,
 		"WORKER_TOKEN":         strings.Repeat("x", 32), "WORKER_PROCESSOR_VERSION": "fixed-json-v1",
 		"FFMPEG_BUILD_SHA256": strings.Repeat("a", 64), "ASR_MODEL_NAME": "fixed-json-asr",
 		"ASR_MODEL_REVISION": "p0-v1", "ASR_DEVICE": "cpu",

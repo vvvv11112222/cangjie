@@ -67,7 +67,7 @@ try {
     await pool.query('INSERT INTO public.schema_migrations(name,checksum) VALUES($1,$2)',[name,createHash('sha256').update(body).digest('hex')]);
   }
   await check('fresh migrations and existing SQL constraints', async()=>{
-    assert.equal(await scalar("SELECT count(*)::int FROM information_schema.tables WHERE table_schema='teaching'"),30);
+    assert.equal(await scalar("SELECT count(*)::int FROM information_schema.tables WHERE table_schema='teaching'"),31);
     await pool.query(await fs.readFile(path.join(root,'database/check_schema.sql'),'utf8'));
     assert.equal(await scalar("SELECT count(*)::int FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='teaching' AND NOT convalidated"),0);
   });
@@ -183,7 +183,7 @@ try {
       await admin.query("SELECT set_config('cangjie.migration_role','cangjie_db_acceptance_migrator',false),set_config('cangjie.app_role','cangjie_db_acceptance_app',false)");
       await admin.query(await fs.readFile(path.join(root,'database/configure_roles.sql'),'utf8'));
       await admin.query('SET ROLE cangjie_db_acceptance_app');
-      assert.equal((await admin.query('SELECT count(*)::int AS n FROM public.schema_migrations')).rows[0].n,7);
+      assert.equal((await admin.query('SELECT count(*)::int AS n FROM public.schema_migrations')).rows[0].n,8);
       await admin.query("INSERT INTO teaching.org_units(code,name,kind) VALUES('DB-ROLE','Synthetic app write','college')");
       // audit_logs has an identity sequence; usage must remain available.
       await admin.query("INSERT INTO teaching.audit_logs(action,resource_type,resource_id,result,request_id) VALUES('db.test','org_unit',$1,'success','synthetic-db-test')",[college]);
