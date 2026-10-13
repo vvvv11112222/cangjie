@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 前端 | [开发协议](docs/开发协议.md)、[接口样例](contracts/examples/manifest.json) | 用固定样例显示任务、转写和报告 |
 | 后端 | 开发协议、[数据库设计](docs/数据库设计.md) | Go API、任务流转和权限校验 |
-| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[006](database/006_governance_runtime.sql) | 初始化、迁移及约束检查 |
+| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[007](database/007_validate_runtime_constraints.sql) | 初始化、迁移及约束检查 |
 | 音频 | 开发协议第3节、audio-result 样例 | Worker 公共入口和带时间戳转写 |
 | 视频 | 开发协议第3节、probe-result/video-result 样例 | 媒体检查、播放代理和关键帧 |
 
@@ -21,7 +21,7 @@
 - [AGENTS.md](AGENTS.md)：Codex 的仓库开发约定，包含按任务查阅文档、模块边界、验证及协作规则。
 - `docs/`：架构、协议、数据库、验收计划。
 - `contracts/v1.schema.json`、[端点映射](contracts/endpoints.json)与 `contracts/examples/`：契约1.1及联调样例；api-cases.json 中每个 value 是独立 DTO，按 definition 选择。前端和 Worker 须同步更新，不能混用1.0结果。
-- `database/`：迁移和约束验证；新库按编号依次执行001～005，旧库只执行未应用迁移。
+- `database/`：迁移和约束验证；新库按编号依次执行001～007，旧库只执行未应用迁移。007核验历史运行时约束；[数据库联合验收](docs/数据库联合验收.md)提供分权、升级及多连接验证入口。
 - `tools/`：文档/协议检查、隔离数据库检查。
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
 
@@ -30,7 +30,7 @@
 后端使用 Go 1.26 系列和 PostgreSQL 17。当前已提供：
 
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
-- `cmd/migrate`：按文件名顺序执行 `database/001`～`005`，记录并校验迁移摘要；
+- `cmd/migrate`：按文件名顺序执行 `database/001`～`007`，记录并校验迁移摘要及历史顺序；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；

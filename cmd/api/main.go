@@ -56,6 +56,13 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
+	// Do not start background writers against an incomplete or unverified upgrade.
+	schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	schemaErr := pool.CheckSchema(schemaCtx, "database")
+	schemaCancel()
+	if schemaErr != nil {
+		return schemaErr
+	}
 	analysisService := analysis.NewService(pool.Pool, mediaStore, analysis.Config{
 		Lease: cfg.JobLease, ProbeTimeout: cfg.ProbeTimeout, ASRTimeout: cfg.ASRTimeout, VideoTimeout: cfg.VideoTimeout,
 		MediaJobAttempts: cfg.MediaJobAttempts, ProcessorVersion: cfg.ProcessorVersion, FFmpegSHA256: cfg.FFmpegSHA256,
@@ -84,7 +91,7 @@ func run() error {
 	}
 
 	checks := httpapi.ReadinessChecks{
-		"database": pool.Ping,
+		"database": func(ctx context.Context) error { return pool.CheckSchema(ctx, "database") },
 		"media_storage": func(ctx context.Context) error {
 			return mediaStore.Check(ctx)
 		},
