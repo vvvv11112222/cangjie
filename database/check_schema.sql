@@ -1,5 +1,5 @@
 -- 仅在隔离测试数据库执行；所有演示数据与临时校验函数随事务回滚。
--- 先按编号执行 001～007，再执行本文件。不是生产迁移。
+-- 先按编号执行 001～008，再执行本文件。不是生产迁移。
 BEGIN;
 SET search_path TO teaching, public;
 SET CONSTRAINTS ALL IMMEDIATE;
