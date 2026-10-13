@@ -63,6 +63,14 @@ services:
     volumes:
       - app-data:/data
 
+  init-deletion-ledger:
+    profiles: ["bootstrap"]
+    build: .
+    command: ["/app/bin/init-deletion-ledger"]
+    environment: *api-environment
+    volumes:
+      - app-data:/data
+
   bootstrap-admin:
     profiles: ["bootstrap"]
     build: .

@@ -32,15 +32,49 @@ func OpenLedger(path string) (*Ledger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve deletion ledger path: %w", err)
 	}
-	dir := filepath.Dir(abs)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return nil, fmt.Errorf("create deletion ledger directory: %w", err)
+	marker := abs + ".initialized"
+	_, ledgerErr := os.Stat(abs)
+	_, markerErr := os.Stat(marker)
+	if ledgerErr != nil && !errors.Is(ledgerErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat deletion ledger: %w", ledgerErr)
+	}
+	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat deletion ledger marker: %w", markerErr)
+	}
+	if errors.Is(ledgerErr, os.ErrNotExist) || errors.Is(markerErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("deletion ledger is not fully initialized; run the explicit initialization command before starting the API: %s", abs)
+	}
+	markerBody, err := os.ReadFile(marker)
+	if err != nil {
+		return nil, fmt.Errorf("read deletion ledger marker: %w", err)
+	}
+	if string(markerBody) != "deletion-ledger-v1\n" {
+		return nil, fmt.Errorf("deletion ledger marker is invalid: %s", marker)
+	}
+	file, err := os.OpenFile(abs, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open deletion ledger: %w", err)
+	}
+	if err = file.Close(); err != nil {
+		return nil, fmt.Errorf("close deletion ledger: %w", err)
+	}
+	return &Ledger{path: abs}, nil
+}
+
+// InitializeLedger is the only operation allowed to create a deletion ledger.
+// It must be invoked as an explicit, one-time deployment step; API startup only
+// calls OpenLedger and therefore fails closed after a backup restore or storage
+// loss where both the ledger and its marker are absent.
+func InitializeLedger(path string) (*Ledger, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve deletion ledger path: %w", err)
 	}
 	marker := abs + ".initialized"
 	_, ledgerErr := os.Stat(abs)
 	_, markerErr := os.Stat(marker)
-	if errors.Is(ledgerErr, os.ErrNotExist) && markerErr == nil {
-		return nil, fmt.Errorf("deletion ledger is missing after initialization: %s", abs)
+	if ledgerErr == nil && markerErr == nil {
+		return OpenLedger(abs)
 	}
 	if ledgerErr != nil && !errors.Is(ledgerErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("stat deletion ledger: %w", ledgerErr)
@@ -48,38 +82,45 @@ func OpenLedger(path string) (*Ledger, error) {
 	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("stat deletion ledger marker: %w", markerErr)
 	}
-	file, err := os.OpenFile(abs, os.O_CREATE|os.O_EXCL|os.O_APPEND|os.O_WRONLY, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		file, err = os.OpenFile(abs, os.O_APPEND|os.O_WRONLY, 0o600)
+	if ledgerErr == nil || markerErr == nil {
+		return nil, fmt.Errorf("refusing to initialize an incomplete deletion ledger; recover the missing durable file: %s", abs)
+	}
+	dir := filepath.Dir(abs)
+	if err = os.MkdirAll(dir, 0o750); err != nil {
+		return nil, fmt.Errorf("create deletion ledger directory: %w", err)
+	}
+	file, err := os.OpenFile(abs, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("create deletion ledger: %w", err)
+	}
+	if err = file.Sync(); err == nil {
+		err = file.Close()
+	} else {
+		_ = file.Close()
 	}
 	if err != nil {
-		return nil, fmt.Errorf("open deletion ledger: %w", err)
-	}
-	if err := file.Sync(); err != nil {
-		file.Close()
+		_ = os.Remove(abs)
 		return nil, fmt.Errorf("sync deletion ledger: %w", err)
 	}
-	if err := file.Close(); err != nil {
-		return nil, fmt.Errorf("close deletion ledger: %w", err)
-	}
 	markerFile, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return &Ledger{path: abs}, nil
+	if err == nil {
+		_, err = markerFile.WriteString("deletion-ledger-v1\n")
 	}
-	if err != nil {
-		return nil, fmt.Errorf("create deletion ledger marker: %w", err)
-	}
-	if _, err = markerFile.WriteString("deletion-ledger-v1\n"); err == nil {
+	if err == nil {
 		err = markerFile.Sync()
 	}
-	closeErr := markerFile.Close()
+	if markerFile != nil {
+		closeErr := markerFile.Close()
+		if err == nil {
+			err = closeErr
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("sync deletion ledger marker: %w", err)
+		_ = os.Remove(marker)
+		_ = os.Remove(abs)
+		return nil, fmt.Errorf("create deletion ledger marker: %w", err)
 	}
-	if closeErr != nil {
-		return nil, fmt.Errorf("close deletion ledger marker: %w", closeErr)
-	}
-	return &Ledger{path: abs}, nil
+	return OpenLedger(abs)
 }
 
 func (l *Ledger) Check(ctx context.Context) error {

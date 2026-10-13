@@ -31,6 +31,7 @@
 
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
 - `cmd/migrate`：按文件名顺序执行 `database/001`～`007`，记录并校验迁移摘要；
+- `cmd/init-deletion-ledger`：显式、幂等地执行一次独立删除账本初始化；API 启动不会自动补建丢失账本；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；
@@ -65,6 +66,7 @@ ASR_MODEL_REVISION=p0-v1
 
 ```powershell
 go run ./cmd/migrate
+go run ./cmd/init-deletion-ledger
 $env:BOOTSTRAP_ADMIN_PASSWORD = '<至少12位的本地密码>'
 go run ./cmd/bootstrap-admin
 Remove-Item Env:BOOTSTRAP_ADMIN_PASSWORD
@@ -103,6 +105,7 @@ Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 已安装 Docker Compose 时可运行：
 
 ```powershell
+docker compose --profile bootstrap run --rm init-deletion-ledger
 docker compose up --build -d postgres api
 $env:BOOTSTRAP_TEST_PASSWORD = '<至少12位的本地测试密码>'
 docker compose --profile bootstrap run --rm seed-dev

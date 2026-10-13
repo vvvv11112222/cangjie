@@ -84,7 +84,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	jobID := queryID(t, pool, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','report','succeeded',1,100) RETURNING id::text`)
 	queryID(t, pool, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','video_analysis','succeeded',3,100) RETURNING id::text`)
 	modelCallID := queryID(t, pool, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,reserved_cost,actual_cost,status,settled_at,billing_period,price_version,request_sha256) VALUES('`+runID+`','`+jobID+`','p7-call','fixture','fixture','p0-v1',1.000000,0.500000,'succeeded',now(),date_trunc('month',now() AT TIME ZONE 'Asia/Shanghai')::date,'p7-price','`+strings.Repeat("e", 64)+`') RETURNING id::text`)
-	ledger, err := governance.OpenLedger(filepath.Join(t.TempDir(), "deletions.jsonl"))
+	ledger, err := governance.InitializeLedger(filepath.Join(t.TempDir(), "deletions.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}

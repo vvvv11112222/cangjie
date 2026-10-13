@@ -10,7 +10,7 @@ import (
 
 func TestLedgerCheckRejectsMalformedLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "deletions.jsonl")
-	ledger, err := OpenLedger(path)
+	ledger, err := InitializeLedger(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestLedgerCheckRejectsMalformedLine(t *testing.T) {
 
 func TestLedgerAppendAndRead(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "deletions.jsonl")
-	ledger, err := OpenLedger(path)
+	ledger, err := InitializeLedger(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestLedgerAppendAndRead(t *testing.T) {
 
 func TestOpenLedgerRejectsMissingInitializedLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "deletions.jsonl")
-	if _, err := OpenLedger(path); err != nil {
+	if _, err := InitializeLedger(path); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(path); err != nil {
@@ -51,5 +51,47 @@ func TestOpenLedgerRejectsMissingInitializedLedger(t *testing.T) {
 	}
 	if _, err := OpenLedger(path); err == nil {
 		t.Fatal("missing initialized ledger was silently recreated")
+	}
+}
+
+func TestOpenLedgerRequiresExplicitInitialization(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deletions.jsonl")
+	if _, err := OpenLedger(path); err == nil {
+		t.Fatal("ordinary startup created a deletion ledger without explicit initialization")
+	}
+	if _, err := InitializeLedger(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenLedger(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenLedgerRejectsOldBackupWhenLedgerAndMarkerAreBothMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deletions.jsonl")
+	if _, err := InitializeLedger(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path + ".initialized"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenLedger(path); err == nil {
+		t.Fatal("old-backup restore with no durable ledger was treated as a first initialization")
+	}
+}
+
+func TestOpenLedgerRejectsMissingInitializationMarker(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deletions.jsonl")
+	if _, err := InitializeLedger(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path + ".initialized"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenLedger(path); err == nil {
+		t.Fatal("ledger without its initialization marker was accepted")
 	}
 }
