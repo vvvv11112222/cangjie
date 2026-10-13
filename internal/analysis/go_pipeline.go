@@ -295,13 +295,12 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 	stopHeartbeat := make(chan struct{})
 	go s.keepGoLease(ctx, j, stopHeartbeat)
 	defer close(stopHeartbeat)
-	callResult, err := s.callReportModel(ctx, requestBody)
-	if err != nil {
-		_ = s.markModelCallUnknown(ctx, j.ID)
-		return err
-	}
+	callResult, callErr := s.callReportModel(ctx, requestBody)
 	if !callResult.UsageKnown {
 		_ = s.markModelCallUnknown(ctx, j.ID)
+		if callErr != nil {
+			return callErr
+		}
 		return fmt.Errorf("report provider omitted billable token usage")
 	}
 	actualMicros, err := tokenCostMicros(callResult.InputTokens, callResult.OutputTokens, reportConfig.InputPriceMicros, reportConfig.OutputPriceMicros)
@@ -311,6 +310,9 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 	}
 	if err = s.settleModelCall(ctx, j.ID, callResult, actualMicros); err != nil {
 		return err
+	}
+	if callErr != nil {
+		return callErr
 	}
 	candidateRaw, _ := json.Marshal(callResult.Candidate)
 	tx, err = s.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -414,16 +416,34 @@ func (s *Service) markModelCallUnknown(ctx context.Context, jobID string) error 
 }
 
 func (s *Service) settleModelCall(ctx context.Context, jobID string, result modelCallResult, actualMicros int64) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE teaching.model_calls SET status='succeeded',actual_cost=$2::numeric/1000000,
-		input_tokens=$3,output_tokens=$4,provider_request_id=NULLIF($5,''),settled_at=now() WHERE job_id=$1 AND status='reserved'`,
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err = lockModelCallBudgetPeriod(ctx, tx, jobID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE teaching.model_calls SET status='succeeded',actual_cost=$2::numeric/1000000,
+		input_tokens=$3,output_tokens=$4,provider_request_id=NULLIF($5,''),settled_at=now(),lock_version=lock_version+1
+		WHERE job_id=$1 AND status IN('reserved','unknown') AND reconciled_by IS NULL`,
 		jobID, actualMicros, result.InputTokens, result.OutputTokens, result.ProviderRequestID)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("model call is no longer reservable")
+		return fmt.Errorf("model call is no longer eligible for provider settlement")
 	}
-	return nil
+	return tx.Commit(ctx)
+}
+
+func lockModelCallBudgetPeriod(ctx context.Context, tx pgx.Tx, jobID string) error {
+	var currency, period string
+	if err := tx.QueryRow(ctx, `SELECT currency,billing_period::text FROM teaching.model_calls WHERE job_id=$1`, jobID).Scan(&currency, &period); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, currency+":"+period)
+	return err
 }
 
 func tokenCostMicros(inputTokens, outputTokens, inputPriceMicros, outputPriceMicros int64) (int64, error) {
@@ -502,28 +522,50 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 	if err = rows.Err(); err != nil {
 		return input, err
 	}
-	if skippedEvidence > 0 {
-		input.Limitations = append(input.Limitations, fmt.Sprintf("MODEL_INPUT_SKIPPED_COUNT:%d", skippedEvidence))
-	}
 	if len(input.Evidence) == 0 {
 		return input, fmt.Errorf("no reportable evidence")
-	}
-	for _, evidence := range input.Evidence {
-		window := Interval{StartMS: evidence.StartMS, EndMS: evidence.EndMS}
-		if len(input.Coverage) == 0 || window.StartMS > input.Coverage[len(input.Coverage)-1].EndMS {
-			input.Coverage = append(input.Coverage, window)
-			continue
-		}
-		if window.EndMS > input.Coverage[len(input.Coverage)-1].EndMS {
-			input.Coverage[len(input.Coverage)-1].EndMS = window.EndMS
-		}
 	}
 	workerLimitations, limitErr := s.workerLimitations(ctx, j.RunID)
 	if limitErr != nil {
 		return input, limitErr
 	}
 	input.Limitations = boundedModelLimitations(appendUniqueAll(input.Limitations, workerLimitations))
-	return input, nil
+	return fitModelInputToRequest(input, reportConfig, skippedEvidence)
+}
+
+func fitModelInputToRequest(input modelInput, config reportSnapshot, skipped int) (modelInput, error) {
+	baseLimitations := append([]string(nil), input.Limitations...)
+	for len(input.Evidence) > 0 {
+		input.Coverage = coverageForEvidence(input.Evidence)
+		limitations := append([]string(nil), baseLimitations...)
+		if skipped > 0 {
+			limitations = append(limitations, fmt.Sprintf("MODEL_INPUT_SKIPPED_COUNT:%d", skipped))
+		}
+		input.Limitations = boundedModelLimitations(limitations)
+		if _, err := buildReportRequest(input, config); err == nil {
+			return input, nil
+		} else if len(input.Evidence) == 1 {
+			return input, err
+		}
+		input.Evidence = input.Evidence[:len(input.Evidence)-1]
+		skipped++
+	}
+	return input, fmt.Errorf("no reportable evidence fits the complete request limit")
+}
+
+func coverageForEvidence(evidence []modelEvidence) []Interval {
+	coverage := []Interval{}
+	for _, item := range evidence {
+		window := Interval{StartMS: item.StartMS, EndMS: item.EndMS}
+		if len(coverage) == 0 || window.StartMS > coverage[len(coverage)-1].EndMS {
+			coverage = append(coverage, window)
+			continue
+		}
+		if window.EndMS > coverage[len(coverage)-1].EndMS {
+			coverage[len(coverage)-1].EndMS = window.EndMS
+		}
+	}
+	return coverage
 }
 
 func boundedModelLimitations(values []string) []string {

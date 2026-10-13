@@ -103,15 +103,14 @@ func (s *Service) callReportModel(ctx context.Context, body []byte) (modelCallRe
 	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) != 1 {
 		return modelCallResult{}, fmt.Errorf("report provider response is invalid")
 	}
-	var candidate ReportCandidate
-	if err := decodeStrict([]byte(envelope.Choices[0].Message.Content), &candidate); err != nil {
-		return modelCallResult{}, fmt.Errorf("report candidate is invalid: %w", err)
-	}
-	result := modelCallResult{Candidate: candidate, ProviderRequestID: envelope.ID}
+	result := modelCallResult{ProviderRequestID: envelope.ID}
 	if envelope.Usage.PromptTokens != nil && envelope.Usage.CompletionTokens != nil && *envelope.Usage.PromptTokens >= 0 && *envelope.Usage.CompletionTokens >= 0 {
 		result.InputTokens = *envelope.Usage.PromptTokens
 		result.OutputTokens = *envelope.Usage.CompletionTokens
 		result.UsageKnown = true
+	}
+	if err := decodeStrict([]byte(envelope.Choices[0].Message.Content), &result.Candidate); err != nil {
+		return result, fmt.Errorf("report candidate is invalid: %w", err)
 	}
 	return result, nil
 }

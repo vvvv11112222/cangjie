@@ -96,6 +96,15 @@ func (s *Service) ReconcileModelCall(ctx context.Context, p identity.Principal, 
 		return ModelCall{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	var currency, period string
+	if err = tx.QueryRow(ctx, `SELECT currency,billing_period::text FROM teaching.model_calls WHERE id=$1`, id).Scan(&currency, &period); errors.Is(err, pgx.ErrNoRows) {
+		return ModelCall{}, notFound()
+	} else if err != nil {
+		return ModelCall{}, err
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, currency+":"+period); err != nil {
+		return ModelCall{}, err
+	}
 	var status string
 	var lockVersion int
 	var overReservationPending bool
