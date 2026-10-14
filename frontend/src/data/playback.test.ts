@@ -8,9 +8,34 @@ import {
   jumpTargets,
   msToSeconds,
   pickPlaybackMediaId,
+  playbackTranscript,
   secondsToMs,
 } from './playback';
 import type { MediaLite } from './sources';
+import { fixtures, fixtureMediaFor } from './samples';
+import { buildTranscriptView } from './viewModel';
+
+describe('播放原媒体归属', () => {
+  it('UUID 同值大小写不影响匹配，代理按父原媒体核对', () => {
+    const id = 'abcdef00-0000-4000-8000-000000000002';
+    const view = buildTranscriptView();
+    view.run = { ...fixtures.run, media_asset_id: id.toUpperCase() };
+    view.revision = { ...fixtures.revision, media_asset_id: id };
+    view.evidence = view.evidence.map(item => ({ ...item, media_asset_id: id }));
+    const media = { ...fixtureMediaFor(fixtures.run.media_asset_id)!, kind: 'proxy' as const, parent_asset_id: id };
+    expect(playbackTranscript(media, view).segments).toEqual(view.segments);
+    expect(playbackTranscript(media, view).evidence).toEqual(view.evidence);
+  });
+
+  it('不叠加未确认批次或非法 UUID 的转写，并排除跨批次证据', () => {
+    const media = fixtureMediaFor(fixtures.run.media_asset_id)!;
+    const view = buildTranscriptView();
+    expect(playbackTranscript(media, { ...view, run: null }).segments).toEqual([]);
+    expect(playbackTranscript({ ...media, id: 'invalid' }, view).segments).toEqual([]);
+    const foreign = { ...view.evidence[0]!, run_id: '00000000-0000-4000-8000-000000000999' };
+    expect(playbackTranscript(media, { ...view, evidence: [foreign] }).evidence).toEqual([]);
+  });
+});
 
 const SESSION: Session = {
   id: '00000000-0000-4000-8000-000000000001',

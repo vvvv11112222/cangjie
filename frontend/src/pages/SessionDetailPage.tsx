@@ -635,7 +635,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
           ) : null}
 
           {tab === 'playback' ? (
-            <PlaybackPanel mediaId={playbackMediaId} detail={playback} transcript={transcript} />
+                <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList={session.primary_media_asset_id === null} />
           ) : null}
         </>
       )}

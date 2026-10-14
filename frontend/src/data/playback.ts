@@ -7,8 +7,42 @@
  * 因此代理时间与原录像时间一致，跳转直接按毫秒定位，不做偏移换算。
  */
 
-import type { Evidence, EvidenceKind, Segment, Session } from '../types';
+import type { Evidence, EvidenceKind, Media, Segment, Session } from '../types';
 import type { MediaLite } from './sources';
+import type { TranscriptView } from './viewModel';
+import { isUuid, sameId } from './ids';
+
+/** 对照原媒体归属，而不是 proxy 的播放地址；无法核对时不叠加旧结果。 */
+export function playbackTranscript(media: Media | null, view: TranscriptView): {
+  segments: Segment[];
+  evidence: Evidence[];
+  note: string | null;
+} {
+  const empty = { segments: [], evidence: [], note: null };
+  if (media === null) return empty;
+  const equal = (a: string | null, b: string | null) =>
+    a !== null && b !== null && isUuid(a) && isUuid(b) && sameId(a, b);
+  const originalId = media.kind === 'proxy' ? media.parent_asset_id : media.kind === 'source' ? media.id : null;
+  const run = view.run;
+  if (run === null || !equal(originalId, run.media_asset_id) || !equal(media.session_id, run.session_id)) {
+    return { ...empty, note: '当前录像与所选分析结果不同，或结果归属尚未确认；不叠加该结果的字幕与定位。' };
+  }
+  const revision = view.revision;
+  if ((view.results.transcript_revision_id !== null && revision === null) || (revision !== null && (
+    !equal(originalId, revision.media_asset_id) || !equal(media.session_id, revision.session_id) ||
+    (!equal(run.id, revision.source_run_id) && !equal(run.input_transcript_revision_id, revision.id))
+  ))) {
+    return { ...empty, note: '转写修订与当前录像或批次归属不一致，无法装入字幕与定位。' };
+  }
+  const evidence = view.evidence.filter(item =>
+    equal(originalId, item.media_asset_id) && equal(media.session_id, item.session_id) && equal(run.id, item.run_id),
+  );
+  return {
+    segments: view.segments,
+    evidence,
+    note: evidence.length === view.evidence.length ? null : '部分证据与当前录像或批次不匹配，已停止这些证据的定位。',
+  };
+}
 
 /** 倍速档位。浏览器 <video> 支持的常用档位，保持整数与半档，避免"看不懂的自定义速度"。 */
 export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;

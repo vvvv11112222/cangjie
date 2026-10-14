@@ -16,17 +16,51 @@ import { responseError } from './http';
 export type PlaybackProbeResult =
   /** 地址可用：206 说明服务端支持 Range，200 说明可播放但不能拖动。 */
   | { kind: 'ok'; status: number }
+  | { kind: 'cancelled' }
   /** 服务端明确拒绝（含错误码）。 */
   | { kind: 'failed'; error: ApiError };
 
-export async function probePlaybackAddress(url: string): Promise<PlaybackProbeResult> {
-  let response: Response;
+export const PLAYBACK_PROBE_TIMEOUT_MS = (() => {
+  const value = Number(import.meta.env.VITE_PLAYBACK_PROBE_TIMEOUT_MS ?? 10000);
+  return Number.isSafeInteger(value) && value > 0 ? value : 10000;
+})();
+
+export async function probePlaybackAddress(
+  url: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<PlaybackProbeResult> {
+  if (options.signal?.aborted) return { kind: 'cancelled' };
+  const controller = new AbortController();
+  const cancelled = new Error('预检已取消');
+  let abortListener = () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = new Promise<never>((_, reject) => {
+    abortListener = () => { controller.abort(); reject(cancelled); };
+    options.signal?.addEventListener('abort', abortListener, { once: true });
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error('播放地址检查超时，请重新检查。'));
+    }, options.timeoutMs ?? PLAYBACK_PROBE_TIMEOUT_MS);
+  });
   try {
-    response = await fetch(url, {
-      headers: { Range: 'bytes=0-0' },
-      credentials: 'same-origin',
-    });
+    return await Promise.race([stop, (async (): Promise<PlaybackProbeResult> => {
+      const response = await fetch(url, {
+        headers: { Range: 'bytes=0-0' },
+        credentials: 'same-origin',
+        signal: controller.signal,
+      });
+      if (response.status === 200 || response.status === 206) {
+        // 不等待 cancel 的完成；服务器忽略 Range 时也不能继续下载整份录像。
+        try { void response.body?.cancel().catch(() => undefined); } catch { /* abort 同样会释放连接 */ }
+        return { kind: 'ok', status: response.status };
+      }
+      const text = await response.text();
+      let payload: unknown;
+      try { payload = text.trim() === '' ? null : JSON.parse(text); } catch { payload = undefined; }
+      return { kind: 'failed', error: responseError(payload, response.status) };
+    })()]);
   } catch (error) {
+    if (options.signal?.aborted || error === cancelled) return { kind: 'cancelled' };
     return {
       kind: 'failed',
       error: new ApiError({
@@ -35,19 +69,9 @@ export async function probePlaybackAddress(url: string): Promise<PlaybackProbeRe
         message: error instanceof Error ? error.message : '播放地址请求未到达服务端',
       }),
     };
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abortListener);
+    controller.abort();
   }
-
-  if (response.status === 200 || response.status === 206) {
-    return { kind: 'ok', status: response.status };
-  }
-
-  const text = await response.text().catch(() => '');
-  let payload: unknown = undefined;
-  try {
-    payload = text.trim() === '' ? null : JSON.parse(text);
-  } catch {
-    // 不是 JSON：交给 responseError 按"不符合协议"处理，HTTP 状态仍会带到提示里。
-    payload = undefined;
-  }
-  return { kind: 'failed', error: responseError(payload, response.status) };
 }

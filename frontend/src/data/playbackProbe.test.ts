@@ -33,6 +33,40 @@ afterEach(() => {
 const URL = '/api/v1/media/00000000-0000-4000-8000-000000000004/content';
 
 describe('播放地址预检', () => {
+  it.each([200, 206])('成功 %s 后取消不需要的响应体', async status => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status, body: { cancel } }));
+    expect(await probePlaybackAddress(URL)).toEqual({ kind: 'ok', status });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('响应体取消失败不产生未处理异常或阻塞成功结果', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 200, body: { cancel: () => Promise.reject(new Error('closed')) } }));
+    expect(await probePlaybackAddress(URL)).toEqual({ kind: 'ok', status: 200 });
+  });
+
+  it('挂起响应头和错误正文均按期限停止', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const response of [null, { status: 503, text: () => new Promise(() => {}) }]) {
+        vi.stubGlobal('fetch', () => response === null ? new Promise(() => {}) : Promise.resolve(response));
+        const result = probePlaybackAddress(URL, { timeoutMs: 50 });
+        await vi.advanceTimersByTimeAsync(50);
+        expect((await result).kind).toBe('failed');
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('主动取消区别于网络错误，已取消时不发送请求', async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fetcher);
+    const pending = probePlaybackAddress(URL, { signal: controller.signal });
+    controller.abort();
+    expect(await pending).toEqual({ kind: 'cancelled' });
+    expect(await probePlaybackAddress(URL, { signal: controller.signal })).toEqual({ kind: 'cancelled' });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it('206 表示服务端支持 Range，可播放且能跳转', async () => {
     stubFetch(() => respond(206, ''));
     const result = await probePlaybackAddress(URL);

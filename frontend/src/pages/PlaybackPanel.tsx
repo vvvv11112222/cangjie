@@ -23,11 +23,12 @@ import {
 } from '../components/ui';
 import { isApiMode } from '../data/sources';
 import { usePlaybackProbe } from '../data/hooks';
-import type { useMediaDetail, useSessionTranscript } from '../data/hooks';
+import type { useMediaDetail, useSessionTranscript, useSessionMedia } from '../data/hooks';
 import {
   activeTargetId,
   isJumpable,
   jumpTargets,
+  playbackTranscript,
 } from '../data/playback';
 import { evidenceKindLabel, formatDateTime, formatTimestamp, mediaKindLabel, mediaStatusBadge } from '../format';
 
@@ -38,29 +39,55 @@ export function PlaybackPanel({
   mediaId,
   detail,
   transcript,
+  mediaList,
+  needsMediaList,
 }: {
   /** 当前回放目标媒体；为 null 表示该课堂还没有可回放的媒体。 */
   mediaId: string | null;
   detail: MediaDetailResult;
   transcript: TranscriptResult;
+  mediaList: ReturnType<typeof useSessionMedia>;
+  needsMediaList: boolean;
 }): ReactElement {
   const api = isApiMode();
-  const media = detail.data.media;
+  // 重取许可时保留已失败的节点但暂停操作；许可成功后对同一节点执行 load，清除失败资源。
+  const media = detail.status === 'ready' || detail.status === 'loading' ? detail.data.media : null;
+  const matched = useMemo(() => playbackTranscript(media, transcript.data), [media, transcript.data]);
   const targets = useMemo(
-    () => jumpTargets(transcript.data.segments, transcript.data.evidence),
-    [transcript.data.segments, transcript.data.evidence],
+    () => transcript.status === 'ready' ? jumpTargets(matched.segments, matched.evidence) : [],
+    [matched, transcript.status],
   );
   const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null);
   const [positionMs, setPositionMs] = useState(0);
   const [clickedId, setClickedId] = useState<string | null>(null);
   const [showCaption, setShowCaption] = useState(true);
+  const [playerFailed, setPlayerFailed] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const retryPending = useRef(false);
   const nonce = useRef(0);
   /** 跳转按钮节点，用于让高亮行跟随播放位置滚进可视区域。 */
   const jumpNodes = useRef(new Map<string, HTMLElement>());
 
-  const playbackUrl = media?.playback_url ?? null;
+  const playbackUrl = media?.status === 'ready' ? media.playback_url : null;
   // 浏览器自己发 Range 请求，前端看不到 416/403 这类状态码，所以先预检一次播放地址。
   const probe = usePlaybackProbe(playbackUrl);
+  const playerAvailable = detail.status === 'ready' && playbackUrl !== null && probe.status !== 'failed' && !playerFailed;
+  useEffect(() => {
+    if (!retryPending.current || detail.status === 'loading') return;
+    // 许可与新预检都确认后再 load，避免视频读取与 1 字节探测互相抢占同一资源。
+    if (detail.status === 'ready' && probe.status === 'checking') return;
+    retryPending.current = false;
+    if (detail.status === 'ready' && probe.status === 'ok') {
+      setPlayerFailed(false);
+      setRetryNonce(current => current + 1);
+    }
+  }, [detail.status, detail.data, probe.status]);
+  useEffect(() => {
+    setPlayerFailed(false);
+    setSeekRequest(null);
+    setClickedId(null);
+    setPositionMs(0);
+  }, [playbackUrl]);
   const timeActive = activeTargetId(targets, positionMs);
   // 同一时间点可能既有片段又有证据（样例里就是），按时间算会高亮先排序的那一条；
   // 刚点过的目标在播放位置仍落在它区间内时优先高亮，点了哪行就亮哪行。
@@ -69,7 +96,7 @@ export function PlaybackPanel({
     targets.some(
       (target) => target.id === clickedId && positionMs >= target.at_ms && positionMs < target.end_ms,
     );
-  const active = clickedStillActive ? clickedId : timeActive;
+  const active = playerAvailable ? (clickedStillActive ? clickedId : timeActive) : null;
   // 高亮行跟随播放进度滚动（block:'nearest' 只在必要时滚动，不会整页跳动）。
   useEffect(() => {
     if (active === null) {
@@ -87,9 +114,26 @@ export function PlaybackPanel({
   }, [active]);
 
   function jumpTo(id: string, at_ms: number): void {
+    if (!playerAvailable) return;
     nonce.current += 1;
     setClickedId(id);
     setSeekRequest({ at_ms, nonce: nonce.current });
+  }
+
+  function retryPlayback(): void {
+    if (detail.status !== 'ready' || retryPending.current) return;
+    setSeekRequest(null);
+    setClickedId(null);
+    setPositionMs(0);
+    // 重新核对服务端当前许可，不仅重放旧地址。
+    if (api) {
+      retryPending.current = true;
+      detail.reload();
+    } else {
+      setPlayerFailed(false);
+      setRetryNonce(current => current + 1);
+    }
+    probe.recheck();
   }
 
   return (
@@ -112,9 +156,20 @@ export function PlaybackPanel({
       >
         <LoadStateNote status={detail.status} error={detail.error} />
         <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
+        {needsMediaList ? (
+          <div>
+            <LoadStateNote status={mediaList.status} error={mediaList.error} />
+            <LoadControls actionLabel={mediaList.actionLabel} loadMore={mediaList.loadMore} />
+            {mediaId === null && mediaList.data.nextCursor !== null && mediaList.status === 'ready' ? (
+              <p className="load-note">已读取页面尚无可回放媒体，请继续加载后续页面。</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {mediaId === null ? (
-          <EmptyState text="该课堂还没有主媒体。上传录像并通过媒体准备后，这里才能回放。" />
+          mediaList.status === 'ready' && mediaList.data.nextCursor === null ? (
+            <EmptyState text="暂无可回放媒体：尚未上传、尚未就绪或未获准播放。可在「批次与操作」查看媒体状态。" />
+          ) : null
         ) : media === null ? null : (
           <>
             <div className="field-grid">
@@ -176,13 +231,18 @@ export function PlaybackPanel({
                   <p className="load-note">正在检查播放地址（发送一次 1 字节的 Range 请求）……</p>
                 ) : null}
                 <MediaPlayer
+                  key={playbackUrl}
                   src={playbackUrl}
                   durationMs={media.duration_ms}
                   seekRequest={seekRequest}
                   onTimeMs={setPositionMs}
                   label={`课堂主媒体 ${media.id} 的播放代理`}
-                  captions={transcript.data.segments}
+                  captions={transcript.status === 'ready' ? matched.segments : []}
                   showCaptions={showCaption}
+                  onRetry={retryPlayback}
+                  onFailed={setPlayerFailed}
+                  reloadToken={retryNonce}
+                  suspended={detail.status !== 'ready'}
                 />
                 {api ? null : (
                   <p className="load-note">
@@ -225,8 +285,9 @@ export function PlaybackPanel({
       >
         <LoadStateNote status={transcript.status} error={transcript.error} />
         <LoadControls actionLabel={transcript.actionLabel} loadMore={transcript.loadMore} />
+        {transcript.status === 'ready' && matched.note !== null ? <p className="notice-strip">{matched.note}</p> : null}
 
-        {transcript.status !== 'ready' ? null : targets.length === 0 ? (
+        {media === null || transcript.status !== 'ready' || (matched.note !== null && targets.length === 0) ? null : targets.length === 0 ? (
           <EmptyState text="这一批次的片段与证据为空。结果为空时要结合批次状态判断是未生成还是确实没有，不能直接当成“没有讲话”。" />
         ) : (
           <ul className="jump-list">
@@ -251,7 +312,7 @@ export function PlaybackPanel({
                     type="button"
                     className={`jump-item${active === target.id ? ' active' : ''}`}
                     aria-current={active === target.id ? 'true' : undefined}
-                    disabled={playbackUrl === null || !jumpable}
+                    disabled={!playerAvailable || !jumpable}
                     onClick={() => jumpTo(target.id, target.at_ms)}
                   >
                     <span className="jump-time mono">
@@ -267,8 +328,8 @@ export function PlaybackPanel({
           </ul>
         )}
 
-        {playbackUrl === null ? (
-          <p className="load-note">没有可用的播放地址，跳转按钮不可用。</p>
+        {!playerAvailable ? (
+          <p className="load-note">播放器当前不可用，跳转按钮不可用；请先恢复播放。</p>
         ) : (
           <p className="load-note">当前位置 {formatTimestamp(positionMs)}，命中的目标会高亮。</p>
         )}

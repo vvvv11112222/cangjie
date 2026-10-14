@@ -635,35 +635,41 @@ export interface PlaybackProbeState {
  * 固定样例模式播放的是仓库内本地文件，没有服务端语义，因此不做预检（status 保持 idle）。
  */
 export function usePlaybackProbe(url: string | null, enabled = true): PlaybackProbeState {
-  const { sessionKey } = useSessionContext();
-  const [state, setState] = useState<{ status: PlaybackProbeState['status']; note: string | null }>({
+  const { sessionKey, authStatus } = useSessionContext();
+  const [state, setState] = useState<{ key: string; status: PlaybackProbeState['status']; note: string | null }>({
+    key: '',
     status: 'idle',
     note: null,
   });
   const [nonce, setNonce] = useState(0);
+  const key = `${sessionKey}:${url}:${enabled}:${authStatus}:${nonce}`;
+  const checking = API && enabled && url !== null && authStatus === 'authenticated';
 
   useEffect(() => {
-    if (!API || !enabled || url === null) {
-      setState({ status: 'idle', note: null });
+    if (!checking || url === null) {
+      setState({ key, status: 'idle', note: null });
       return;
     }
     // 换账号后重查：播放地址的权限跟着会话走，旧会话的结果不能继续显示（同其它取数钩子）。
     let active = true;
-    setState({ status: 'checking', note: null });
-    void probePlaybackAddress(url).then((result) => {
-      if (!active) return;
+    const controller = new AbortController();
+    setState({ key, status: 'checking', note: null });
+    void probePlaybackAddress(url, { signal: controller.signal }).then((result) => {
+      if (!active || result.kind === 'cancelled') return;
       setState(
         result.kind === 'ok'
-          ? { status: 'ok', note: null }
-          : { status: 'failed', note: `播放地址不可用：${describeError(result.error)}` },
+          ? { key, status: 'ok', note: null }
+          : { key, status: 'failed', note: `播放地址不可用：${describeError(result.error)}` },
       );
     });
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [url, enabled, nonce, sessionKey]);
+  }, [key, checking, url]);
 
-  return { ...state, recheck: () => setNonce((current) => current + 1) };
+  const visible = state.key === key ? state : { status: checking ? 'checking' as const : 'idle' as const, note: null };
+  return { ...visible, recheck: () => setNonce((current) => current + 1) };
 }
 
 function fixtureSessionTranscript(session: Session | null): TranscriptView {

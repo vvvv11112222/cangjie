@@ -25,7 +25,7 @@ export interface SeekRequest {
   nonce: number;
 }
 
-export function MediaPlayer({
+function MediaPlayerInstance({
   src,
   durationMs,
   seekRequest,
@@ -33,6 +33,10 @@ export function MediaPlayer({
   label,
   captions = [],
   showCaptions = true,
+  onRetry,
+  onFailed,
+  reloadToken = 0,
+  suspended = false,
 }: {
   src: string;
   /** 服务端给的时长；为 null 时进度条由浏览器按实际文件决定。 */
@@ -42,21 +46,57 @@ export function MediaPlayer({
   label: string;
   /**
    * 字幕片段（原录像毫秒）。用浏览器原生字幕轨渲染，而不是 DOM 覆盖层：
-   * 原生字幕由浏览器排在播放控件上方，不会挡住进度条和播放键，画中画里也能显示。
+   * 原生字幕由浏览器排在播放控件上方，不会挡住进度条和播放键，画中画字幕取决于浏览器支持。
    */
   captions?: readonly { start_ms: number; end_ms: number; text_content: string }[];
   /** 字幕开关。关掉时同时隐藏原生字幕轨和"没有片段字幕"的提示行。 */
   showCaptions?: boolean;
+  onRetry?(): void;
+  onFailed?(failed: boolean): void;
+  /** 重试取得当前授权后显式启动新的媒体读取。 */
+  reloadToken?: number;
+  suspended?: boolean;
 }): ReactElement {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const trackRef = useRef<TextTrack | null>(null);
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
   const [positionMs, setPositionMs] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [localReloadToken, setLocalReloadToken] = useState(0);
+  // fragment 只改变浏览器媒体资源身份，不发送到 Go；路径、查询和授权地址保持原样。
+  const attempt = reloadToken + localReloadToken;
+  const playbackSrc = attempt === 0 ? src : `${src}${src.includes('#') ? '&' : '#'}playback_retry=${attempt}`;
   const [loadedDurationMs, setLoadedDurationMs] = useState<number | null>(durationMs);
   const [pipAvailable] = useState(
     () => typeof document !== 'undefined' && document.pictureInPictureEnabled === true,
   );
+  useEffect(() => {
+    const video = videoRef.current;
+    if ((reloadToken > 0 || localReloadToken > 0) && video !== null) {
+      setFailed(false);
+      onFailed?.(false);
+      setPositionMs(0);
+      setLoadedDurationMs(durationMs);
+      video.load();
+    }
+  }, [reloadToken, localReloadToken, src]);
+  useEffect(() => {
+    if (suspended && videoRef.current !== null && !videoRef.current.paused) videoRef.current.pause();
+  }, [suspended]);
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      if (video !== null && !video.paused) video.pause();
+      // 释放旧媒体，避免离开页面后继续读取或保留旧播放资源。
+      if (video !== null && video.currentSrc !== '') {
+        video.removeAttribute('src');
+        video.load();
+      }
+      if (video !== null && document.pictureInPictureElement === video) {
+        void document.exitPictureInPicture?.().catch(() => undefined);
+      }
+    };
+  }, []);
 
   /**
    * 把片段写进原生字幕轨。
@@ -172,14 +212,17 @@ export function MediaPlayer({
       <video
         ref={videoRef}
         className="player-video"
-        src={src}
+        src={playbackSrc}
         controls
         preload="metadata"
         playsInline
         aria-label={label}
         onLoadedMetadata={(event) => {
+          setFailed(false);
+          onFailed?.(false);
           const seconds = event.currentTarget.duration;
           setLoadedDurationMs(Number.isFinite(seconds) ? secondsToMs(seconds) : null);
+          if (seekRequest !== null) event.currentTarget.currentTime = msToSeconds(seekRequest.at_ms);
         }}
         onTimeUpdate={(event) => {
           const ms = secondsToMs(event.currentTarget.currentTime);
@@ -196,13 +239,14 @@ export function MediaPlayer({
             jumpBy(STEP_MS);
           }
         }}
-        onError={() => setFailed(true)}
+        onCanPlay={() => { setFailed(false); onFailed?.(false); }}
+        onError={() => { setFailed(true); onFailed?.(true); }}
       />
       <div className="player-bar">
-        <button type="button" className="btn btn-secondary" onClick={() => jumpBy(-STEP_MS)}>
+        <button type="button" className="btn btn-secondary" disabled={failed} onClick={() => jumpBy(-STEP_MS)}>
           后退 5 秒
         </button>
-        <button type="button" className="btn btn-secondary" onClick={() => jumpBy(STEP_MS)}>
+        <button type="button" className="btn btn-secondary" disabled={failed} onClick={() => jumpBy(STEP_MS)}>
           前进 5 秒
         </button>
         <label className="account-field player-speed">
@@ -233,18 +277,29 @@ export function MediaPlayer({
         命中片段时说明字幕位置，没命中时说清楚"这一段没有字幕"。
       */}
       <p className="load-note player-caption-note">
-        {captionNote ?? '字幕由浏览器原生字幕轨显示在播放控件上方（画中画里也会显示）。'}
+        {captionNote ?? '字幕由浏览器原生字幕轨显示在播放控件上方（画中画字幕取决于浏览器支持）。'}
       </p>
       <p className="load-note">
         播放器聚焦时按 ← / → 可前后 5 秒；倍速只影响播放速度，不改变时间轴与原录像时间的对应关系。
       </p>
       {failed ? (
+        <div>
         <p className="notice-strip">
           <IconAlert size={14} aria-hidden="true" />
           播放器无法加载这段媒体字节。接口模式下这通常表示地址已过期或没有内容读取权限；
-          可以先刷新读取，再确认媒体的有效期与用途。
+          请重试播放，并核对媒体有效期与用途。
         </p>
+        <button type="button" className="btn btn-secondary" disabled={suspended} onClick={() => {
+          if (onRetry) onRetry();
+          else setLocalReloadToken(current => current + 1);
+        }}>重试播放</button>
+        </div>
       ) : null}
     </div>
   );
+}
+
+/** src 切换重建播放器，避免旧错误、时间与字幕轨延续到新媒体。 */
+export function MediaPlayer(props: Parameters<typeof MediaPlayerInstance>[0]): ReactElement {
+  return <MediaPlayerInstance key={props.src} {...props} />;
 }
