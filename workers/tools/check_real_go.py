@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+from uuid import UUID, uuid4
 
 from workers import PROCESSOR_VERSION
 from workers.common.config import Settings
@@ -56,9 +57,41 @@ def main():
     worker.add_argument("--stage", choices=("probe", "video_analysis"), required=True)
     worker.add_argument("--run-id", required=True)
     worker.add_argument("--scratch", type=Path, required=True)
+    deletion = sub.add_parser("cleanup", help="Real backend cleanup fixture; synthetic leftovers only")
+    deletion.add_argument("--api-base", required=True)
+    deletion.add_argument("--scratch", type=Path, required=True)
+    deletion.add_argument("--contract", type=Path, required=True)
+    deletion.add_argument("--deletion-id", required=True)
+    deletion.add_argument("--seed-job-id", required=True)
     args = parser.parse_args()
-    result = (prepare(args.output, args.odd) if args.command == "prepare" else
-              work(args.api_base, args.stage, args.run_id, args.scratch))
+    if args.command == "prepare":
+        result = prepare(args.output, args.odd)
+    elif args.command == "work":
+        result = work(args.api_base, args.stage, args.run_id, args.scratch)
+    else:
+        job_id, deletion_id = str(UUID(args.seed_job_id)), str(UUID(args.deletion_id))
+        scratch = args.scratch.resolve()
+        leftovers = scratch / job_id / str(uuid4())
+        leftovers.mkdir(parents=True, exist_ok=False)
+        (leftovers / 'input.bin').write_bytes(b'FFmpeg synthetic classroom fixture leftovers')
+        (leftovers / 'lease.deadline').write_text('9999999999', encoding='utf-8')
+        settings = Settings(args.api_base, 'worker-01', os.environ['WORKER_TOKEN'], scratch,
+                            PROCESSOR_VERSION, digest_file(ffmpeg_executable()),
+                            cleanup_enabled=True, cleanup_contract_path=args.contract.resolve())
+        runner = Runner(settings)
+        try:
+            started = time.perf_counter()
+            receipt = runner.cleanup_once()
+            if receipt is None or receipt['deletion_request_id'] != deletion_id:
+                raise RuntimeError('Backend did not acknowledge the expected deletion')
+            if (scratch / job_id).exists():
+                raise RuntimeError('Synthetic leftovers remain after receipt')
+            if runner.cleanup_once() is not None:
+                raise RuntimeError('Acknowledged cleanup remained pending')
+            result = {'receipt': receipt, 'wall_seconds': round(time.perf_counter() - started, 3),
+                      'real_go_integration': True, 'local_leftovers_removed': True}
+        finally:
+            runner.transport.close()
     print(json.dumps(result, ensure_ascii=False))
 
 

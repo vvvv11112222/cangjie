@@ -24,6 +24,8 @@ class Settings:
     probe_timeout: int = 1800
     video_timeout: int = 3600
     lease_seconds: int = 120
+    cleanup_enabled: bool = False
+    cleanup_contract_path: Path | None = None
 
     def __post_init__(self):
         url = urlsplit(self.api_base)
@@ -40,11 +42,19 @@ class Settings:
             raise ValueError("心跳及文件上限必须为正数")
         if len(self.ffmpeg_sha256) != 64 or self.ffmpeg_sha256 != digest_file(ffmpeg_executable()):
             raise ValueError("FFMPEG_BUILD_SHA256 与实际二进制不一致；先运行 runtime-info")
+        if type(self.cleanup_enabled) is not bool:
+            raise ValueError("cleanup_enabled 必须是布尔值")
+        if self.cleanup_enabled:
+            from .deletion import cleanup_schema
+            cleanup_schema(self)
 
     @classmethod
     def from_env(cls):
         if os.environ.get("WORKER_CONCURRENCY", "1") != "1":
             raise ValueError("本视频入口一次执行一个任务；可使用不同 worker_id 启动多个进程")
+        cleanup_flag = os.environ.get("WORKER_CLEANUP_ENABLED", "0")
+        if cleanup_flag not in ("0", "1"):
+            raise ValueError("WORKER_CLEANUP_ENABLED 必须为 0 或 1")
         return cls(
             api_base=os.environ.get("WORKER_API_BASE", "http://127.0.0.1:8080/internal/v1").rstrip("/"),
             worker_id=os.environ.get("WORKER_ID", "worker-01"), token=os.environ.get("WORKER_TOKEN", ""),
@@ -60,4 +70,7 @@ class Settings:
             probe_timeout=int(os.environ.get("PROBE_TIMEOUT_SECONDS", "1800")),
             video_timeout=int(os.environ.get("VIDEO_TIMEOUT_SECONDS", "3600")),
             lease_seconds=int(os.environ.get("JOB_LEASE_SECONDS", "120")),
+            cleanup_enabled=cleanup_flag == "1",
+            cleanup_contract_path=(Path(os.environ["WORKER_CLEANUP_CONTRACT_PATH"]).resolve()
+                                   if os.environ.get("WORKER_CLEANUP_CONTRACT_PATH") else None),
         )

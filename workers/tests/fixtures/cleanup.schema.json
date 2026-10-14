@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Unmodified cleanup definitions from backend fe03d472fbfd2ec1e15fb868ff0b953795525953; test fixture only. Production reads full backend contract.",
+  "$defs": {
+    "WorkerCleanupClaimRequest": {
+      "type": "object",
+      "properties": {
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "worker_id"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerCleanup": {
+      "type": "object",
+      "properties": {
+        "deletion_request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "deletion_request_id",
+        "session_id",
+        "storage_generation",
+        "job_ids"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerCleanupComplete": {
+      "type": "object",
+      "properties": {
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "storage_generation"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerCleanupReceipt": {
+      "type": "object",
+      "properties": {
+        "deletion_request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "deletion_request_id",
+        "worker_id",
+        "storage_generation"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -98,6 +98,38 @@ class Transport:
             raise LeaseLost("任务已取消")
         return result
 
+    def claim_cleanup(self):
+        from .deletion import validate_cleanup
+        payload = {"worker_id": self.settings.worker_id}
+        validate_cleanup(self.settings, payload, "WorkerCleanupClaimRequest")
+        # Backend's cleanup poll creates no lease and may be repeated idempotently.
+        response = self.request("POST", self.settings.api_base + "/deletions/claim-cleanup",
+                                headers=self.headers(), json=payload)
+        self.check_response(response, (200, 204))
+        if response.status_code == 204:
+            return None
+        result = response.json()["data"]
+        validate_cleanup(self.settings, result, "WorkerCleanup")
+        return result
+
+    def complete_cleanup(self, claim):
+        from .deletion import validate_cleanup
+        validate_cleanup(self.settings, claim, "WorkerCleanup")
+        payload = {"storage_generation": claim["storage_generation"]}
+        validate_cleanup(self.settings, payload, "WorkerCleanupComplete")
+        response = self.request("POST", self.settings.api_base +
+                                f"/deletions/{claim['deletion_request_id']}/cleanup-complete",
+                                headers={**self.headers(), "Content-Type": "application/json"},
+                                content=json_bytes(payload))
+        self.check_response(response, (200,))
+        receipt = response.json()["data"]
+        validate_cleanup(self.settings, receipt, "WorkerCleanupReceipt")
+        if (receipt["deletion_request_id"] != claim["deletion_request_id"] or
+                receipt["storage_generation"] != claim["storage_generation"] or
+                receipt["worker_id"] != self.settings.worker_id):
+            raise WorkerError("INVALID_RESULT", "清理确认不属于当前 Worker 或删除代次")
+        return receipt
+
     def download(self, claim, target, guard):
         expected = f"/internal/v1/jobs/{claim['job_id']}/input"
         if claim["input_url"] != expected:

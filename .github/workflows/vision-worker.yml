@@ -80,8 +80,8 @@ jobs:
         include:
           - backend: phase4
             ref: 8cf079edb58d8684e293519db682fd952c592d71
-          - backend: phase7
-            ref: 03de4cd2bde4909c6751063aedbde529080d6286
+          - backend: latest-media
+            ref: fe03d472fbfd2ec1e15fb868ff0b953795525953
     services:
       postgres:
         image: postgres:17.6
@@ -119,12 +119,10 @@ jobs:
           cache-dependency-path: var/backend-integration/go.sum
       - name: Install locked Worker dependencies
         run: python -m pip install -r workers/requirements.lock
-      - name: Apply canonical digest fix to the latest backend
-        if: matrix.backend == 'phase7'
-        working-directory: var/backend-integration
-        run: |
-          git fetch --no-tags origin 8cf079edb58d8684e293519db682fd952c592d71
-          git cherry-pick --no-commit FETCH_HEAD
+      - name: Prepare real cleanup test on latest backend
+        if: matrix.backend == 'latest-media'
+        shell: bash
+        run: cp workers/integration/real_cleanup_test.go.fixture var/backend-integration/internal/httpapi/real_cleanup_worker_test.go
       - name: Run real backend and Worker integration
         shell: bash
         run: |
@@ -134,3 +132,11 @@ jobs:
           cd var/backend-integration
           go test ./internal/analysis -run TestWorkerParameterDigestMatchesContract -count=1 -v
           go test ./internal/httpapi -run '^TestRealVideoWorkerIntegration$' -count=1 -v -timeout=8m
+      - name: Test actual remote Worker cleanup receipt
+        if: matrix.backend == 'latest-media'
+        shell: bash
+        run: |
+          export WORKER_INTEGRATION_ROOT="$GITHUB_WORKSPACE"
+          export WORKER_INTEGRATION_PYTHON="$(command -v python)"
+          cd var/backend-integration
+          go test ./internal/httpapi -run '^TestRealWorkerCleanupIntegration$' -count=1 -v -timeout=4m

@@ -14,6 +14,7 @@ def main():
     commands.add_parser("runtime-info", help="查看处理器版本和实际 FFmpeg 摘要")
     run = commands.add_parser("run", help="领取 Go 正式任务（需要内部接口已实现）")
     run.add_argument("--once", action="store_true")
+    commands.add_parser("cleanup-once", help="只领取一项后端删除清理并回报，需要显式启用")
     models = commands.add_parser("prepare-models", help="从已下载目录复制并校验固定模型")
     models.add_argument("--source", type=Path, required=True)
     models.add_argument("--output", type=Path, default=Path("var/vision-models"))
@@ -50,12 +51,19 @@ def main():
                 print(values.get("message", ""), flush=True)
         report = analyze_local(args.video, args.output, config, progress=progress)
         print(json.dumps({"output": str(args.output.resolve()), "statistics": report["statistics"]}, ensure_ascii=False, indent=2))
-    elif args.command == "run":
+    elif args.command in ("run", "cleanup-once"):
         from workers.common.config import Settings
         from workers.common.runner import Runner
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
         try:
-            Runner(Settings.from_env()).run(once=args.once)
+            runner = Runner(Settings.from_env())
+            if args.command == "cleanup-once":
+                try:
+                    print(json.dumps({"receipt": runner.cleanup_once()}, ensure_ascii=False))
+                finally:
+                    runner.transport.close()
+            else:
+                runner.run(once=args.once)
         except KeyboardInterrupt:
             pass
 
