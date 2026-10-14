@@ -40,6 +40,9 @@
 - `internal/media` 与 `internal/storage`：来源核验、流式上传、本地对象存储适配、媒体目录及授权 Range 回放；
 - `internal/analysis`：分析批次、Worker 领取/心跳/输入/产物/完成/失败接口，以及租约、取消、有限重试、过期回收和重复回调幂等；
 - 本地媒体目录和独立删除日志的 readiness 检查；
+- 报告输入按最终序列化请求大小缩减，单条长证据也会截断并记录限制；候选正文不合法时仍结算可核验账单，不自动重发收费请求。
+- PDF 使用标准 STSong-Light CID 字体、Unicode CMap 和显式 FontDescriptor，包含固定来源、执行溯源、证据可用性及完整正文；不依赖私有字体文件。回归验证同时使用 MuPDF/PyMuPDF 和 Poppler。
+- 导出确认回滚时清理本次租约文件，提交结果不确定时保留对象；删除日志重放先收口账目，数据库清理失败受最大重试次数约束。Worker 未确认清理时仍保持 blocked。
 - `Dockerfile` 与 `compose.yaml` 共同开发入口。
 
 ### 本机启动

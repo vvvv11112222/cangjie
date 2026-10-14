@@ -19,6 +19,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
 	"github.com/vvvv11112222/cangjie/internal/identity"
@@ -426,6 +427,11 @@ func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
 		} else {
 			err = tx.Commit(ctx)
 		}
+		// A PostgreSQL rejection followed by idle transaction status confirms
+		// rollback. Transport errors do not establish the commit outcome.
+		var serverError *pgconn.PgError
+		removeOnFailure = errors.Is(err, pgx.ErrTxCommitRollback) ||
+			(errors.As(err, &serverError) && serverError.Severity == "ERROR" && tx.Conn().PgConn().TxStatus() == 'I')
 	}
 	if err != nil && removeOnFailure {
 		s.store.Remove(key)
@@ -486,7 +492,8 @@ func renderPDF(s exportSnapshot) []byte {
 	}
 	objects = append(objects,
 		fmt.Sprintf("<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [%d 0 R] >>", fontObject+1),
-		"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> >>")
+		fmt.Sprintf("<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> /DW 1000 /W [1 95 500] /FontDescriptor %d 0 R >>", fontObject+2),
+		"<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [-25 -254 1000 880] /ItalicAngle 0 /Ascent 752 /Descent -271 /CapHeight 737 /StemV 58 /MissingWidth 1000 >>")
 	var out bytes.Buffer
 	out.WriteString("%PDF-1.4\n")
 	offsets := []int{0}
@@ -506,6 +513,9 @@ func renderPDF(s exportSnapshot) []byte {
 func pdfLines(s exportSnapshot) []string {
 	lines := []string{"教学质量报告", "报告ID: " + fmt.Sprint(s.Report["id"]), "版本: " + fmt.Sprint(s.Report["revision"]), "导出时间: " + s.ExportedAt.Format(time.RFC3339)}
 	appendWrapped := func(label string, value any) {
+		if value == nil {
+			value = "未提供"
+		}
 		text := label + fmt.Sprint(value)
 		for len([]rune(text)) > 42 {
 			runes := []rune(text)
@@ -517,12 +527,36 @@ func pdfLines(s exportSnapshot) []string {
 	appendWrapped("总摘要: ", s.Report["summary"])
 	appendWrapped("总摘要证据: ", s.Report["summary_evidence_ids"])
 	appendWrapped("报告限制: ", s.Report["limitations"])
+	for _, field := range []struct{ key, label string }{
+		{"title", "来源标题"}, {"attribution", "来源署名"}, {"source_type", "来源类型"},
+		{"license_name", "许可名称"}, {"license_url", "许可链接"}, {"rights_status", "核验状态"}, {"allowed_uses", "授权用途"},
+	} {
+		if value := s.Source[field.key]; value != nil {
+			appendWrapped(field.label+": ", value)
+		}
+	}
+	appendWrapped("内容摘要 SHA-256: ", s.Report["content_sha256"])
+	if provenance := s.Report["provenance"]; provenance != nil {
+		// JSON provides deterministic map order and preserves nested versions,
+		// hashes, coverage and limitations from this fixed export snapshot.
+		raw, _ := json.Marshal(provenance)
+		appendWrapped("执行溯源: ", string(raw))
+	}
+	evidenceIDs := make([]string, 0, len(s.EvidenceAvailability))
+	for id := range s.EvidenceAvailability {
+		evidenceIDs = append(evidenceIDs, id)
+	}
+	sort.Strings(evidenceIDs)
+	for _, id := range evidenceIDs {
+		appendWrapped("证据可用性: ", id+" / "+s.EvidenceAvailability[id])
+	}
 	for _, raw := range anySlice(s.Report["dimensions"]) {
 		dimension, _ := raw.(map[string]any)
 		appendWrapped("维度/状态: ", fmt.Sprintf("%v / %v", dimension["dimension_code"], dimension["coverage_status"]))
 		appendWrapped("维度结论: ", dimension["summary"])
 		appendWrapped("不足原因: ", dimension["limitation"])
 		appendWrapped("维度证据: ", dimension["summary_evidence_ids"])
+		appendWrapped("维度覆盖: ", dimension["coverage"])
 	}
 	for _, raw := range anySlice(s.Report["observations"]) {
 		observation, _ := raw.(map[string]any)
@@ -541,7 +575,6 @@ func anySlice(value any) []any {
 func utf16Hex(value string) string {
 	units := utf16.Encode([]rune(value))
 	var b strings.Builder
-	b.WriteString("FEFF")
 	for _, u := range units {
 		fmt.Fprintf(&b, "%04X", u)
 	}
@@ -621,17 +654,11 @@ func (s *Service) CreateDeletion(ctx context.Context, p identity.Principal, sess
 	if err != nil {
 		return Deletion{}, false, err
 	}
-	statements := []string{
-		`UPDATE teaching.model_calls SET status='unknown',lock_version=lock_version+1 WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status='reserved' AND dispatch_started_at IS NOT NULL`,
-		`UPDATE teaching.lesson_sessions SET status='deleting',storage_generation=storage_generation+1 WHERE id=$1`,
-		`UPDATE teaching.analysis_jobs SET status='cancelled',worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,execution_deadline_at=NULL,expected_execution_sha256=NULL,error_code='RESOURCE_DELETING',updated_at=now() WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status IN('queued','running')`,
-		`UPDATE teaching.analysis_runs SET status='cancelled',error_code='RESOURCE_DELETING',finished_at=now() WHERE session_id=$1 AND status IN('queued','running')`,
-		`UPDATE teaching.export_jobs SET status='expired',executor_id=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE session_id=$1 AND status IN('queued','running','succeeded')`,
+	if _, err = tx.Exec(ctx, `UPDATE teaching.lesson_sessions SET status='deleting',storage_generation=storage_generation+1 WHERE id=$1`, sessionID); err != nil {
+		return Deletion{}, false, err
 	}
-	for _, statement := range statements {
-		if _, err = tx.Exec(ctx, statement, sessionID); err != nil {
-			return Deletion{}, false, err
-		}
+	if err = revokeDeletionWork(ctx, tx, sessionID); err != nil {
+		return Deletion{}, false, err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO teaching.audit_logs(actor_user_id,action,resource_type,resource_id,result,request_id,metadata) VALUES($1,'classroom.delete.request','lesson_session',$2,'success','service',jsonb_build_object('tombstone_id',$3::text))`, p.UserID, sessionID, tombstone)
 	if err != nil {
@@ -641,6 +668,49 @@ func (s *Service) CreateDeletion(ctx context.Context, p identity.Principal, sess
 		return Deletion{}, false, err
 	}
 	return value, false, nil
+}
+
+// The caller holds the classroom lock. Both normal deletion and ledger replay
+// transfer billing responsibility before unlinking the run or cancelling jobs.
+func revokeDeletionWork(ctx context.Context, tx pgx.Tx, sessionID string) error {
+	rows, err := tx.Query(ctx, `SELECT DISTINCT currency||':'||billing_period::text FROM teaching.model_calls
+		WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status='reserved' ORDER BY 1`, sessionID)
+	if err != nil {
+		return err
+	}
+	var periods []string
+	for rows.Next() {
+		var period string
+		if err = rows.Scan(&period); err != nil {
+			break
+		}
+		periods = append(periods, period)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, period := range periods {
+		if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, period); err != nil {
+			return err
+		}
+	}
+	statements := []string{
+		`UPDATE teaching.model_calls SET status='unknown',lock_version=lock_version+1 WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status='reserved' AND dispatch_started_at IS NOT NULL`,
+		`UPDATE teaching.model_calls SET status='failed',actual_cost=0,settled_at=now(),lock_version=lock_version+1 WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status='reserved' AND dispatch_started_at IS NULL`,
+		`UPDATE teaching.analysis_jobs SET status='cancelled',worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,execution_deadline_at=NULL,expected_execution_sha256=NULL,error_code='RESOURCE_DELETING',updated_at=now() WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1) AND status IN('queued','running')`,
+		`UPDATE teaching.analysis_runs SET status='cancelled',error_code='RESOURCE_DELETING',finished_at=now() WHERE session_id=$1 AND status IN('queued','running')`,
+		`UPDATE teaching.export_jobs SET status='expired',executor_id=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE session_id=$1 AND status IN('queued','running','succeeded')`,
+	}
+	for _, statement := range statements {
+		if _, err = tx.Exec(ctx, statement, sessionID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newUUID() (string, error) {
@@ -699,7 +769,11 @@ func (s *Service) ReplayLedger(ctx context.Context) error {
 			return beginErr
 		}
 		var exists bool
-		beginErr = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.data_deletion_requests WHERE tombstone_id=$1)`, e.TombstoneID).Scan(&exists)
+		var sessionStatus string
+		beginErr = tx.QueryRow(ctx, `SELECT status FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, e.SessionID).Scan(&sessionStatus)
+		if beginErr == nil {
+			beginErr = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.data_deletion_requests WHERE tombstone_id=$1)`, e.TombstoneID).Scan(&exists)
+		}
 		if beginErr == nil && !exists {
 			_, beginErr = tx.Exec(ctx, `UPDATE teaching.lesson_sessions SET status='deleting',storage_generation=storage_generation+1 WHERE id=$1 AND status NOT IN('deleting','deleted')`, e.SessionID)
 			if beginErr == nil {
@@ -712,6 +786,9 @@ func (s *Service) ReplayLedger(ctx context.Context) error {
 						ELSE COALESCE((SELECT array_agg(worker_id ORDER BY worker_id) FROM teaching.governance_workers),'{}'::text[]) END)
 					ON CONFLICT(requested_by,session_id,idempotency_key) DO NOTHING`, e.SessionID, e.RequestedBy, e.Reason, e.IdempotencyKey, e.RequestSHA256, e.TombstoneID)
 			}
+		}
+		if beginErr == nil && sessionStatus != "deleted" {
+			beginErr = revokeDeletionWork(ctx, tx, e.SessionID)
 		}
 		if beginErr == nil {
 			beginErr = tx.Commit(ctx)
@@ -796,15 +873,26 @@ func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return true, err
+		return true, errors.Join(err, s.failDeletion(ctx, id, token, "DATABASE_DELETE_FAILED"))
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	databaseFailure := func(cause error) (bool, error) {
+		_ = tx.Rollback(ctx)
+		return true, errors.Join(cause, s.failDeletion(ctx, id, token, "DATABASE_DELETE_FAILED"))
+	}
+	var classroomStatus string
+	if err = tx.QueryRow(ctx, `SELECT status FROM teaching.lesson_sessions WHERE id=$1 FOR UPDATE`, sessionID).Scan(&classroomStatus); err != nil {
+		return databaseFailure(err)
+	}
 	var status string
 	if err = tx.QueryRow(ctx, `SELECT status FROM teaching.data_deletion_requests WHERE id=$1 AND lease_token=$2::uuid FOR UPDATE`, id, token).Scan(&status); err != nil || status != "processing" {
-		return true, err
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && status != "processing") {
+			return true, err
+		}
+		return databaseFailure(err)
 	}
 	if _, err = tx.Exec(ctx, `SET CONSTRAINTS ALL DEFERRED`); err != nil {
-		return true, err
+		return databaseFailure(err)
 	}
 	statements := []string{
 		`UPDATE teaching.model_calls SET run_id=NULL,job_id=NULL WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1)`,
@@ -819,20 +907,20 @@ func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 	}
 	for _, statement := range statements {
 		if _, err = tx.Exec(ctx, statement, sessionID); err != nil {
-			return true, err
+			return databaseFailure(err)
 		}
 	}
 	if _, err = tx.Exec(ctx, `UPDATE teaching.lesson_sessions SET status='deleted',title='[deleted]' WHERE id=$1`, sessionID); err != nil {
-		return true, err
+		return databaseFailure(err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE teaching.data_deletion_requests SET status='succeeded',cleanup_manifest=jsonb_build_object('storage_objects_removed',$3::int,'worker_temp_jobs_removed',$4::int,'database_content_removed',true,'managed_backups','not_configured'),completed_at=now(),error_code=NULL,executor_id=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1 AND lease_token=$2::uuid`, id, token, len(keys), len(jobIDs)); err != nil {
-		return true, err
+		return databaseFailure(err)
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO teaching.audit_logs(action,resource_type,resource_id,result,request_id,metadata) VALUES('classroom.delete.complete','lesson_session',$1,'success','governance',jsonb_build_object('deletion_request_id',$2::text,'storage_objects_removed',$3::int))`, sessionID, id, len(keys)); err != nil {
-		return true, err
+		return databaseFailure(err)
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return true, err
+		return databaseFailure(err)
 	}
 	return true, nil
 }

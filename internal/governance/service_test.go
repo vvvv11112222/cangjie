@@ -21,16 +21,25 @@ func TestRenderPDFIncludesFullReportAndPaginates(t *testing.T) {
 	}
 	snap := exportSnapshot{ExportedAt: time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC), Report: map[string]any{
 		"id": "report-1", "revision": 3, "summary": "总摘要", "summary_evidence_ids": []any{"e-1"}, "limitations": []any{"限制"}, "dimensions": dimensions, "observations": observations,
-	}}
+	}, Source: map[string]any{"title": "固定来源标题", "attribution": "固定来源署名"}, EvidenceAvailability: map[string]string{"e-1": "available", "e-2": "expired"}}
+	snap.Report["provenance"] = map[string]any{"model_revision": "fixture-revision-7", "prompt_sha256": strings.Repeat("a", 64), "coverage": []any{map[string]any{"start_ms": 0, "end_ms": 1000}}}
 	lines := strings.Join(pdfLines(snap), "\n")
 	for _, want := range []string{"总摘要证据", "维度/状态", "不足原因", "观察/复核", "观察证据"} {
 		if !strings.Contains(lines, want) {
 			t.Fatalf("PDF lines omitted %q", want)
 		}
 	}
+	for _, want := range []string{"固定来源标题", "固定来源署名", "fixture-revision-7", "prompt_sha256", "e-1 / available", "e-2 / expired"} {
+		if !strings.Contains(strings.ReplaceAll(lines, "\n  ", ""), want) {
+			t.Fatalf("PDF provenance omitted %q", want)
+		}
+	}
 	pdf := renderPDF(snap)
 	if !bytes.HasPrefix(pdf, []byte("%PDF-1.4")) || bytes.Contains(pdf, []byte("/Count 1 >>")) {
 		t.Fatalf("expected a valid multi-page PDF, bytes=%d", len(pdf))
+	}
+	if !bytes.Contains(pdf, []byte("/FontDescriptor")) || !bytes.Contains(pdf, []byte("/UniGB-UCS2-H")) {
+		t.Fatal("missing CID font descriptor or Unicode mapping")
 	}
 	if output := os.Getenv("PDF_VALIDATION_OUTPUT"); output != "" {
 		if err := os.MkdirAll(filepath.Dir(output), 0o750); err != nil {
