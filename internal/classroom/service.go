@@ -18,9 +18,18 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/optional"
 )
 
-type Service struct{ pool *pgxpool.Pool }
+type Service struct {
+	pool             *pgxpool.Pool
+	contentRetention time.Duration
+}
 
-func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
+func NewService(pool *pgxpool.Pool) *Service { return NewServiceWithRetention(pool, 180*24*time.Hour) }
+func NewServiceWithRetention(pool *pgxpool.Pool, retention time.Duration) *Service {
+	if retention <= 0 {
+		retention = 180 * 24 * time.Hour
+	}
+	return &Service{pool: pool, contentRetention: retention}
+}
 
 type Session struct {
 	ID                    string    `json:"id"`
@@ -184,8 +193,8 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, in CreateSes
 			return Session{}, apperror.New(http.StatusConflict, "INVALID_STATE", "cancelled schedules cannot create lessons")
 		}
 	}
-	v, err := scanSession(tx.QueryRow(ctx, `INSERT INTO teaching.lesson_sessions AS ls(offering_id,schedule_entry_id,title,planned_start_at,planned_end_at,is_demo,created_by)
-		VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING `+sessionColumns, in.OfferingID, in.ScheduleEntryID.Value, title, start, end, *in.IsDemo, p.UserID))
+	v, err := scanSession(tx.QueryRow(ctx, `INSERT INTO teaching.lesson_sessions AS ls(offering_id,schedule_entry_id,title,planned_start_at,planned_end_at,is_demo,created_by,content_expires_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,now()+$8::interval) RETURNING `+sessionColumns, in.OfferingID, in.ScheduleEntryID.Value, title, start, end, *in.IsDemo, p.UserID, s.contentRetention.String()))
 	if err != nil {
 		return Session{}, storageError(err)
 	}
@@ -248,6 +257,60 @@ func (s *Service) Patch(ctx context.Context, p identity.Principal, id string, in
 	}
 	v.AllowedActions = allowedActions(p, org, teacher, v.Status)
 	return v, nil
+}
+
+func (s *Service) SelectPrimaryMedia(ctx context.Context, p identity.Principal, sessionID, mediaID string) (Session, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Session{}, fmt.Errorf("begin primary media selection: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var org, teacher, status string
+	var expires time.Time
+	err = tx.QueryRow(ctx, `SELECT teaching.college_of(o.org_unit_id)::text,o.teacher_id::text,ls.status,ls.content_expires_at
+		FROM teaching.lesson_sessions ls JOIN teaching.course_offerings o ON o.id=ls.offering_id WHERE ls.id=$1 FOR UPDATE OF ls`, sessionID).
+		Scan(&org, &teacher, &status, &expires)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, notFound()
+	}
+	if err != nil {
+		return Session{}, storageError(err)
+	}
+	if !canSelectPrimary(p, teacher) {
+		return Session{}, apperror.New(http.StatusForbidden, "FORBIDDEN", "primary media selection is outside your role and scope")
+	}
+	if status == "deleting" || status == "deleted" || !expires.After(time.Now()) {
+		return Session{}, apperror.New(http.StatusConflict, "INVALID_STATE", "the lesson cannot change primary media")
+	}
+	var valid bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.media_assets source
+		JOIN teaching.media_assets playback ON playback.id=source.playback_asset_id AND playback.session_id=source.session_id
+		WHERE source.id=$1 AND source.session_id=$2 AND source.kind='source' AND source.status='ready' AND source.expires_at>now()
+		AND playback.status='ready' AND playback.expires_at>now())`, mediaID, sessionID).Scan(&valid); err != nil {
+		return Session{}, storageError(err)
+	}
+	if !valid {
+		return Session{}, apperror.New(http.StatusConflict, "INVALID_STATE", "primary media must be a ready source asset in the lesson")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teaching.media_assets SET is_primary=false WHERE session_id=$1 AND is_primary`, sessionID); err != nil {
+		return Session{}, storageError(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teaching.media_assets SET is_primary=true WHERE id=$1 AND session_id=$2`, mediaID, sessionID); err != nil {
+		return Session{}, storageError(err)
+	}
+	result, err := scanSession(tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM teaching.lesson_sessions ls WHERE ls.id=$1`, sessionID))
+	if err != nil {
+		return Session{}, storageError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Session{}, storageError(err)
+	}
+	result.AllowedActions = allowedActions(p, org, teacher, result.Status)
+	return result, nil
+}
+
+func canSelectPrimary(p identity.Principal, teacher string) bool {
+	return p.Has("sys_admin") || (p.Has("teacher") && p.UserID == teacher)
 }
 
 func sameUUID(a, b string) bool {

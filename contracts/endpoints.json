@@ -857,6 +857,29 @@
     },
     {
       "method": "POST",
+      "path": "/internal/v1/deletions/claim-cleanup",
+      "request": "WorkerCleanupClaimRequest",
+      "response": "WorkerCleanup",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200,
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/deletions/{id}/cleanup-complete",
+      "request": "WorkerCleanupComplete",
+      "response": "WorkerCleanupReceipt",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/internal/v1/jobs/{id}/heartbeat",
       "request": "Heartbeat",
       "response": "HeartbeatResult",
