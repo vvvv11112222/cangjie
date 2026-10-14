@@ -115,6 +115,33 @@ export interface Evidence {
   provenance: Record<string, unknown>;
 }
 
+export type MediaKind = 'source' | 'proxy' | 'audio' | 'keyframe' | 'report_export';
+export type MediaStatus = 'pending' | 'ready' | 'failed' | 'deleting' | 'deleted';
+export type MediaAction = 'prepare_media' | 'analyze' | 'playback' | 'select_primary';
+
+/**
+ * GET /media/{id} 与 MediaPage.items 的媒体 DTO（contracts/v1.schema.json 的 Media）。
+ * playback_url 由服务端按"是否可播放"决定：媒体未 ready、来源未核验、缺 playback 用途、
+ * 已过期时都为 null（见后端 setPlaybackURL 与开发协议第 2 节）。
+ * 对 kind=source 的媒体，服务端返回的是它派生播放资产（proxy）的地址。
+ */
+export interface Media {
+  id: string;
+  session_id: string;
+  source_record_id: string | null;
+  parent_asset_id: string | null;
+  kind: MediaKind;
+  status: MediaStatus;
+  sha256: string;
+  mime_type: string;
+  byte_size: number;
+  duration_ms: number | null;
+  expires_at: string | null;
+  playback_asset_id: string | null;
+  playback_url: string | null;
+  allowed_actions: MediaAction[];
+}
+
 export interface Results {
   run_status: RunStatus;
   transcript_revision_id: string | null;

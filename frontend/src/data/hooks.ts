@@ -23,15 +23,15 @@ import {
   loadSessionDetail,
   loadTranscriptForSession,
 } from './loaders';
-import { FIXTURES, fixtures } from './samples';
+import { FIXTURES, fixtureMediaFor, fixtures } from './samples';
 import type { AuthStatus } from './sessionFlow';
-import { DATA_SOURCE_LABEL, getSessionMedia, isApiMode } from './sources';
+import { DATA_SOURCE_LABEL, getMedia, getSessionMedia, isApiMode } from './sources';
 import type { DataSourceKind, MediaLite, SessionQuery } from './sources';
 import { dataSource } from './sources';
 import { SearchPaused, newSearch, checkNextCursor } from './search';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
 import type { ReportView, SessionTaskView, TranscriptView } from './viewModel';
-import type { Run, RunStatus, Session } from '../types';
+import type { Media, Run, RunStatus, Session } from '../types';
 
 /** 页面顶部"数据来源"一行需要的信息。 */
 export interface DataOrigin {
@@ -580,6 +580,44 @@ export function useSessionMedia(
     origin: originFor(
       API ? 'api' : 'fixtures',
       API ? ['GET /api/v1/sessions/{id}/media'] : [FIXTURES.sessionPage],
+    ),
+  };
+}
+
+export interface PlaybackData {
+  /** 当前回放媒体；没有主媒体、也没有可播放媒体时为 null（页面显示空态，不拿别的媒体顶替）。 */
+  media: Media | null;
+}
+
+/**
+ * 指定媒体的详情（GET /media/{id}）。
+ * 回放页的播放地址、时长、有效期与 allowed_actions 全部以这条响应为准：
+ * 协议规定媒体未 ready、来源未核验、缺 playback 用途或已过期时 playback_url 为 null。
+ * 固定样例模式同步返回仓库内的合成样例媒体；接口模式登录后请求，失败保留错误并可重试。
+ */
+export function useMediaDetail(
+  mediaId: string | null,
+  enabled = true,
+): LoadState<PlaybackData> & LoadActions & { origin: DataOrigin } {
+  const { sessionKey, authStatus } = useSessionContext();
+  const initial = useMemo<PlaybackData>(
+    () => (API ? { media: null } : { media: mediaId === null ? null : fixtureMediaFor(mediaId) }),
+    [mediaId],
+  );
+  const state = useLoaded({
+    enabled: enabled && mediaId !== null,
+    // 加载标识带上媒体 id：切换回放目标后不能继续显示上一个媒体的播放地址。
+    sessionKey: mediaId === null ? sessionKey : `${sessionKey}:media-detail:${mediaId}`,
+    authStatus,
+    initialData: initial,
+    newProgress: () => undefined,
+    load: async () => ({ media: await getMedia(mediaId as string) }),
+  });
+  return {
+    ...state,
+    origin: originFor(
+      API ? 'api' : 'fixtures',
+      API ? ['GET /api/v1/media/{id}'] : [FIXTURES.sessionPage, FIXTURES.playbackSample],
     ),
   };
 }

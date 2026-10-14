@@ -7,11 +7,13 @@ import {
   fixtureSession,
   useRunPolling,
   useSessionDetail,
+  useMediaDetail,
   useSessionMedia,
   useSessionReport,
   useSessionTranscript,
 } from '../data/hooks';
 import { isRunActive } from '../data/loaders';
+import { pickPlaybackMediaId } from '../data/playback';
 import { fixtures } from '../data/samples';
 import { isApiMode } from '../data/sources';
 import type { MediaAction } from '../data/sources';
@@ -49,13 +51,15 @@ import type { ActionState, MediaChoice } from './sessionActions';
 import { pendingIntent } from './pendingIntent';
 import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
+import { PlaybackPanel } from './PlaybackPanel';
 
-type Tab = 'run' | 'transcript' | 'report';
+type Tab = 'run' | 'transcript' | 'report' | 'playback';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'run', label: '批次与操作' },
   { key: 'transcript', label: '转写' },
   { key: 'report', label: '报告' },
+  { key: 'playback', label: '回放' },
 ];
 
 function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
@@ -111,9 +115,13 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       ? fixtures.run
       : null;
 
-  const transcript = useSessionTranscript(session, tab === 'transcript');
+  // 回放标签要拿片段与证据做跳转点，所以和转写标签共用同一份取数。
+  const transcript = useSessionTranscript(session, tab === 'transcript' || tab === 'playback');
   const report = useSessionReport(session, baseRun, tab === 'report');
-  const media = useSessionMedia(session, api && tab === 'run');
+  // 回放要用媒体列表挑出可播放的目标（没有主媒体时退回到列表里的原媒体），因此也在这里加载。
+  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'playback'));
+  const playbackMediaId = session === null ? null : pickPlaybackMediaId(session, media.data.items);
+  const playback = useMediaDetail(playbackMediaId, tab === 'playback');
 
   const effectiveRun = action.run ?? baseRun;
   const poll = useRunPolling(effectiveRun?.id ?? null, effectiveRun?.status ?? null, api && session !== null);
@@ -624,6 +632,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 <LoadControls actionLabel={report.actionLabel} loadMore={report.loadMore} />
               </>
             )
+          ) : null}
+
+          {tab === 'playback' ? (
+            <PlaybackPanel mediaId={playbackMediaId} detail={playback} transcript={transcript} />
           ) : null}
         </>
       )}

@@ -39,6 +39,7 @@
   --radius-card: 12px;
   --radius-control: 8px;
   --control-height: 35px;     /* 输入框与下拉框的统一高度（select 固有高度会差 2px） */
+  --control-height-compact: 32px; /* 紧凑控件（播放器胶囊按钮与倍速下拉框） */
   --shadow-card: 0 1px 2px #15383d08, 0 8px 24px #15383d0a;
 
   /* 交互态与分隔线：hover 面、下沉面、加粗边框 */
@@ -1340,6 +1341,155 @@ code {
   border-top: 1px solid var(--line);
 }
 
+/* ============ 回放与证据跳转 ============ */
+
+.player {
+  margin-top: 14px;
+}
+
+/*
+ * 播放器占满卡片宽度、按 16:9 自适应，窄屏下也不会撑出横向滚动条；
+ * 底色用下沉面，视频加载前不会出现刺眼的白块。
+ */
+.player-video {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+/*
+ * 字幕本身交给浏览器原生字幕轨：它会自动排在播放控件上方，不会挡住进度条与播放键，
+ * 也不会像 DOM 覆盖层那样在画中画里消失。这里只保留"没有片段字幕"的说明行。
+ */
+.player-caption-note {
+  margin-top: 8px;
+}
+
+.player-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/*
+ * 播放器里的按钮做成胶囊形：和下面的原生播放条一样圆润，一行排得下。
+ * 只覆盖 .player-bar 里的按钮，不动全站按钮尺寸（键盘/焦点探针量的是全站那套）。
+ */
+.player-bar .btn {
+  height: var(--control-height-compact);
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  /* 触屏上不要 300ms 的点击等待，也不要系统蓝色高亮块：两者都会让按钮"像有延迟"。 */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* 很短的颜色过渡：按下立刻变色，又不至于"硬跳" */
+  transition: background-color 110ms ease, border-color 110ms ease, color 110ms ease;
+}
+
+/* 按下就反馈，解决"点了没反应、像是有延迟"的手感问题。 */
+.player-bar .btn:active:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  transition-duration: 0ms;
+}
+
+/* 倍速控件和按钮同高同一行：标签在左、下拉框在右，不再单独占一行。 */
+.player-speed {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.player-speed select {
+  width: 74px;
+  height: var(--control-height-compact);
+  padding: 0 8px 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+/* 当前播放位置靠右，作为这一行的读数，不和按钮混在一起。 */
+.player-position {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.jump-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 一行一个跳转点：左侧时间、中间目标、右侧文本；点击后播放器定位到该时间。 */
+.jump-item {
+  display: grid;
+  grid-template-columns: 160px 120px 1fr;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 13px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.jump-item:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.jump-item:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.jump-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.jump-item:disabled {
+  cursor: not-allowed;
+  color: var(--faint);
+  background: var(--surface-sunken);
+}
+
+.jump-time {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.jump-label {
+  font-weight: 600;
+}
+
+.jump-text {
+  color: var(--ink-body);
+}
+
+.jump-warn {
+  grid-column: 1 / -1;
+  color: var(--warn-text);
+  font-size: 12px;
+}
+
 .evidence-list,
 .observation-list {
   list-style: none;
@@ -1535,6 +1685,15 @@ code {
 
   .account-sub {
     display: none;
+  }
+
+  /* 回放跳转点：窄屏改成两行（时间 + 目标一行，文本一行），避免三列挤在一起。 */
+  .jump-item {
+    grid-template-columns: 1fr auto;
+  }
+
+  .jump-text {
+    grid-column: 1 / -1;
   }
 
   .account-form {

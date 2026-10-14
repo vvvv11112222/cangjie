@@ -137,12 +137,12 @@ node tools/check_prototype.mjs
 
 真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库不附真实课堂样本；React 与视频 Worker 已有独立运行入口。当前 Go 服务完成 M0 的后端环境与 M1 联调前置能力，尚未完成 M1 固定样例纵向联调，真实音视频任务仍需后端接通。检查通过仅说明相应契约、SQL、草图行为、已实现接口或度量工具通过，不能代替后续音视频与模型验收。
 
-## 前端（M1 数据访问层）
+## 前端（数据访问层与 M2 回放）
 
 `frontend/` 为 React 19 + Vite + TypeScript 工程。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`），三个页面统一经 `frontend/src/data/` 的数据访问层取数，不再各自读样例文件：
 
 - **默认读取 `contracts/examples` 固定样例**，不依赖后端，克隆仓库即可离线打开；
-- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getRevision`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/transcript-revisions/{id}`、`/reports/{id}`；
+- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getSessionMedia`、`getMedia`、`getRun`、`getResults`、`getRevision`、`getReport` 分别对应 `GET /sessions`、`/sessions/{id}/media`、`/media/{id}`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/transcript-revisions/{id}`、`/reports/{id}`；
 - 统一按协议处理 `{data,request_id}`、`{error:{code,message,details}}` 与列表 `{items,next_cursor}`，错误码映射为页面中文提示；
 - 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`；页面展示的操作以各资源返回的 `allowed_actions` 为准（服务端逐次授权），账号级能力只在账号区展示。
 - 接口模式下未登录不发业务数据请求（页面提示先登录）；确认退出或换账号后清空上一个账号的数据及分页进度，迟到的旧响应会被丢弃。初始化、登录和退出完整流程串行执行；请求中同步拦截重复操作。退出失败保留账号并清除旧 CSRF，重试时重新获取；确认退出成功或会话失效后立即显示匿名，不等待令牌预取。
@@ -158,6 +158,28 @@ npm run check      # tsc --noEmit + vitest + vite build
 ```
 
 `vite.config.ts` 已把 `/api` 代理到 `http://127.0.0.1:8080`，构建产物 `frontend/dist` 由 Go 同源提供。
+
+预览入口只有一个：**跑开发服务器或静态服务器**。直接双击 `frontend/dist/index.html` 会白屏——构建产物用的是 ES module，浏览器在 `file://` 下按 CORS 规则拒绝加载，这与页面代码无关。可选方式：
+
+```powershell
+cd frontend
+npm run dev                              # 开发模式，改代码即时生效
+# 或看构建产物
+npm run build
+npx vite preview --port 18768            # 静态服务，支持 Range
+```
+
+按 UI 约定第 8 节，改了控件或焦点样式后跑一次键盘/焦点探针（零依赖，用本机 Edge）：
+
+```powershell
+# 第一个终端：在 frontend/ 下构建并起静态服务（保持运行，支持 Range）
+cd frontend
+npm run build
+npx vite preview --port 18768
+
+# 第二个终端：在仓库根目录跑探针
+node frontend/tools/a11y-probe.mjs http://127.0.0.1:18768
+```
 
 ### 接口模式联调
 
@@ -179,7 +201,11 @@ $env:VITE_DATA_SOURCE = 'api'
 npm run dev
 ```
 
-已实现：课堂列表可进入指定课堂详情（`#/sessions/{id}`，内含批次/转写/报告三个标签），并按资源 `allowed_actions` 显示上传、媒体准备、提交分析、取消与重试等动作按钮；活动批次每 2 秒轮询、进入终态停止。尚未实现：课堂筛选控件、来源登记界面（上传需先有 `source_record_id`）、与后端的真实联调。
+已实现：课堂列表可进入指定课堂详情（`#/sessions/{id}`，内含批次与操作 / 转写 / 报告 / 回放四个标签），并按资源 `allowed_actions` 显示上传、媒体准备、提交分析、取消与重试等动作按钮；活动批次每 2 秒轮询、进入终态停止。回放标签（M2，FR-05）按课堂主媒体取 `GET /media/{id}` 的 `playback_url` 播放播放代理，支持 0.5×～2× 倍速、前后 5 秒（播放器聚焦时可用 ← / →）、当前片段字幕（可开关，走浏览器原生字幕轨，排在播放控件上方，画中画里也会显示）和画中画，并列出该批次的转写片段与可用证据，点击即跳到对应的原录像毫秒且高亮该行；媒体未就绪、没有 `playback_url`（未核验 / 无 playback 用途 / 已过期）或时间点超出媒体时长时，页面给出原因而不是拿别的地址顶替。
+
+回放只在**固定样例模式**用仓库内的合成样例视频 `frontend/public/samples/m2-playback-demo.mp4`（480×270、30 秒、无音轨、带时间码，无真实课堂内容）；样例的 `sha256` 与字节数写在前端样例里并由单元测试锁定，只有重新生成视频时才需要同步。拖动进度条与时间跳转依赖服务端支持 Range：`npm run dev`、`npx vite preview` 和 Go 同源服务都支持，`python -m http.server` 不支持（只能从头连续播放）。接口模式一律使用服务端返回的 `playback_url`。
+
+尚未实现：课堂筛选控件、来源登记界面（上传需先有 `source_record_id`）、与后端的真实联调。
 
 ### PR #7 浏览器回归
 
