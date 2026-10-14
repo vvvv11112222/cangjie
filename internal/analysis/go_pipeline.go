@@ -482,7 +482,7 @@ func (s *Service) lockReportResultAcceptance(ctx context.Context, tx pgx.Tx, j g
 }
 
 func (s *Service) markModelCallUnknown(ctx context.Context, jobID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE teaching.model_calls SET status='unknown' WHERE job_id=$1 AND dispatch_started_at IS NOT NULL AND status='reserved'`, jobID)
+	_, err := s.pool.Exec(ctx, `UPDATE teaching.model_calls SET status='unknown' WHERE (job_id=$1 OR (job_id IS NULL AND call_key=$2)) AND dispatch_started_at IS NOT NULL AND status='reserved'`, jobID, "report:"+jobID)
 	return err
 }
 
@@ -497,8 +497,8 @@ func (s *Service) settleModelCall(ctx context.Context, jobID string, result mode
 	}
 	tag, err := tx.Exec(ctx, `UPDATE teaching.model_calls SET status='succeeded',actual_cost=$2::numeric/1000000,
 		input_tokens=$3,output_tokens=$4,provider_request_id=NULLIF($5,''),settled_at=now(),lock_version=lock_version+1
-		WHERE job_id=$1 AND status IN('reserved','unknown') AND reconciled_by IS NULL`,
-		jobID, actualMicros, result.InputTokens, result.OutputTokens, result.ProviderRequestID)
+		WHERE (job_id=$1 OR (job_id IS NULL AND call_key=$6)) AND status IN('reserved','unknown') AND reconciled_by IS NULL`,
+		jobID, actualMicros, result.InputTokens, result.OutputTokens, result.ProviderRequestID, "report:"+jobID)
 	if err != nil {
 		return err
 	}
@@ -510,7 +510,7 @@ func (s *Service) settleModelCall(ctx context.Context, jobID string, result mode
 
 func lockModelCallBudgetPeriod(ctx context.Context, tx pgx.Tx, jobID string) error {
 	var currency, period string
-	if err := tx.QueryRow(ctx, `SELECT currency,billing_period::text FROM teaching.model_calls WHERE job_id=$1`, jobID).Scan(&currency, &period); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT currency,billing_period::text FROM teaching.model_calls WHERE job_id=$1 OR (job_id IS NULL AND call_key=$2)`, jobID, "report:"+jobID).Scan(&currency, &period); err != nil {
 		return err
 	}
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, currency+":"+period)
@@ -605,6 +605,7 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 }
 
 func fitModelInputToRequest(input modelInput, config reportSnapshot, skipped int) (modelInput, error) {
+	input.Evidence = append([]modelEvidence(nil), input.Evidence...)
 	baseLimitations := append([]string(nil), input.Limitations...)
 	for len(input.Evidence) > 0 {
 		input.Coverage = coverageForEvidence(input.Evidence)
@@ -616,7 +617,28 @@ func fitModelInputToRequest(input modelInput, config reportSnapshot, skipped int
 		if _, err := buildReportRequest(input, config); err == nil {
 			return input, nil
 		} else if len(input.Evidence) == 1 {
-			return input, err
+			// Measure the serialized request, including the truncation disclosure.
+			// Keep the persisted evidence intact and only shorten its input excerpt.
+			input.Limitations = boundedModelLimitations(appendUniqueAll(
+				[]string{"MODEL_INPUT_TRUNCATED:" + input.Evidence[0].ID}, input.Limitations))
+			text := []rune(input.Evidence[0].TextContent)
+			low, high, best := 1, len(text)-1, 0
+			for low <= high {
+				middle := low + (high-low)/2
+				input.Evidence[0].TextContent = string(text[:middle])
+				input.Evidence[0].TextSHA256 = digestBytes([]byte(input.Evidence[0].TextContent))
+				if _, fitErr := buildReportRequest(input, config); fitErr == nil {
+					best, low = middle, middle+1
+				} else {
+					high = middle - 1
+				}
+			}
+			if best == 0 {
+				return input, fmt.Errorf("no non-empty evidence fits the complete request limit")
+			}
+			input.Evidence[0].TextContent = string(text[:best])
+			input.Evidence[0].TextSHA256 = digestBytes([]byte(input.Evidence[0].TextContent))
+			return input, nil
 		}
 		input.Evidence = input.Evidence[:len(input.Evidence)-1]
 		skipped++
