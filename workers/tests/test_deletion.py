@@ -211,9 +211,15 @@ def test_polling_services_cleanup_before_normal_job_claim(configured, deletion, 
     assert order == ['cleanup', 'claim']
 
 
-def test_enabling_cleanup_requires_backend_contract(settings):
+def test_enabling_cleanup_requires_backend_contract(settings, tmp_path):
+    # Keep testing an old deployment explicitly: the integrated repository now
+    # contains the backend cleanup DTOs and is a valid full contract.
+    schema = json.loads((Path(__file__).parent / 'fixtures/cleanup.schema.json').read_text(encoding='utf-8'))
+    schema['$defs'].pop('WorkerCleanupReceipt')
+    old_contract = tmp_path / 'legacy.schema.json'
+    old_contract.write_text(json.dumps(schema), encoding='utf-8')
     with pytest.raises(WorkerError, match='完整协议'):
-        replace(settings, cleanup_enabled=True)
+        replace(settings, cleanup_enabled=True, cleanup_contract_path=old_contract)
 
 
 def test_legacy_deployment_does_not_poll_cleanup(settings, monkeypatch):
