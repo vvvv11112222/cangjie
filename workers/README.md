@@ -1,5 +1,9 @@
 # 视频工程师交付
 
+## 2026-10-14 团队接入与删除清理
+
+当前版本为 `cangjie-video-worker-1.0.6`。最新后端 `fe03d47` 的上传、代理、关键帧和业务证据已重新联调；新增可选的 Worker 临时目录清理及真实回执，配置、专用根目录约定和验收限制见 [本轮团队交付](TEAM_INTEGRATION.md)。旧后端默认不调用清理接口。启用需完整后端 Schema，并保证一个 Worker 身份独占其暂存部署；不能用同一身份替其他机器确认。视觉模型、输入、采样和行为规则保持原版，本轮不启用 GPU。
+
 ## 2026-10-12 审查整改
 
 处理器版本为 `cangjie-video-worker-1.0.5`。正式关键帧采样中的缺失 PTS、负时间及时间倒退返回 `TIMELINE_INVALID`；撤租、取消、本地超时和其他处理错误保持各自分类。
@@ -85,8 +89,8 @@ Go 确认完成与最后一次心跳同时发生时，心跳可能被拒绝。�
 Docker 入口（构建上下文为仓库根目录）：
 
 ```bash
-docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.3 .
-docker run --rm cangjie-video-worker:1.0.3 python -m workers runtime-info
+docker build -f workers/Dockerfile -t cangjie-video-worker:1.0.6 .
+docker run --rm cangjie-video-worker:1.0.6 python -m workers runtime-info
 ```
 
 运行时显式传入前述环境变量及可写临时目录。容器中的 `127.0.0.1` 指容器自身；后端地址使用共同网络中的 Go 服务名。[GitHub 检查](https://github.com/vvvv11112222/cangjie/actions/runs/37630242939)已通过 Linux/Windows 测试、CPU 容器构建、运行信息与容器内测试。共同环境中的真实 Go 和 GPU 样本联调仍待验收。
@@ -132,7 +136,7 @@ report = analyze_local(source, empty_output_directory, config,
 
 ### 真实 Go、PostgreSQL 与视频 Worker
 
-[自动检查](../.github/workflows/vision-worker.yml)创建一次性 PostgreSQL 17.6，运行固定 Go 1.26.0、Python 3.12 和实际视频 Worker。后端使用两个固定提交：PR #11 加修复 `8cf079e`，以及最新 PR #14 `03de4cd` 加同一修复；不会自动跟随队友移动的分支。
+[自动检查](../.github/workflows/vision-worker.yml)创建一次性 PostgreSQL 17.6，运行固定 Go 1.26.0、Python 3.12 和实际视频 Worker。后端使用两个固定提交：原 phase4 加修复 `8cf079e`，以及 2026-10-14 最新媒体整合版 `fe03d47`（已含摘要修复与 001～008）；不会自动跟随队友移动的分支。最新后端另运行真实 Worker 清理回执检查，旧 phase4 仍验证原媒体流程兼容。
 
 测试使用 FFmpeg 生成的 4 秒无音轨图案视频，检查上传、领取、心跳、下载校验、转码、产物上传、完成、授权 Range 回放、关键帧时间与清理；另外覆盖 161×120 奇数宽度。最新后端还检查 Go 把每张关键帧建立为本批次画面证据。无音轨时明确保留“没有转写”的限制，不伪造 ASR 或六维报告。这些耗时属于 P0 媒体处理，不能代替密集课堂 P1 识别速度和准确率。
 

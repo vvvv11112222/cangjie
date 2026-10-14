@@ -1,7 +1,9 @@
 """Reusable stage dispatch. Go owns queue/retry state; this only runs the claimed lease."""
 import logging
+from contextlib import contextmanager
 import multiprocessing as mp
 from queue import Empty
+import threading
 import time
 
 import httpx
@@ -9,6 +11,7 @@ import httpx
 from .contracts import LeaseLost, WorkerError, json_bytes, validate_result
 from .lifecycle import Guard, cleanup, cleanup_expired, epoch, scratch_path, validate_claim
 from .transport import Transport
+from .deletion import check_fence, clean_claim, exclusive_root
 
 LOG = logging.getLogger(__name__)
 
@@ -20,6 +23,7 @@ def execute_claim(settings, claim, guard, directory, transport=None, handlers=No
     created = False
     try:
         validate_claim(claim, settings)
+        check_fence(settings.temp_root, claim)
         guard.check()
         directory.mkdir(parents=True, exist_ok=False)
         created = True
@@ -59,8 +63,44 @@ class Runner:
     def __init__(self, settings):
         self.settings = settings
         self.transport = Transport(settings)
+        self._root_mutex = threading.RLock()
+        self._root_owned = False
+
+    @contextmanager
+    def ownership(self):
+        with self._root_mutex:
+            if self._root_owned:
+                yield
+                return
+            with exclusive_root(self.settings.temp_root):
+                self._root_owned = True
+                try:
+                    yield
+                finally:
+                    self._root_owned = False
+
+    def cleanup_once(self):
+        if not self.settings.cleanup_enabled:
+            raise WorkerError("CONFIG_MISMATCH", "本部署尚未启用后端清理协议")
+        with self.ownership():
+            claim = self.transport.claim_cleanup()
+            if claim is None:
+                return None
+            try:
+                clean_claim(self.settings.temp_root, claim)
+            except OSError as error:
+                raise WorkerError("CLEANUP_INCOMPLETE", "临时文件暂时无法清理，不回报成功", True) from error
+            return self.transport.complete_cleanup(claim)
 
     def run_claim(self, claim):
+        with self.ownership():
+            try:
+                check_fence(self.settings.temp_root, claim)
+            except LeaseLost:
+                return "stopped"
+            return self._run_claim(claim)
+
+    def _run_claim(self, claim):
         timeout = self.settings.probe_timeout if claim["stage"] == "probe" else self.settings.video_timeout
         guard = Guard(claim, timeout=timeout)
         directory = scratch_path(self.settings.temp_root, claim)
@@ -136,11 +176,19 @@ class Runner:
             outcome.close()
 
     def run(self, once=False):
+        with self.ownership():
+            self._run(once=once)
+
+    def _run(self, once=False):
         cleanup_expired(self.settings.temp_root)
         try:
             failures = 0
             while True:
                 try:
+                    # No media child survives run_claim(). Cleanup therefore runs
+                    # only after every local writer stops, before the next claim.
+                    if self.settings.cleanup_enabled:
+                        self.cleanup_once()
                     claim = self.transport.claim()
                 except WorkerError as error:
                     if not error.retryable or once:

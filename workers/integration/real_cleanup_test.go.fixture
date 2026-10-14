@@ -1,0 +1,85 @@
+// Copy only into backend fe03d47 or a compatible later checkout.
+// Worker sees HTTP and its own scratch only; SQL belongs exclusively to this test fixture.
+package httpapi
+
+import (
+    "bytes"
+    "context"
+    "io"
+    "log/slog"
+    "net/http"
+    "net/http/httptest"
+    "net/url"
+    "os"
+    "path/filepath"
+    "strings"
+    "testing"
+    "time"
+
+    "github.com/jackc/pgx/v5/pgxpool"
+    "github.com/vvvv11112222/cangjie/internal/academic"
+    "github.com/vvvv11112222/cangjie/internal/analysis"
+    "github.com/vvvv11112222/cangjie/internal/database"
+    "github.com/vvvv11112222/cangjie/internal/governance"
+    "github.com/vvvv11112222/cangjie/internal/identity"
+    "github.com/vvvv11112222/cangjie/internal/storage"
+)
+
+func TestRealWorkerCleanupIntegration(t *testing.T) {
+    dsn := os.Getenv("TEST_DATABASE_URL")
+    dbURL, err := url.Parse(dsn)
+    if err != nil || dbURL.Path != "/cangjie_worker_integration" || os.Getenv("WORKER_INTEGRATION_ALLOW_DATABASE_RESET") != "1" {
+        t.Fatal("requires explicitly disposable cangjie_worker_integration DB")
+    }
+    ctx := context.Background()
+    migrationDir, _ := filepath.Abs(filepath.Join("..", "..", "database"))
+    if err := database.RunMigrations(ctx, dsn, migrationDir); err != nil { t.Fatal(err) }
+    pool, err := pgxpool.New(ctx, dsn)
+    if err != nil { t.Fatal(err) }
+    defer pool.Close()
+    if _, err := pool.Exec(ctx, `TRUNCATE teaching.academic_terms,teaching.classrooms,teaching.org_units CASCADE`); err != nil { t.Fatal(err) }
+    if _, err := identity.BootstrapAdmin(ctx, pool, identity.BootstrapRequest{SchoolCode:"SCHOOL",SchoolName:"School",Username:"admin",DisplayName:"Admin",Password:integrationPassword}); err != nil { t.Fatal(err) }
+    if _, err := identity.BootstrapDevelopmentUsers(ctx, pool, identity.DevelopmentUsersRequest{SchoolCode:"SCHOOL",SchoolName:"School",CollegeCode:"COL-A",CollegeName:"College A",AcademicUsername:"academic",AcademicDisplayName:"Academic",SupervisorUsername:"supervisor",SupervisorDisplayName:"Supervisor",TeacherUsername:"teacher",TeacherDisplayName:"Teacher",Password:integrationPassword}); err != nil { t.Fatal(err) }
+    adminID := queryID(t,pool,`SELECT id::text FROM teaching.user_accounts WHERE username='admin'`)
+    teacherID := queryID(t,pool,`SELECT id::text FROM teaching.user_accounts WHERE username='teacher'`)
+    college := queryID(t,pool,`SELECT id::text FROM teaching.org_units WHERE code='COL-A'`)
+    term := queryID(t,pool,`INSERT INTO teaching.academic_terms(code,name,start_date,end_date) VALUES('CLEAN-T','Cleanup','2026-09-01','2027-01-01') RETURNING id::text`)
+    course := queryID(t,pool,`INSERT INTO teaching.courses(org_unit_id,code,name) VALUES('`+college+`','CLEAN-C','Cleanup') RETURNING id::text`)
+    group := queryID(t,pool,`INSERT INTO teaching.class_groups(org_unit_id,code,name,enrollment_year) VALUES('`+college+`','CLEAN-G','Cleanup',2026) RETURNING id::text`)
+    offering := queryID(t,pool,`INSERT INTO teaching.course_offerings(org_unit_id,code,term_id,course_id,teacher_id,class_group_id) VALUES('`+college+`','CLEAN-O','`+term+`','`+course+`','`+teacherID+`','`+group+`') RETURNING id::text`)
+    sessionID := queryID(t,pool,`INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by,status) VALUES('`+offering+`','Synthetic cleanup',now(),now()+interval '1 hour','`+adminID+`','ready') RETURNING id::text`)
+    sourceID := queryID(t,pool,`INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,registered_by,verified_by,verified_at) VALUES('`+sessionID+`','self_recorded','Synthetic','fixture','verified','["playback","analysis"]','`+adminID+`','`+adminID+`',now()) RETURNING id::text`)
+    tmp := t.TempDir()
+    store, err := storage.NewLocal(filepath.Join(tmp,"go-media"))
+    if err != nil { t.Fatal(err) }
+    staged, err := store.Stage(ctx,bytes.NewReader([]byte("synthetic")),1024)
+    if err != nil { t.Fatal(err) }
+    if err := store.Commit(staged,"synthetic.mp4"); err != nil { t.Fatal(err) }
+    mediaID := queryID(t,pool,`INSERT INTO teaching.media_assets(session_id,source_record_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,duration_ms,status) VALUES('`+sessionID+`','`+sourceID+`','source','filesystem','synthetic.mp4','`+strings.Repeat("a",64)+`','video/mp4',9,4000,'ready') RETURNING id::text`)
+    runID := queryID(t,pool,`INSERT INTO teaching.analysis_runs(session_id,media_asset_id,requested_by,idempotency_key,input_sha256,config_hash,pipeline_version,config_snapshot,status,request_sha256,finished_at) VALUES('`+sessionID+`','`+mediaID+`','`+adminID+`','cleanup-run','`+strings.Repeat("a",64)+`','`+strings.Repeat("b",64)+`','p0-v1','{}','failed','`+strings.Repeat("c",64)+`',now()) RETURNING id::text`)
+    jobID := queryID(t,pool,`INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,progress) VALUES('`+runID+`','video_analysis','queued',3,0) RETURNING id::text`)
+    ledger, err := governance.InitializeLedger(filepath.Join(tmp,"deletions.jsonl"))
+    if err != nil { t.Fatal(err) }
+    // Go's local scratch is deliberately different from the remote Worker's.
+    gov := governance.NewService(pool,store,ledger,governance.Config{Lease:time.Minute,Recheck:time.Second,MaxAttempts:3,WorkerTempRoot:filepath.Join(tmp,"go-scratch")})
+    if err := gov.RecordWorker(ctx,"worker-01",[]string{"probe","video_analysis"}); err != nil { t.Fatal(err) }
+    token := "synthetic-worker-integration-credential-only"
+    server := httptest.NewServer(New(Options{Logger:slog.New(slog.NewTextHandler(io.Discard,nil)),Identity:identity.NewService(pool,8*time.Hour),Academic:academic.NewService(pool),Analysis:analysis.NewService(pool,store,analysis.Config{}),Governance:gov,PublicOrigin:"http://frontend.test",WorkerToken:token,WorkerID:"worker-01",WorkerCapabilities:[]string{"probe","video_analysis"}}))
+    defer server.Close()
+    admin := newTestClient(t)
+    csrf := loginTestUser(t,admin,server.URL,"admin")
+    deletion := requestWithHeaders(t,admin,http.MethodPost,server.URL+"/api/v1/sessions/"+sessionID+"/deletion-requests",map[string]any{"reason":"synthetic Worker integration"},csrf,map[string]string{"Idempotency-Key":"cleanup-1"},http.StatusAccepted)
+    id := deletion["id"].(string)
+    if did,err := gov.ProcessDeletion(ctx); err != nil || !did { t.Fatalf("initial deletion: %v %v",did,err) }
+    blocked := requestJSON(t,admin,http.MethodGet,server.URL+"/api/v1/deletion-requests/"+id,nil,"",http.StatusOK)
+    if blocked["status"] != "blocked" || blocked["error_code"] != "WORKER_CLEANUP_PENDING" { t.Fatalf("unconfirmed deletion: %v",blocked) }
+    contract, _ := filepath.Abs(filepath.Join("..","..","contracts","v1.schema.json"))
+    result := realWorkerBridge(t,token,"cleanup","--api-base",server.URL+"/internal/v1","--scratch",filepath.Join(tmp,"remote-worker"),"--contract",contract,"--deletion-id",id,"--seed-job-id",jobID)
+    var receipts int
+    if err := pool.QueryRow(ctx,`SELECT count(*) FROM teaching.worker_cleanup_receipts WHERE deletion_request_id=$1 AND worker_id='worker-01'`,id).Scan(&receipts); err != nil || receipts != 1 { t.Fatalf("receipt count=%d err=%v",receipts,err) }
+    if _,err := pool.Exec(ctx,`UPDATE teaching.data_deletion_requests SET available_at=now() WHERE id=$1`,id); err != nil { t.Fatal(err) }
+    if did,err := gov.ProcessDeletion(ctx); err != nil || !did { t.Fatalf("confirmed deletion: %v %v",did,err) }
+    finished := requestJSON(t,admin,http.MethodGet,server.URL+"/api/v1/deletion-requests/"+id,nil,"",http.StatusOK)
+    if finished["status"] != "succeeded" { t.Fatalf("confirmed deletion=%v",finished) }
+    t.Logf("real HTTP cleanup receipt, isolated remote scratch, deletion succeeded: %v",result)
+}
