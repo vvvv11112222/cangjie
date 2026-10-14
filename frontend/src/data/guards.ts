@@ -54,6 +54,21 @@ export function asInteger(source: Record<string, unknown>, key: string, path: st
   return value;
 }
 
+export function asNullableInteger(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+): number | null {
+  const value = field(source, key, path);
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    guardFail(`${path}.${key}`, '应为整数或 null');
+  }
+  return value;
+}
+
 export function asBoolean(source: Record<string, unknown>, key: string, path: string): boolean {
   const value = field(source, key, path);
   if (typeof value !== 'boolean') {

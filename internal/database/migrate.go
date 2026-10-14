@@ -70,6 +70,9 @@ func RunMigrations(ctx context.Context, databaseURL, directory string) error {
 	if err != nil {
 		return err
 	}
+	if err := validateMigrationHistory(migrations, applied); err != nil {
+		return err
+	}
 	for _, item := range migrations {
 		if checksum, ok := applied[item.Name]; ok {
 			if checksum != item.Checksum {
@@ -79,6 +82,33 @@ func RunMigrations(ctx context.Context, databaseURL, directory string) error {
 		}
 		if err := applyMigration(ctx, conn, item); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// Applied migrations must be an unchanged prefix of the packaged migration set.
+// Otherwise a downgraded binary or a missing file could silently accept a newer DB.
+func validateMigrationHistory(migrations []migration, applied map[string]string) error {
+	known := make(map[string]bool, len(migrations))
+	pending := false
+	for _, item := range migrations {
+		known[item.Name] = true
+		checksum, ok := applied[item.Name]
+		if !ok {
+			pending = true
+			continue
+		}
+		if pending {
+			return fmt.Errorf("migration history is not a contiguous prefix: %s", item.Name)
+		}
+		if checksum != item.Checksum {
+			return fmt.Errorf("migration %s changed after it was applied", item.Name)
+		}
+	}
+	for name := range applied {
+		if !known[name] {
+			return fmt.Errorf("applied migration %s is missing from the packaged migrations", name)
 		}
 	}
 	return nil

@@ -9,19 +9,38 @@
  * 这些接口后端尚未实现，api 模式下会返回 NOT_FOUND，页面会显示可读提示而不是假数据。
  */
 
-import type { Report, Results, Revision, Run, SessionPage, SessionStatus } from '../types';
+import type {
+  Media,
+  MediaAction,
+  MediaKind,
+  MediaStatus,
+  Report,
+  Results,
+  Revision,
+  Run,
+  SessionPage,
+  SessionStatus,
+} from '../types';
 import { ApiError } from './errors';
 import { asArray, asEnum, asNullableString, asRecord, asString, enumList } from './guards';
-import { parseReport, parseResults, parseRevision, parseRun, parseSessionPage, fixtures } from './samples';
+import {
+  MEDIA_ACTIONS,
+  MEDIA_KINDS,
+  MEDIA_STATUSES,
+  fixtureMediaFor,
+  fixtures,
+  parseMedia,
+  parseReport,
+  parseResults,
+  parseRevision,
+  parseRun,
+  parseSessionPage,
+} from './samples';
 import { requestJson } from './http';
 
-export const MEDIA_KINDS = ['source', 'proxy', 'audio', 'keyframe', 'report_export'] as const;
-export const MEDIA_STATUSES = ['pending', 'ready', 'failed', 'deleting', 'deleted'] as const;
-/** Media.allowed_actions 的取值，见 contracts/v1.schema.json 的 Media。 */
-export const MEDIA_ACTIONS = ['prepare_media', 'analyze', 'playback', 'select_primary'] as const;
-export type MediaKind = (typeof MEDIA_KINDS)[number];
-export type MediaStatus = (typeof MEDIA_STATUSES)[number];
-export type MediaAction = (typeof MEDIA_ACTIONS)[number];
+/** Media 的枚举常量与类型；取值见 contracts/v1.schema.json 的 Media。 */
+export { MEDIA_ACTIONS, MEDIA_KINDS, MEDIA_STATUSES };
+export type { MediaAction, MediaKind, MediaStatus } from '../types';
 
 /**
  * 媒体列表里挑原媒体需要的字段。
@@ -68,6 +87,8 @@ export interface DataSource {
   getSessions(query?: SessionQuery): Promise<SessionPage>;
   /** GET /sessions/{id}/media；cursor 为空表示第一页（协议第 1 节：游标不透明）。 */
   getSessionMedia(sessionId: string, cursor?: string): Promise<MediaPageLite>;
+  /** GET /media/{id}；播放地址、有效期与 allowed_actions 都以这条响应为准。 */
+  getMedia(id: string): Promise<Media>;
   getRun(id: string): Promise<Run>;
   /** 结果挂在批次下：GET /analysis-runs/{id}/results。 */
   getResults(runId: string): Promise<Results>;
@@ -121,6 +142,15 @@ export const fixtureSource: DataSource = {
     // 固定样例里没有媒体列表；样例模式不使用媒体选择器。
     return { items: [], nextCursor: null };
   },
+  async getMedia(id: string): Promise<Media> {
+    // 固定样例模式改为播放仓库内的合成样例视频（见 samples.ts 的 FIXTURE_PLAYBACK_SRC）；
+    // 除这条合成媒体外的 id 都超出样例范围，按 NOT_FOUND 处理，不编造媒体。
+    const media = fixtureMediaFor(id);
+    if (media === null) {
+      throw notFound('playbackMedia', id);
+    }
+    return media;
+  },
   async getRun(id: string): Promise<Run> {
     if (id === fixtures.run.id) {
       return fixtures.run;
@@ -166,6 +196,14 @@ export const apiSource: DataSource = {
     });
     try {
       return parseMediaPage(data);
+    } catch (error) {
+      throw malformed(error);
+    }
+  },
+  async getMedia(id: string): Promise<Media> {
+    const { data } = await requestJson<unknown>(`/media/${encodeURIComponent(id)}`);
+    try {
+      return parseMedia(data);
     } catch (error) {
       throw malformed(error);
     }
@@ -226,6 +264,7 @@ export function isApiMode(): boolean {
 export const getSessions = (query?: SessionQuery): Promise<SessionPage> => selected.getSessions(query);
 export const getSessionMedia = (sessionId: string, cursor?: string): Promise<MediaPageLite> =>
   selected.getSessionMedia(sessionId, cursor);
+export const getMedia = (id: string): Promise<Media> => selected.getMedia(id);
 export const getRun = (id: string): Promise<Run> => selected.getRun(id);
 export const getResults = (runId: string): Promise<Results> => selected.getResults(runId);
 export const getRevision = (id: string): Promise<Revision> => selected.getRevision(id);
@@ -239,6 +278,7 @@ export const dataSource: DataSource = {
   kind: DATA_SOURCE_KIND,
   getSessions,
   getSessionMedia,
+  getMedia,
   getRun,
   getResults,
   getRevision,
