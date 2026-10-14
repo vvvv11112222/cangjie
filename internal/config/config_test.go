@@ -1,9 +1,33 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestFromLookupMigrationDirectory(t *testing.T) {
+	for _, raw := range []string{"database", filepath.Join(t.TempDir(), "installed migrations")} {
+		t.Run(raw, func(t *testing.T) {
+			cfg, err := FromLookup(mapLookup(map[string]string{
+				"DATABASE_URL": "postgres://localhost/teaching", "DATABASE_MIGRATIONS_DIR": raw,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := filepath.Abs(raw)
+			if err != nil || cfg.DatabaseMigrationsDir != want {
+				t.Fatalf("migration directory=%q want=%q err=%v", cfg.DatabaseMigrationsDir, want, err)
+			}
+		})
+	}
+	_, err := FromLookup(mapLookup(map[string]string{
+		"DATABASE_URL": "postgres://localhost/teaching", "DATABASE_MIGRATIONS_DIR": " ",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "DATABASE_MIGRATIONS_DIR") {
+		t.Fatalf("expected empty migration directory rejection, got %v", err)
+	}
+}
 
 func TestFromLookupValidMinimum(t *testing.T) {
 	cfg, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching"}))

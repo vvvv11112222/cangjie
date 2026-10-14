@@ -284,6 +284,58 @@ func (s *server) registerWorkerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /internal/v1/jobs/{id}/artifacts", s.uploadJobArtifact)
 	mux.HandleFunc("POST /internal/v1/jobs/{id}/complete", s.completeJob)
 	mux.HandleFunc("POST /internal/v1/jobs/{id}/fail", s.failJob)
+	if s.governance != nil {
+		mux.HandleFunc("POST /internal/v1/deletions/claim-cleanup", s.claimWorkerCleanup)
+		mux.HandleFunc("POST /internal/v1/deletions/{id}/cleanup-complete", s.completeWorkerCleanup)
+	}
+}
+
+func (s *server) claimWorkerCleanup(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorker(w, r) {
+		return
+	}
+	var in struct {
+		WorkerID string `json:"worker_id"`
+	}
+	if !s.decode(w, r, &in, false) {
+		return
+	}
+	if in.WorkerID != s.workerID {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "worker identity does not match its credential", map[string]any{})
+		return
+	}
+	value, err := s.governance.PendingWorkerCleanup(r.Context(), in.WorkerID)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	if value == nil {
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeData(w, r, http.StatusOK, value)
+}
+
+func (s *server) completeWorkerCleanup(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorker(w, r) {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		StorageGeneration int64 `json:"storage_generation"`
+	}
+	if !s.decode(w, r, &in, false) {
+		return
+	}
+	if err := s.governance.ConfirmWorkerCleanup(r.Context(), id, s.workerID, in.StorageGeneration); err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, map[string]any{"deletion_request_id": id, "worker_id": s.workerID, "storage_generation": in.StorageGeneration})
 }
 
 func (s *server) createAnalysisRun(w http.ResponseWriter, r *http.Request) {
@@ -405,6 +457,12 @@ func (s *server) claimJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if s.governance != nil {
+		if err := s.governance.RecordWorker(r.Context(), in.WorkerID, in.Capabilities); err != nil {
+			s.writeServiceError(w, r, err)
+			return
+		}
+	}
 	claim, err := s.analysis.Claim(r.Context(), in.WorkerID, in.Capabilities)
 	if err != nil {
 		s.writeServiceError(w, r, err)
@@ -434,6 +492,16 @@ func (s *server) heartbeatJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeServiceError(w, r, err)
 		return
+	}
+	if s.governance != nil {
+		capabilities := make([]string, 0, len(s.workerCapabilities))
+		for capability := range s.workerCapabilities {
+			capabilities = append(capabilities, capability)
+		}
+		if err = s.governance.RecordWorker(r.Context(), s.workerID, capabilities); err != nil {
+			s.writeServiceError(w, r, err)
+			return
+		}
 	}
 	writeData(w, r, http.StatusOK, value)
 }

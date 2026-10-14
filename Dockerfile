@@ -6,6 +6,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -o /out/api ./cmd/api \
     && CGO_ENABLED=0 go build -trimpath -o /out/migrate ./cmd/migrate \
+    && CGO_ENABLED=0 go build -trimpath -o /out/init-deletion-ledger ./cmd/init-deletion-ledger \
     && CGO_ENABLED=0 go build -trimpath -o /out/bootstrap-admin ./cmd/bootstrap-admin \
     && CGO_ENABLED=0 go build -trimpath -o /out/seed-dev ./cmd/seed-dev
 

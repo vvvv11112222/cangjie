@@ -24,6 +24,7 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:${COMPOSE_API_PORT:-8080}}
       SESSION_TTL_SECONDS: "28800"
       DATABASE_URL: postgres://teaching:teaching_dev@postgres:5432/teaching?sslmode=disable
+      DATABASE_MIGRATIONS_DIR: /app/database
       MEDIA_ROOT: /data/media
       WORKER_TEMP_ROOT: /data/worker-tmp
       DELETION_LEDGER_PATH: /data/governance/deletions.jsonl
@@ -60,6 +61,14 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:${COMPOSE_API_PORT:-8080}:8080"
+    volumes:
+      - app-data:/data
+
+  init-deletion-ledger:
+    profiles: ["bootstrap"]
+    build: .
+    command: ["/app/bin/init-deletion-ledger"]
+    environment: *api-environment
     volumes:
       - app-data:/data
 

@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 前端 | [开发协议](docs/开发协议.md)、[接口样例](contracts/examples/manifest.json) | 用固定样例显示任务、转写和报告 |
 | 后端 | 开发协议、[数据库设计](docs/数据库设计.md) | Go API、任务流转和权限校验 |
-| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[005](database/005_reporting_runtime.sql) | 初始化、迁移及约束检查 |
+| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[008](database/008_worker_cleanup_receipts.sql) | 初始化、迁移及约束检查 |
 | 音频 | 开发协议第3节、audio-result 样例 | Worker 公共入口和带时间戳转写 |
 | 视频 | 开发协议第3节、probe-result/video-result 样例 | 媒体检查、播放代理和关键帧 |
 
@@ -21,7 +21,7 @@
 - [AGENTS.md](AGENTS.md)：Codex 的仓库开发约定，包含按任务查阅文档、模块边界、验证及协作规则。
 - `docs/`：架构、协议、数据库、验收计划。
 - `contracts/v1.schema.json`、[端点映射](contracts/endpoints.json)与 `contracts/examples/`：契约1.1及联调样例；api-cases.json 中每个 value 是独立 DTO，按 definition 选择。前端和 Worker 须同步更新，不能混用1.0结果。
-- `database/`：迁移和约束验证；新库按编号依次执行001～005，旧库只执行未应用迁移。
+- `database/`：迁移和约束验证；新库按编号依次执行001～008，旧库只执行未应用迁移。007核验历史运行时约束，008新增Worker清理回执；[数据库联合验收](docs/数据库联合验收.md)提供分权、升级及多连接验证入口。
 - `tools/`：文档/协议检查、隔离数据库检查。
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
 
@@ -30,7 +30,8 @@
 后端使用 Go 1.26 系列和 PostgreSQL 17。当前已提供：
 
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
-- `cmd/migrate`：按文件名顺序执行 `database/001`～`005`，记录并校验迁移摘要；
+- `cmd/migrate`：按文件名顺序执行 `database/001`～`008`，记录并校验迁移摘要及历史顺序；
+- `cmd/init-deletion-ledger`：显式、幂等地执行一次独立删除账本初始化；API 启动不会自动补建丢失账本；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；
@@ -39,6 +40,9 @@
 - `internal/media` 与 `internal/storage`：来源核验、流式上传、本地对象存储适配、媒体目录及授权 Range 回放；
 - `internal/analysis`：分析批次、Worker 领取/心跳/输入/产物/完成/失败接口，以及租约、取消、有限重试、过期回收和重复回调幂等；
 - 本地媒体目录和独立删除日志的 readiness 检查；
+- 报告输入按最终序列化请求大小缩减，单条长证据也会截断并记录限制；候选正文不合法时仍结算可核验账单，不自动重发收费请求。
+- PDF 使用标准 STSong-Light CID 字体、Unicode CMap 和显式 FontDescriptor，包含固定来源、执行溯源、证据可用性及完整正文；不依赖私有字体文件。回归验证同时使用 MuPDF/PyMuPDF 和 Poppler。
+- 导出确认回滚时清理本次租约文件，提交结果不确定时保留对象；删除日志重放先收口账目，数据库清理失败受最大重试次数约束。Worker 未确认清理时仍保持 blocked。
 - `Dockerfile` 与 `compose.yaml` 共同开发入口。
 
 ### 本机启动
@@ -65,11 +69,14 @@ ASR_MODEL_REVISION=p0-v1
 
 ```powershell
 go run ./cmd/migrate
+go run ./cmd/init-deletion-ledger
 $env:BOOTSTRAP_ADMIN_PASSWORD = '<至少12位的本地密码>'
 go run ./cmd/bootstrap-admin
 Remove-Item Env:BOOTSTRAP_ADMIN_PASSWORD
 go run ./cmd/api
 ```
+
+编译后的 API 可以从其他工作目录启动。将 `DATABASE_MIGRATIONS_DIR` 设置为部署时打包的迁移目录绝对路径，例如 `D:/services/cangjie/database`；启动检查与 `/health/ready` 共用这个目录。默认 `database` 保留仓库根目录开发用法，相对配置在读取配置时解析一次。迁移工具仍可用 `-dir` 指定相同目录；Docker Compose 固定为 `/app/database`。
 
 管理员初始化命令可以重复执行；已有同名管理员时不会覆盖密码。启动后检查：
 
@@ -103,6 +110,7 @@ Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 已安装 Docker Compose 时可运行：
 
 ```powershell
+docker compose --profile bootstrap run --rm init-deletion-ledger
 docker compose up --build -d postgres api
 $env:BOOTSTRAP_TEST_PASSWORD = '<至少12位的本地测试密码>'
 docker compose --profile bootstrap run --rm seed-dev
