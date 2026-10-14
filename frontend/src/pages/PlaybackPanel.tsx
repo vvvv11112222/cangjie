@@ -22,6 +22,7 @@ import {
   TechDetails,
 } from '../components/ui';
 import { isApiMode } from '../data/sources';
+import { usePlaybackProbe } from '../data/hooks';
 import type { useMediaDetail, useSessionTranscript } from '../data/hooks';
 import {
   activeTargetId,
@@ -58,6 +59,8 @@ export function PlaybackPanel({
   const jumpNodes = useRef(new Map<string, HTMLElement>());
 
   const playbackUrl = media?.playback_url ?? null;
+  // 浏览器自己发 Range 请求，前端看不到 416/403 这类状态码，所以先预检一次播放地址。
+  const probe = usePlaybackProbe(playbackUrl);
   const timeActive = activeTargetId(targets, positionMs);
   // 同一时间点可能既有片段又有证据（样例里就是），按时间算会高亮先排序的那一条；
   // 刚点过的目标在播放位置仍落在它区间内时优先高亮，点了哪行就亮哪行。
@@ -151,8 +154,27 @@ export function PlaybackPanel({
                   或课堂内容读取权限已到期。页面不拿别的地址顶替，请按上述原因核对。
                 </p>
               ) : null
+            ) : probe.status === 'failed' ? (
+              <>
+                <p className="notice-strip">
+                  <IconAlert size={14} aria-hidden="true" />
+                  {probe.note}
+                  {probe.note?.includes('RANGE_NOT_SATISFIABLE')
+                    ? '（416：这段媒体的时长/字节范围与播放地址不匹配，常见于播放代理被重新生成或媒体还在准备中。）'
+                    : ''}
+                </p>
+                <div className="action-row">
+                  <button type="button" className="btn btn-secondary" onClick={() => probe.recheck()}>
+                    重新检查播放地址
+                  </button>
+                </div>
+              </>
             ) : (
               <>
+                {/* 预检只是附加信息，不阻挡播放器出现：检查期间照常渲染播放器。 */}
+                {probe.status === 'checking' ? (
+                  <p className="load-note">正在检查播放地址（发送一次 1 字节的 Range 请求）……</p>
+                ) : null}
                 <MediaPlayer
                   src={playbackUrl}
                   durationMs={media.duration_ms}

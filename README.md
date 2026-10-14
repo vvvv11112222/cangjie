@@ -205,6 +205,8 @@ npm run dev
 
 回放只在**固定样例模式**用仓库内的合成样例视频 `frontend/public/samples/m2-playback-demo.mp4`（480×270、30 秒、无音轨、带时间码，无真实课堂内容）；样例的 `sha256` 与字节数写在前端样例里并由单元测试锁定，只有重新生成视频时才需要同步。拖动进度条与时间跳转依赖服务端支持 Range：`npm run dev`、`npx vite preview` 和 Go 同源服务都支持，`python -m http.server` 不支持（只能从头连续播放）。接口模式一律使用服务端返回的 `playback_url`。
 
+接口模式下拿到 `playback_url` 后，前端会先发一次 1 字节的 `Range` 预检，再交给播放器：浏览器自己发的 Range 请求前端看不到状态码，预检才能把服务端的真实错误码显示出来（例如 `416 RANGE_NOT_SATISFIABLE`、`403 FORBIDDEN`、`410 RESOURCE_EXPIRED`），失败时给出原因和“重新检查播放地址”，不再只显示一个加载失败的黑框。
+
 尚未实现：课堂筛选控件、来源登记界面（上传需先有 `source_record_id`）、与后端的真实联调。
 
 ### PR #7 浏览器回归

@@ -26,6 +26,7 @@ import {
 import { FIXTURES, fixtureMediaFor, fixtures } from './samples';
 import type { AuthStatus } from './sessionFlow';
 import { DATA_SOURCE_LABEL, getMedia, getSessionMedia, isApiMode } from './sources';
+import { probePlaybackAddress } from './playbackProbe';
 import type { DataSourceKind, MediaLite, SessionQuery } from './sources';
 import { dataSource } from './sources';
 import { SearchPaused, newSearch, checkNextCursor } from './search';
@@ -620,6 +621,49 @@ export function useMediaDetail(
       API ? ['GET /api/v1/media/{id}'] : [FIXTURES.sessionPage, FIXTURES.playbackSample],
     ),
   };
+}
+
+export interface PlaybackProbeState {
+  status: 'idle' | 'checking' | 'ok' | 'failed';
+  /** 失败时的中文提示（含错误码与 HTTP 状态）；没有问题可显示时为 null。 */
+  note: string | null;
+  recheck(): void;
+}
+
+/**
+ * 播放地址预检，实现见 data/playbackProbe.ts。
+ * 固定样例模式播放的是仓库内本地文件，没有服务端语义，因此不做预检（status 保持 idle）。
+ */
+export function usePlaybackProbe(url: string | null, enabled = true): PlaybackProbeState {
+  const { sessionKey } = useSessionContext();
+  const [state, setState] = useState<{ status: PlaybackProbeState['status']; note: string | null }>({
+    status: 'idle',
+    note: null,
+  });
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!API || !enabled || url === null) {
+      setState({ status: 'idle', note: null });
+      return;
+    }
+    // 换账号后重查：播放地址的权限跟着会话走，旧会话的结果不能继续显示（同其它取数钩子）。
+    let active = true;
+    setState({ status: 'checking', note: null });
+    void probePlaybackAddress(url).then((result) => {
+      if (!active) return;
+      setState(
+        result.kind === 'ok'
+          ? { status: 'ok', note: null }
+          : { status: 'failed', note: `播放地址不可用：${describeError(result.error)}` },
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [url, enabled, nonce, sessionKey]);
+
+  return { ...state, recheck: () => setNonce((current) => current + 1) };
 }
 
 function fixtureSessionTranscript(session: Session | null): TranscriptView {

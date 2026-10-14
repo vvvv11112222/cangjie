@@ -83,8 +83,12 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** 把错误信封转成 ApiError；信封本身不符合协议时降级为 MALFORMED_RESPONSE。 */
-function toApiError(payload: unknown, status: number): ApiError {
+/**
+ * 把错误信封转成 ApiError；信封本身不符合协议时降级为 MALFORMED_RESPONSE。
+ * 导出的原因：文件字节类接口（例如播放地址）由浏览器直接请求，页面拿不到状态码，
+ * 需要自己在数据层预检一次，用的必须是同一套错误码映射，不能各写一份。
+ */
+export function responseError(payload: unknown, status: number): ApiError {
   const envelope = isRecord(payload) ? payload : null;
   const error = envelope !== null && isRecord(envelope['error']) ? envelope['error'] : null;
   const requestId = envelope !== null && typeof envelope['request_id'] === 'string' ? envelope['request_id'] : null;
@@ -186,7 +190,7 @@ async function requestRaw<T>(path: string, init: RequestInit): Promise<Envelope<
   }
 
   if (!response.ok) {
-    throw toApiError(payload, response.status);
+    throw responseError(payload, response.status);
   }
 
   // 204 与文件字节没有 JSON 包装；业务 JSON 接口成功时必须是 {data,request_id}。
