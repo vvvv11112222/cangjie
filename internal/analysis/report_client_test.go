@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -115,6 +116,66 @@ func TestSettleUnknownModelCallUsesBudgetLockAndAcceptsLateUsage(t *testing.T) {
 	}
 	if err = pool.QueryRow(ctx, `SELECT status,to_char(actual_cost,'FM999999999990.000000'),provider_request_id FROM teaching.model_calls WHERE id=$1`, protectedCallID).Scan(&status, &cost, &providerID); err != nil || status != "failed" || cost != "0.000009" || providerID != "manual-request" {
 		t.Fatalf("reconciled model call changed status=%s cost=%s provider=%s err=%v", status, cost, providerID, err)
+	}
+}
+
+func TestMalformedChoicesPreserveBilling(t *testing.T) {
+	for _, choices := range []string{`[]`, `{}`, `17`, `[{"message":{}}]`, `[{"message":{"content":17}}]`, `[{"message":{"content":"not-json"}}]`} {
+		t.Run(choices, func(t *testing.T) {
+			requests := 0
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				_, _ = w.Write([]byte(`{"id":"known-bill","usage":{"prompt_tokens":17,"completion_tokens":5},"choices":` + choices + `}`))
+			}))
+			defer provider.Close()
+			s := &Service{cfg: Config{ReportAPIBase: provider.URL}}
+			result, err := s.callReportModel(context.Background(), []byte(`{}`))
+			if err == nil || !result.UsageKnown || result.InputTokens != 17 || result.OutputTokens != 5 || result.ProviderRequestID != "known-bill" || requests != 1 {
+				t.Fatalf("billing was lost or request retried: %#v, %v, requests=%d", result, err, requests)
+			}
+		})
+	}
+}
+
+func TestMalformedUsageRemainsUnknown(t *testing.T) {
+	for _, usage := range []string{`null`, `{}`, `{"prompt_tokens":-1,"completion_tokens":5}`, `{"prompt_tokens":"17","completion_tokens":5}`} {
+		t.Run(usage, func(t *testing.T) {
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"id":"unknown-bill","choices":[],"usage":` + usage + `}`))
+			}))
+			defer provider.Close()
+			s := &Service{cfg: Config{ReportAPIBase: provider.URL}}
+			result, err := s.callReportModel(context.Background(), []byte(`{}`))
+			if err == nil || result.UsageKnown || result.ProviderRequestID != "unknown-bill" {
+				t.Fatalf("invalid usage claimed known: %#v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestFitSingleEvidenceToSerializedLimit(t *testing.T) {
+	for _, text := range []string{strings.Repeat("中", 512), strings.Repeat("\"\\\n<>&中", 10000)} {
+		config := reportSnapshot{Model: Model{Name: "fixture"}, SystemPrompt: reportSystemPrompt, MaxInputTokens: 256, MaxOutputTokens: 64}
+		input := modelInput{SchemaVersion: SchemaVersion, Limitations: []string{}, Evidence: []modelEvidence{{ID: "e-1", Kind: "transcript", StartMS: 0, EndMS: 1000, TextContent: text, TextSHA256: digestBytes([]byte(text))}}}
+		fitted, err := fitModelInputToRequest(input, config, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := buildReportRequest(fitted, config)
+		if err != nil || !json.Valid(body) || len(body) > config.MaxInputTokens*8 {
+			t.Fatalf("invalid bounded body: %d, %v", len(body), err)
+		}
+		e := fitted.Evidence[0]
+		if e.TextContent == "" || !utf8.ValidString(e.TextContent) || len(e.TextContent) >= len(text) || e.TextSHA256 != digestBytes([]byte(e.TextContent)) || input.Evidence[0].TextContent != text {
+			t.Fatalf("invalid excerpt or source mutation: %#v", e)
+		}
+		if !strings.Contains(strings.Join(fitted.Limitations, ","), "MODEL_INPUT_TRUNCATED:e-1") {
+			t.Fatal("missing disclosure")
+		}
+		config.MaxInputTokens = 1
+		if _, err = fitModelInputToRequest(input, config, 0); err == nil {
+			t.Fatal("impossible packaging must fail")
+		}
 	}
 }
 

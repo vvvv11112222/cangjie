@@ -89,27 +89,32 @@ func (s *Service) callReportModel(ctx context.Context, body []byte) (modelCallRe
 		return modelCallResult{}, fmt.Errorf("report provider returned status %d", resp.StatusCode)
 	}
 	var envelope struct {
-		ID      string `json:"id"`
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     *int64 `json:"prompt_tokens"`
-			CompletionTokens *int64 `json:"completion_tokens"`
-		} `json:"usage"`
+		ID      string          `json:"id"`
+		Choices json.RawMessage `json:"choices"`
+		Usage   json.RawMessage `json:"usage"`
 	}
-	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) != 1 {
+	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return modelCallResult{}, fmt.Errorf("report provider response is invalid")
 	}
 	result := modelCallResult{ProviderRequestID: envelope.ID}
-	if envelope.Usage.PromptTokens != nil && envelope.Usage.CompletionTokens != nil && *envelope.Usage.PromptTokens >= 0 && *envelope.Usage.CompletionTokens >= 0 {
-		result.InputTokens = *envelope.Usage.PromptTokens
-		result.OutputTokens = *envelope.Usage.CompletionTokens
+	var usage struct {
+		PromptTokens     *int64 `json:"prompt_tokens"`
+		CompletionTokens *int64 `json:"completion_tokens"`
+	}
+	if json.Unmarshal(envelope.Usage, &usage) == nil && usage.PromptTokens != nil && usage.CompletionTokens != nil && *usage.PromptTokens >= 0 && *usage.CompletionTokens >= 0 {
+		result.InputTokens = *usage.PromptTokens
+		result.OutputTokens = *usage.CompletionTokens
 		result.UsageKnown = true
 	}
-	if err := decodeStrict([]byte(envelope.Choices[0].Message.Content), &result.Candidate); err != nil {
+	var choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(envelope.Choices, &choices); err != nil || len(choices) != 1 {
+		return result, fmt.Errorf("report provider choices are invalid")
+	}
+	if err := decodeStrict([]byte(choices[0].Message.Content), &result.Candidate); err != nil {
 		return result, fmt.Errorf("report candidate is invalid: %w", err)
 	}
 	return result, nil
