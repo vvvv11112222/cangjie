@@ -9,6 +9,7 @@ import type {
   Evidence,
   Interval,
   Job,
+  Media,
   Observation,
   Report,
   ReportProvenance,
@@ -24,6 +25,7 @@ import {
   asBoolean,
   asEnum,
   asInteger,
+  asNullableInteger,
   asNullableString,
   asRecord,
   asString,
@@ -33,6 +35,7 @@ import {
   objectList,
   stringList,
 } from './guards';
+import { sameId } from './ids';
 
 import reportDraftJson from '../../../contracts/examples/report-draft.json';
 import resultsJson from '../../../contracts/examples/results.json';
@@ -47,6 +50,7 @@ export const FIXTURES = {
   results: 'contracts/examples/results.json',
   revision: 'contracts/examples/revision.json',
   report: 'contracts/examples/report-draft.json',
+  playbackSample: 'frontend/public/samples/m2-playback-demo.mp4',
 } as const;
 
 const SESSION_STATUSES = ['planned', 'ready', 'archived', 'deleting', 'deleted'] as const;
@@ -75,6 +79,9 @@ const JOB_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'cancelled', '
 const EVIDENCE_KINDS = ['transcript', 'frame', 'manual', 'behavior'] as const;
 const EVIDENCE_AVAILABILITY = ['available', 'expired', 'removed'] as const;
 const REVISION_SOURCE_TYPES = ['asr', 'manual'] as const;
+export const MEDIA_KINDS = ['source', 'proxy', 'audio', 'keyframe', 'report_export'] as const;
+export const MEDIA_STATUSES = ['pending', 'ready', 'failed', 'deleting', 'deleted'] as const;
+export const MEDIA_ACTIONS = ['prepare_media', 'analyze', 'playback', 'select_primary'] as const;
 const REPORT_STATUSES = ['draft', 'in_review', 'published', 'superseded', 'withdrawn'] as const;
 const REPORT_ACTIONS = [
   'edit',
@@ -319,6 +326,82 @@ export function parseReport(value: unknown, path = 'Report'): Report {
         : parseProvenance(asRecord(provenance, `${path}.provenance`), `${path}.provenance`),
     allowed_actions: enumList(source, 'allowed_actions', path, REPORT_ACTIONS),
   };
+}
+
+/** 解析 Media（GET /media/{id} 的 data，以及 MediaPage.items 的每一项）。 */
+export function parseMedia(value: unknown, path = 'Media'): Media {
+  const source = asRecord(value, path);
+  const playbackUrl = asNullableString(source, 'playback_url', path);
+  // Schema 规定播放地址只能是 /api/v1/media/...；固定样例模式的本地改写不经过这里，
+  // 而是 fixtureMediaFor 在解析之后替换，这样"样例数据"与"离线播放地址"两件事不会混起来。
+  if (playbackUrl !== null && !playbackUrl.startsWith('/api/v1/media/')) {
+    guardFail(`${path}.playback_url`, '应为 /api/v1/media/ 开头的地址或 null');
+  }
+  return {
+    id: asString(source, 'id', path),
+    session_id: asString(source, 'session_id', path),
+    source_record_id: asNullableString(source, 'source_record_id', path),
+    parent_asset_id: asNullableString(source, 'parent_asset_id', path),
+    kind: asEnum(source, 'kind', path, MEDIA_KINDS),
+    status: asEnum(source, 'status', path, MEDIA_STATUSES),
+    sha256: asString(source, 'sha256', path),
+    mime_type: asString(source, 'mime_type', path),
+    byte_size: asInteger(source, 'byte_size', path),
+    duration_ms: asNullableInteger(source, 'duration_ms', path),
+    expires_at: asNullableString(source, 'expires_at', path),
+    playback_asset_id: asNullableString(source, 'playback_asset_id', path),
+    playback_url: playbackUrl,
+    allowed_actions: enumList(source, 'allowed_actions', path, MEDIA_ACTIONS),
+  };
+}
+
+/**
+ * M2 回放用的合成媒体样例。
+ *
+ * 契约里的 Media 没有独立样例文件（contracts/examples/api-cases.json 只有 DTO 形状用例），
+ * 所以这里按 contracts/v1.schema.json 的 Media 定义构造一份**合成**数据，没有真实课堂内容。
+ * 它刻意与 session-page.json 里那条课堂对齐：id 就是该课堂的 primary_media_asset_id，
+ * 这样"回放"标签在固定样例模式下也有东西可播。
+ *
+ * playback_url 用服务端同款形式 /api/v1/media/{playback_asset_id}/content
+ * （见后端 setPlaybackURL：kind=source 时播放的是它派生的播放资产）。
+ * sha256/byte_size/duration_ms 必须与仓库内合成样例视频一致，由 samples.test.ts 校验。
+ */
+const playbackMediaJson = {
+  id: '00000000-0000-4000-8000-000000000002',
+  session_id: '00000000-0000-4000-8000-000000000001',
+  source_record_id: '00000000-0000-4000-8000-000000000006',
+  parent_asset_id: null,
+  kind: 'source',
+  status: 'ready',
+  sha256: '497f4aeb84444229a6037f3b43147ab39262937427e4ad90cb77ed1694c5bc3d',
+  mime_type: 'video/mp4',
+  byte_size: 572814,
+  duration_ms: 30000,
+  expires_at: '2027-10-02T09:00:00+08:00',
+  playback_asset_id: '00000000-0000-4000-8000-000000000004',
+  playback_url: '/api/v1/media/00000000-0000-4000-8000-000000000004/content',
+  allowed_actions: ['playback'],
+};
+
+export const playbackMedia: Media = parseMedia(playbackMediaJson, 'playbackMedia');
+
+/**
+ * 固定样例模式下的播放地址：仓库内自带的合成样例视频。
+ *
+ * 为什么可以改写 playback_url：固定样例模式不连后端，浏览器要能真的取到字节；
+ * 接口模式从不使用这个常量，播放地址一律用服务端返回的 playback_url。
+ * 页面的数据来源提示会写明"播放的是仓库内合成样例视频"，不把它说成后端媒体。
+ */
+export const FIXTURE_PLAYBACK_SRC = `${import.meta.env.BASE_URL}samples/m2-playback-demo.mp4`;
+
+/** 按媒体 id 或它派生播放资产的 id 取合成样例；其它 id 返回 null（超出固定样例范围）。 */
+export function fixtureMediaFor(id: string): Media | null {
+  const playbackAssetId = playbackMedia.playback_asset_id;
+  if (!sameId(id, playbackMedia.id) && (playbackAssetId === null || !sameId(id, playbackAssetId))) {
+    return null;
+  }
+  return { ...playbackMedia, playback_url: FIXTURE_PLAYBACK_SRC };
 }
 
 export const sessionPage: SessionPage = parseSessionPage(sessionPageJson);
