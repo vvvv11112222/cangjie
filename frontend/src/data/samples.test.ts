@@ -1,5 +1,19 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { parseReport, parseSessionPage, report, results, revision, run, sessionPage } from './samples';
+import {
+  fixtureMediaFor,
+  parseMedia,
+  parseReport,
+  parseSessionPage,
+  playbackMedia,
+  report,
+  results,
+  revision,
+  run,
+  sessionPage,
+} from './samples';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewModel';
 import reportDraft from '../../../contracts/examples/report-draft.json';
 
@@ -18,6 +32,32 @@ describe('固定样例解析', () => {
     expect(() => parseSessionPage({ items: [{}], next_cursor: null }, 'SessionPage')).toThrowError(
       /SessionPage\.items\[0\]\.id/,
     );
+  });
+
+  it('媒体样例不符合协议时报错可定位', () => {
+    expect(() => parseMedia({ ...playbackMedia, kind: 'video' }, 'Media')).toThrowError(/Media\.kind/);
+    // Schema 规定播放地址只能是 /api/v1/media/...：本地离线地址不能伪装成协议里的 playback_url。
+    expect(() => parseMedia({ ...playbackMedia, playback_url: '/samples/x.mp4' }, 'Media')).toThrowError(
+      /Media\.playback_url/,
+    );
+    expect(() => parseMedia({ ...playbackMedia, duration_ms: null }, 'Media')).not.toThrow();
+  });
+
+  it('回放样例的 sha256 与字节数必须和仓库内样例视频一致', () => {
+    const bytes = readFileSync(
+      fileURLToPath(new URL('../../public/samples/m2-playback-demo.mp4', import.meta.url)),
+    );
+    expect(bytes.byteLength).toBe(playbackMedia.byte_size);
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(playbackMedia.sha256);
+  });
+
+  it('固定样例模式把播放地址改写到仓库内样例视频，其它 id 不编造媒体', () => {
+    const media = fixtureMediaFor(playbackMedia.id);
+    expect(media?.playback_url).toBe(`${import.meta.env.BASE_URL}samples/m2-playback-demo.mp4`);
+    expect(media?.id).toBe(playbackMedia.id);
+    // 用播放资产 id 也能取到同一条媒体（协议里播放地址指向播放资产）。
+    expect(fixtureMediaFor(playbackMedia.playback_asset_id ?? '')?.id).toBe(playbackMedia.id);
+    expect(fixtureMediaFor('00000000-0000-4000-8000-0000000000ff')).toBeNull();
   });
 });
 

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { AccountBar } from './components/AccountBar';
+import { IconHome, IconReport, IconTask, IconTranscript } from './components/icons';
+import { parseSessionRoute } from './data/route';
 import { DATA_SOURCE_KIND, DATA_SOURCE_LABEL } from './data/sources';
 import { ReportPage } from './pages/ReportPage';
+import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
 
@@ -25,6 +28,13 @@ const PAGES: Record<(typeof NAV_ROUTES)[number]['path'], () => ReactElement> = {
 
 const DEFAULT_ROUTE = NAV_ROUTES[0].path;
 
+/** 导航图标按路由固定；图标只是视觉标记，点击行为仍然完全由上面的 <a> 决定。 */
+const NAV_ICONS: Record<(typeof NAV_ROUTES)[number]['path'], ReactElement> = {
+  '#/sessions': <IconTask size={16} />,
+  '#/transcript': <IconTranscript size={16} />,
+  '#/reports': <IconReport size={16} />,
+};
+
 /**
  * 唯一的页面导航入口，宽屏在侧栏、窄屏在顶部导航条（见 styles.css 的 900px 断点）。
  * 三个页面的链接都从这里渲染，避免出现某一种布局下没有入口的情况。
@@ -40,6 +50,7 @@ export function NavLinks({ current }: { current: string }): ReactElement {
           href={item.path}
           aria-current={item.path === current ? 'page' : undefined}
         >
+          <span className="nav-icon" aria-hidden="true">{NAV_ICONS[item.path]}</span>
           {item.label}
         </a>
       ))}
@@ -59,7 +70,12 @@ function useHashRoute(): string {
 
 export function App(): ReactElement {
   const hash = useHashRoute();
-  const route = NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  // 解析在纯函数里完成：畸形编码或非法 UUID 变成受控提示，不会抛到 React 根节点（F09/F10）。
+  const sessionRoute = parseSessionRoute(hash);
+  const detailId = sessionRoute.kind === 'detail' ? sessionRoute.sessionId : null;
+  const route = detailId !== null ? NAV_ROUTES[0] : NAV_ROUTES.find((item) => item.path === hash) ?? NAV_ROUTES[0];
+  const breadcrumbTitle =
+    sessionRoute.kind === 'invalid' ? '课堂地址无效' : detailId !== null ? '课堂详情' : route.title;
   const dataBadge =
     DATA_SOURCE_KIND === 'api'
       ? `${DATA_SOURCE_LABEL.api} · 走 /api/v1`
@@ -75,7 +91,7 @@ export function App(): ReactElement {
             <div className="brand-caption">教学质量管理系统</div>
           </div>
         </div>
-        <NavLinks current={route.path} />
+        <NavLinks current={detailId !== null ? NAV_ROUTES[0].path : route.path} />
         <AccountBar />
         <div className="sidebar-note">
           <p>M1 数据访问层</p>
@@ -88,13 +104,32 @@ export function App(): ReactElement {
       <div className="workspace">
         <header className="topbar">
           <div className="breadcrumb">
+            <IconHome size={15} className="crumb-icon" />
             <span className="muted">教学工作空间</span>
             <span className="crumb-divider">/</span>
-            <strong>{route.title}</strong>
+            <strong>{breadcrumbTitle}</strong>
           </div>
           <span className="prototype-badge">{dataBadge}</span>
         </header>
-        <main id="main">{PAGES[route.path]()}</main>
+        <main id="main">
+          {sessionRoute.kind === 'invalid' ? (
+            <div className="page">
+              <header className="page-head">
+                <div>
+                  <p className="eyebrow">
+                    <a href="#/sessions">← 返回课堂列表</a>
+                  </p>
+                  <h1>课堂地址无效</h1>
+                  <p className="muted">{sessionRoute.message}</p>
+                </div>
+              </header>
+            </div>
+          ) : detailId !== null ? (
+            <SessionDetailPage key={detailId} sessionId={detailId} />
+          ) : (
+            PAGES[route.path]()
+          )}
+        </main>
         <footer className="workspace-footer">
           <span>观课 · 让教学观察有据可循</span>
           <span className="muted tiny">

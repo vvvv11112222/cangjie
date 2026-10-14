@@ -50,6 +50,8 @@ export interface RequestOptions {
   body?: unknown;
   /** 是否需要携带 X-CSRF-Token，写请求都要打开。 */
   csrf?: boolean;
+  /** 协议第 1.1 节要求的幂等键：创建批次、导出、清理等写请求需要。 */
+  idempotencyKey?: string;
 }
 
 /** 拼出 /api/v1/... 的完整路径，跳过空查询参数。 */
@@ -81,8 +83,12 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** 把错误信封转成 ApiError；信封本身不符合协议时降级为 MALFORMED_RESPONSE。 */
-function toApiError(payload: unknown, status: number): ApiError {
+/**
+ * 把错误信封转成 ApiError；信封本身不符合协议时降级为 MALFORMED_RESPONSE。
+ * 导出的原因：文件字节类接口（例如播放地址）由浏览器直接请求，页面拿不到状态码，
+ * 需要自己在数据层预检一次，用的必须是同一套错误码映射，不能各写一份。
+ */
+export function responseError(payload: unknown, status: number): ApiError {
   const envelope = isRecord(payload) ? payload : null;
   const error = envelope !== null && isRecord(envelope['error']) ? envelope['error'] : null;
   const requestId = envelope !== null && typeof envelope['request_id'] === 'string' ? envelope['request_id'] : null;
@@ -115,7 +121,7 @@ function toApiError(payload: unknown, status: number): ApiError {
  * 调用方拿到的是协议里的 data 部分；request_id 一并返回，方便页面或日志附带。
  */
 export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<Envelope<T>> {
-  const { method = 'GET', query, body, csrf = false } = options;
+  const { method = 'GET', query, body, csrf = false, idempotencyKey } = options;
   const headers: Record<string, string> = { Accept: 'application/json' };
   const init: RequestInit = { method, headers, credentials: 'same-origin' };
 
@@ -133,10 +139,37 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     }
     headers['X-CSRF-Token'] = csrfToken;
   }
+  if (idempotencyKey !== undefined && idempotencyKey !== '') {
+    headers['Idempotency-Key'] = idempotencyKey;
+  }
 
+  return requestRaw<T>(apiPath(path, query), init);
+}
+
+/**
+ * 发送 multipart 请求（例如上传媒体）。浏览器自己带 multipart 边界，所以这里
+ * 不手工设置 Content-Type；错误仍按统一错误信封处理。
+ */
+export async function requestFormData<T>(
+  path: string,
+  form: FormData,
+  options: { csrf?: boolean } = {},
+): Promise<Envelope<T>> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (options.csrf === true) {
+    if (csrfToken === null) {
+      throw new ApiError({ code: 'FORBIDDEN', status: 0, message: '缺少 CSRF 令牌，写请求未发送' });
+    }
+    headers['X-CSRF-Token'] = csrfToken;
+  }
+  return requestRaw<T>(apiPath(path), { method: 'POST', headers, body: form, credentials: 'same-origin' });
+}
+
+/** 发送请求并按统一信封解析：成功返回 data，失败抛 ApiError。 */
+async function requestRaw<T>(path: string, init: RequestInit): Promise<Envelope<T>> {
   let response: Response;
   try {
-    response = await fetch(apiPath(path, query), init);
+    response = await fetch(path, init);
   } catch (error) {
     throw new ApiError({
       code: 'NETWORK_ERROR',
@@ -157,7 +190,7 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   }
 
   if (!response.ok) {
-    throw toApiError(payload, response.status);
+    throw responseError(payload, response.status);
   }
 
   // 204 与文件字节没有 JSON 包装；业务 JSON 接口成功时必须是 {data,request_id}。

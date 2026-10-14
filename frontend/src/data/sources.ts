@@ -9,10 +9,57 @@
  * 这些接口后端尚未实现，api 模式下会返回 NOT_FOUND，页面会显示可读提示而不是假数据。
  */
 
-import type { Report, Results, Revision, Run, SessionPage, SessionStatus } from '../types';
+import type {
+  Media,
+  MediaAction,
+  MediaKind,
+  MediaStatus,
+  Report,
+  Results,
+  Revision,
+  Run,
+  SessionPage,
+  SessionStatus,
+} from '../types';
 import { ApiError } from './errors';
-import { parseReport, parseResults, parseRevision, parseRun, parseSessionPage, fixtures } from './samples';
+import { asArray, asEnum, asNullableString, asRecord, asString, enumList } from './guards';
+import {
+  MEDIA_ACTIONS,
+  MEDIA_KINDS,
+  MEDIA_STATUSES,
+  fixtureMediaFor,
+  fixtures,
+  parseMedia,
+  parseReport,
+  parseResults,
+  parseRevision,
+  parseRun,
+  parseSessionPage,
+} from './samples';
 import { requestJson } from './http';
+
+/** Media 的枚举常量与类型；取值见 contracts/v1.schema.json 的 Media。 */
+export { MEDIA_ACTIONS, MEDIA_KINDS, MEDIA_STATUSES };
+export type { MediaAction, MediaKind, MediaStatus } from '../types';
+
+/**
+ * 媒体列表里挑原媒体需要的字段。
+ * allowed_actions 必须保留：评审意见 N05 指出，不能用 Session 的授权覆盖所选媒体自己的用途
+ * （Session 允许 analyze、但该媒体只允许 playback 时，不能启用"提交分析"）。
+ * 完整的 Media DTO 校验等接入媒体详情页时再补，这里不做多余字段的假设。
+ */
+export interface MediaLite {
+  id: string;
+  kind: MediaKind;
+  status: MediaStatus;
+  allowed_actions: MediaAction[];
+}
+
+/** MediaPage 的一页；游标要保留并继续消费（评审意见 N04）。 */
+export interface MediaPageLite {
+  items: MediaLite[];
+  nextCursor: string | null;
+}
 
 export type DataSourceKind = 'fixtures' | 'api';
 
@@ -38,6 +85,10 @@ export interface SessionQuery {
 export interface DataSource {
   readonly kind: DataSourceKind;
   getSessions(query?: SessionQuery): Promise<SessionPage>;
+  /** GET /sessions/{id}/media；cursor 为空表示第一页（协议第 1 节：游标不透明）。 */
+  getSessionMedia(sessionId: string, cursor?: string): Promise<MediaPageLite>;
+  /** GET /media/{id}；播放地址、有效期与 allowed_actions 都以这条响应为准。 */
+  getMedia(id: string): Promise<Media>;
   getRun(id: string): Promise<Run>;
   /** 结果挂在批次下：GET /analysis-runs/{id}/results。 */
   getResults(runId: string): Promise<Results>;
@@ -61,6 +112,23 @@ function malformed(error: unknown, status = 200): ApiError {
   });
 }
 
+/** 解析 MediaPage；保留 next_cursor 供继续读取（评审意见 N04）。 */
+function parseMediaPage(value: unknown): MediaPageLite {
+  const page = asRecord(value, 'MediaPage');
+  const nextCursor = asNullableString(page, 'next_cursor', 'MediaPage');
+  const items = asArray(page['items'], 'MediaPage.items').map((item, index) => {
+    const path = `MediaPage.items[${index}]`;
+    const media = asRecord(item, path);
+    return {
+      id: asString(media, 'id', path),
+      kind: asEnum(media, 'kind', path, MEDIA_KINDS),
+      status: asEnum(media, 'status', path, MEDIA_STATUSES),
+      allowed_actions: enumList(media, 'allowed_actions', path, MEDIA_ACTIONS),
+    };
+  });
+  return { items, nextCursor };
+}
+
 /**
  * 样例实现：只认得 contracts/examples 里那几份固定样例，按 id 匹配。
  * 它存在的意义是让页面在无后端时也走完全相同的调用路径。
@@ -69,6 +137,19 @@ export const fixtureSource: DataSource = {
   kind: 'fixtures',
   async getSessions(): Promise<SessionPage> {
     return fixtures.sessionPage;
+  },
+  async getSessionMedia(): Promise<MediaPageLite> {
+    // 固定样例里没有媒体列表；样例模式不使用媒体选择器。
+    return { items: [], nextCursor: null };
+  },
+  async getMedia(id: string): Promise<Media> {
+    // 固定样例模式改为播放仓库内的合成样例视频（见 samples.ts 的 FIXTURE_PLAYBACK_SRC）；
+    // 除这条合成媒体外的 id 都超出样例范围，按 NOT_FOUND 处理，不编造媒体。
+    const media = fixtureMediaFor(id);
+    if (media === null) {
+      throw notFound('playbackMedia', id);
+    }
+    return media;
   },
   async getRun(id: string): Promise<Run> {
     if (id === fixtures.run.id) {
@@ -105,6 +186,24 @@ export const apiSource: DataSource = {
     const { data } = await requestJson<unknown>('/sessions', { query: { ...query } });
     try {
       return parseSessionPage(data);
+    } catch (error) {
+      throw malformed(error);
+    }
+  },
+  async getSessionMedia(sessionId: string, cursor?: string): Promise<MediaPageLite> {
+    const { data } = await requestJson<unknown>(`/sessions/${encodeURIComponent(sessionId)}/media`, {
+      query: { cursor },
+    });
+    try {
+      return parseMediaPage(data);
+    } catch (error) {
+      throw malformed(error);
+    }
+  },
+  async getMedia(id: string): Promise<Media> {
+    const { data } = await requestJson<unknown>(`/media/${encodeURIComponent(id)}`);
+    try {
+      return parseMedia(data);
     } catch (error) {
       throw malformed(error);
     }
@@ -153,7 +252,7 @@ export function resolveDataSourceKind(raw: unknown): DataSourceKind {
 
 export const DATA_SOURCE_KIND: DataSourceKind = resolveDataSourceKind(import.meta.env.VITE_DATA_SOURCE);
 
-/** 当前生效的实现，由开关决定；下面五个函数是数据访问层对外的入口。 */
+/** 当前生效的实现，由开关决定；下面的函数是数据访问层对外的入口。 */
 const selected: DataSource = DATA_SOURCE_KIND === 'api' ? apiSource : fixtureSource;
 
 export const dataLabel: string = DATA_SOURCE_LABEL[DATA_SOURCE_KIND];
@@ -163,18 +262,23 @@ export function isApiMode(): boolean {
 }
 
 export const getSessions = (query?: SessionQuery): Promise<SessionPage> => selected.getSessions(query);
+export const getSessionMedia = (sessionId: string, cursor?: string): Promise<MediaPageLite> =>
+  selected.getSessionMedia(sessionId, cursor);
+export const getMedia = (id: string): Promise<Media> => selected.getMedia(id);
 export const getRun = (id: string): Promise<Run> => selected.getRun(id);
 export const getResults = (runId: string): Promise<Results> => selected.getResults(runId);
 export const getRevision = (id: string): Promise<Revision> => selected.getRevision(id);
 export const getReport = (id: string): Promise<Report> => selected.getReport(id);
 
 /**
- * 把五个入口打包成可注入的数据源，供 loaders 组合调用；测试可以换成指定实现。
+ * 把入口打包成可注入的数据源，供 loaders 组合调用；测试可以换成指定实现。
  * 它和上面的函数是同一份逻辑，不额外分支。
  */
 export const dataSource: DataSource = {
   kind: DATA_SOURCE_KIND,
   getSessions,
+  getSessionMedia,
+  getMedia,
   getRun,
   getResults,
   getRevision,

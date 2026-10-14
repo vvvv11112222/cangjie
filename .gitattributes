@@ -1,0 +1,3 @@
+/workers/** text eol=lf
+/pytest.ini text eol=lf
+/.github/workflows/vision-worker.yml text eol=lf

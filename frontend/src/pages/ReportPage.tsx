@@ -12,9 +12,8 @@ import {
   reportStatusBadge,
   reviewStatusBadge,
   shortId,
-  truncateHash,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill, TechDetails } from '../components/ui';
 
 function CitedEvidence({
   ids,
@@ -44,7 +43,14 @@ function CitedEvidence({
   );
 }
 
-export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): ReactElement {
+export function ReportPage({
+  view: injectedView,
+  embedded = false,
+}: {
+  view?: ReportView;
+  /** 嵌入课堂详情页时隐藏页头与数据来源说明，只保留正文卡片。 */
+  embedded?: boolean;
+} = {}): ReactElement {
   const loaded = useReportData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
@@ -77,16 +83,16 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
   if (!ready) {
     return (
       <div className="page">
-        {head}
-        {notes}
+        {embedded ? null : head}
+        {embedded ? null : notes}
       </div>
     );
   }
 
   return (
     <div className="page">
-      {head}
-      {notes}
+      {embedded ? null : head}
+      {embedded ? null : notes}
 
       <Card title="报告状态" subtitle="版本与内容摘要用于并发检查和复核追溯。">
         <div className="field-grid">
@@ -96,25 +102,12 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
           <Field label="状态">
             <BadgeTag badge={reportStatusBadge(report.status)} />
           </Field>
-          <Field label="报告版本 / 锁定版本">
-            v{report.revision} · lock v{report.lock_version}
-          </Field>
           <Field label="当前发布版">
             {published ? (
               <Pill label="是" tone="green" />
             ) : (
               <span className="muted">否（课堂 current_report_id 为 null）</span>
             )}
-          </Field>
-          <Field label="内容摘要 content_sha256">
-            <span className="mono" title={report.content_sha256 ?? 'null'}>
-              {truncateHash(report.content_sha256)}
-            </span>
-          </Field>
-          <Field label="整篇确认摘要 reviewed_content_sha256">
-            <span className="mono" title={report.reviewed_content_sha256 ?? 'null'}>
-              {truncateHash(report.reviewed_content_sha256)}
-            </span>
           </Field>
           <Field label="复核人 / 时间">
             {report.reviewed_by === null
@@ -130,6 +123,21 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
               : report.allowed_actions.map(reportActionLabel).join('、')}
           </Field>
         </div>
+        {/* 版本号与内容摘要属于并发校验用的字段，收进折叠区，不占业务视线。 */}
+        <TechDetails>
+          <ul className="tech-list">
+            <li className="mono">report.revision = v{report.revision}</li>
+            <li className="mono">report.lock_version = v{report.lock_version}</li>
+            <li className="mono">report.content_sha256 = {report.content_sha256 ?? 'null'}</li>
+            <li className="mono">
+              report.reviewed_content_sha256 = {report.reviewed_content_sha256 ?? 'null'}
+            </li>
+            <li className="mono">report.status = {report.status}</li>
+            <li className="mono">
+              report.allowed_actions = [{report.allowed_actions.join(', ')}]
+            </li>
+          </ul>
+        </TechDetails>
       </Card>
 
       <Card title="总摘要" subtitle="总摘要中的事实也须引用证据。">
@@ -143,7 +151,10 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
       <Card title="六维观察" subtitle={`固定 6 个维度，当前 ${report.dimensions.length} 个`}>
         <div className="dimension-grid">
           {report.dimensions.map((dimension) => (
-            <article key={dimension.dimension_code} className="dimension">
+            <article
+              key={dimension.dimension_code}
+              className={`dimension${dimension.coverage_status === 'observed' ? '' : ' dimension-muted'}`}
+            >
               <header className="dimension-head">
                 <h3>{dimensionLabel(dimension.dimension_code)}</h3>
                 <BadgeTag badge={coverageStatusBadge(dimension.coverage_status)} />
@@ -197,19 +208,12 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
         {report.provenance === null ? (
           <p className="empty">provenance 为 null；旧版无法补证的字段应保持 null 并标记为历史记录。</p>
         ) : (
-          <div className="field-grid">
+          <>
+            <div className="field-grid">
             <Field label="模型">
               {report.provenance.model.name} · {report.provenance.model.revision}
             </Field>
-            <Field label="提示词版本">
-              {report.provenance.prompt_version}（{truncateHash(report.provenance.prompt_sha256)}）
-            </Field>
-            <Field label="输入清单摘要">
-              <span className="mono">{truncateHash(report.provenance.manifest_sha256)}</span>
-            </Field>
-            <Field label="输入内容摘要">
-              <span className="mono">{truncateHash(report.provenance.input_sha256)}</span>
-            </Field>
+            <Field label="提示词版本">{report.provenance.prompt_version}</Field>
             <Field label="输入转写修订">
               {report.provenance.transcript_revision_id === null ? (
                 <span className="muted">null</span>
@@ -242,7 +246,20 @@ export function ReportPage({ view: injectedView }: { view?: ReportView } = {}): 
             <Field label="批次样例">
               {run === null ? '报告 run_id 没有对应批次数据' : `run.status=${run.status}`}
             </Field>
-          </div>
+            </div>
+            {/* 各类 sha256 是追溯用的校验值，完整值放进折叠区，页面上只留模型与来源。 */}
+            <TechDetails>
+              <ul className="tech-list">
+                <li className="mono">provenance.prompt_sha256 = {report.provenance.prompt_sha256}</li>
+                <li className="mono">provenance.manifest_sha256 = {report.provenance.manifest_sha256}</li>
+                <li className="mono">provenance.input_sha256 = {report.provenance.input_sha256}</li>
+                <li className="mono">
+                  provenance.transcript_revision_id = {report.provenance.transcript_revision_id ?? 'null'}
+                </li>
+                <li className="mono">provenance.media_asset_id = {report.provenance.media_asset_id}</li>
+              </ul>
+            </TechDetails>
+          </>
         )}
       </Card>
 

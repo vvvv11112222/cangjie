@@ -12,16 +12,23 @@ import {
   shortId,
   sourceTypeBadge,
   speakerLabel,
-  truncateHash,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, TechDetails } from '../components/ui';
+import { IconAlert } from '../components/icons';
 
 /** 证据与片段的业务关联在后端建立；样例用 provenance.source_segment_no 表达。 */
 function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] {
   return evidence.filter((item) => item.provenance['source_segment_no'] === segment.segment_no);
 }
 
-export function TranscriptPage({ view: injectedView }: { view?: TranscriptView } = {}): ReactElement {
+export function TranscriptPage({
+  view: injectedView,
+  embedded = false,
+}: {
+  view?: TranscriptView;
+  /** 嵌入课堂详情页时隐藏页头与数据来源说明，只保留正文卡片。 */
+  embedded?: boolean;
+} = {}): ReactElement {
   const loaded = useTranscriptData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
@@ -53,44 +60,65 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
   if (!ready) {
     return (
       <div className="page">
-        {head}
-        {notes}
+        {embedded ? null : head}
+        {embedded ? null : notes}
       </div>
     );
   }
 
   return (
     <div className="page">
-      {head}
-      {notes}
+      {embedded ? null : head}
+      {embedded ? null : notes}
 
       <Card
         title="结果摘要"
         subtitle="空数组是否因为尚未生成，必须结合批次状态判断，不能仅凭数组为空下结论。"
       >
         <div className="field-grid">
-          <Field label="run_status">
+          <Field label="批次状态">
             <BadgeTag badge={runStatusBadge(results.run_status)} />
           </Field>
-          <Field label="transcript_revision_id">
+          <Field label="转写修订">
             {results.transcript_revision_id === null ? (
               <span className="muted">null</span>
             ) : (
               <IdChip id={results.transcript_revision_id} />
             )}
           </Field>
-          <Field label="segments / evidence">
+          <Field label="转写片段 / 证据">
             {segments.length} 段 · {evidence.length} 条证据
           </Field>
-          <Field label="frames / events">
+          <Field label="关键帧 / 事件">
             {results.frames.length} 帧 · {results.events.length} 事件
           </Field>
-          <Field label="批次样例状态">
-            {run === null ? '无对应批次样例' : `run-partial.status=${run.status}（${run.status === results.run_status ? '与结果一致' : '与结果不一致'}）`}
-          </Field>
         </div>
+        {/* 协议字段名下沉到技术详情，页面上只留人能读懂的信息。 */}
+        <TechDetails>
+          <ul className="tech-list">
+            <li className="mono">results.run_status = {results.run_status}</li>
+            <li className="mono">
+              results.transcript_revision_id = {results.transcript_revision_id ?? 'null'}
+            </li>
+            <li className="mono">
+              results.segments = {segments.length} 项 · results.evidence = {evidence.length} 项
+            </li>
+            <li className="mono">
+              results.frames = {results.frames.length} 项 · results.events = {results.events.length} 项
+            </li>
+            <li className="mono">
+              run-partial.status ={' '}
+              {run === null
+                ? 'null（没有对应批次数据）'
+                : `${run.status}（${run.status === results.run_status ? '与结果一致' : '与结果不一致'}）`}
+            </li>
+          </ul>
+        </TechDetails>
         {results.limitations.length > 0 ? (
-          <p className="callout callout-amber">结果限制：{results.limitations.join('；')}</p>
+          <p className="notice-strip">
+            <IconAlert size={14} aria-hidden="true" />
+            结果限制：{results.limitations.join('；')}
+          </p>
         ) : null}
       </Card>
 
@@ -122,13 +150,16 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
               <IdChip id={revision.created_by} />
             </Field>
             <Field label="修订原因">{revision.reason}</Field>
-            <Field label="转写锁版本">v{revision.transcript_lock_version}</Field>
-            <Field label="内容摘要">
-              <span className="mono" title={revision.content_sha256}>
-                {truncateHash(revision.content_sha256)}
-              </span>
-            </Field>
           </div>
+          <TechDetails>
+            <ul className="tech-list">
+              <li className="mono">revision.source_type = {revision.source_type}</li>
+              <li className="mono">
+                revision.transcript_lock_version = v{revision.transcript_lock_version}
+              </li>
+              <li className="mono">revision.content_sha256 = {revision.content_sha256}</li>
+            </ul>
+          </TechDetails>
         </Card>
       )}
 
@@ -139,7 +170,7 @@ export function TranscriptPage({ view: injectedView }: { view?: TranscriptView }
           </p>
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-transcript">
               <thead>
                 <tr>
                   <th>#</th>

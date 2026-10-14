@@ -8,6 +8,8 @@ import type {
   Interval,
   JobStage,
   JobStatus,
+  MediaKind,
+  MediaStatus,
   ObservationType,
   ReportAction,
   ReportStatus,
@@ -21,7 +23,12 @@ import type {
 } from './types';
 import type { AccountAction, RoleCode } from './data/authApi';
 
-export type Tone = 'green' | 'blue' | 'amber' | 'red' | 'gray';
+/**
+ * 状态色调。`teal` 是本次视觉规范新增的强调色，只用于"进行中"这类
+ * 品牌色状态；它和 `green`（已成功）分成两个色调，避免"进行中"和
+ * "已完成"看起来是同一个状态。
+ */
+export type Tone = 'green' | 'blue' | 'amber' | 'red' | 'gray' | 'teal';
 
 export interface Badge {
   label: string;
@@ -90,7 +97,7 @@ const SESSION_STATUS: Record<SessionStatus, Badge> = {
 
 const RUN_STATUS: Record<RunStatus, Badge> = {
   queued: { label: '排队中', tone: 'gray' },
-  running: { label: '分析中', tone: 'blue' },
+  running: { label: '分析中', tone: 'teal' },
   succeeded: { label: '已完成', tone: 'green' },
   partial: { label: '部分完成', tone: 'amber' },
   failed: { label: '已失败', tone: 'red' },
@@ -99,7 +106,11 @@ const RUN_STATUS: Record<RunStatus, Badge> = {
 
 const JOB_STATUS: Record<JobStatus, Badge> = {
   queued: { label: '排队', tone: 'gray' },
-  running: { label: '进行中', tone: 'blue' },
+  /*
+   * 批次和阶段的"运行中"统一用强调色（青绿），橙色只留给"部分完成""证据不足"
+   * 这类需要留意的警告语义，避免两个状态撞成同一种颜色。
+   */
+  running: { label: '进行中', tone: 'teal' },
   succeeded: { label: '成功', tone: 'green' },
   failed: { label: '失败', tone: 'red' },
   cancelled: { label: '已取消', tone: 'gray' },
@@ -119,6 +130,26 @@ const RUN_MODE: Record<RunMode, string> = {
   full: '完整分析',
   report_only: '仅重新生成报告',
   media_prepare: '仅媒体准备',
+};
+
+const MEDIA_KIND: Record<MediaKind, string> = {
+  source: '原媒体',
+  proxy: '播放代理',
+  audio: '音轨',
+  keyframe: '关键帧',
+  report_export: '报告导出',
+};
+
+/*
+ * deleting 归入"需注意"（amber）：它既不是成功也不是失败，期间读取会被逐步撤销；
+ * deleted 用红色，和"已撤回""已删除"其他资源保持同一语义。
+ */
+const MEDIA_STATUS: Record<MediaStatus, Badge> = {
+  pending: { label: '待处理', tone: 'gray' },
+  ready: { label: '就绪', tone: 'green' },
+  failed: { label: '失败', tone: 'red' },
+  deleting: { label: '删除中', tone: 'amber' },
+  deleted: { label: '已删除', tone: 'red' },
 };
 
 const DIMENSION: Record<DimensionCode, string> = {
@@ -208,6 +239,8 @@ export const runStatusBadge = (value: RunStatus): Badge => RUN_STATUS[value];
 export const jobStatusBadge = (value: JobStatus): Badge => JOB_STATUS[value];
 export const jobStageLabel = (value: JobStage): string => JOB_STAGE[value];
 export const runModeLabel = (value: RunMode): string => RUN_MODE[value];
+export const mediaKindLabel = (value: MediaKind): string => MEDIA_KIND[value];
+export const mediaStatusBadge = (value: MediaStatus): Badge => MEDIA_STATUS[value];
 export const dimensionLabel = (value: DimensionCode): string => DIMENSION[value];
 export const coverageStatusBadge = (value: CoverageStatus): Badge => COVERAGE_STATUS[value];
 export const observationTypeBadge = (value: ObservationType): Badge => OBSERVATION_TYPE[value];

@@ -1,6 +1,6 @@
 # 教学质量管理系统
 
-文档 v0.6，2026-10-05。当前仓库包含开发文档、接口样例、数据库脚本，以及可运行的 Go 后端。M0 已具备 Go 后端环境、启动入口、身份权限、基础教务资料和角色测试账号等支撑能力；M1 已具备课表、课堂目录、来源登记、录像上传及授权回放等后端前置能力，跨模块纵向联调仍未完成；M2～M4 继续按里程碑逐步实现。
+文档 v0.7，2026-10-14。当前仓库包含开发文档、接口样例、数据库迁移、Go 后端、React 前端及 Python 视频 Worker。后端已提供课堂、媒体、任务、证据、报告、复核发布及治理接口；前端已提供课堂详情与回放，视频 Worker 已提供媒体处理和清理回执。音频 Worker、真实 ASR、报告模型配置及部分前端管理/复核页面仍待交付，M1～M4 的整体完成以验收计划和实际验证结果为准。
 
 ## 从这里开始
 
@@ -24,6 +24,11 @@
 - `database/`：迁移和约束验证；新库按编号依次执行001～008，旧库只执行未应用迁移。007核验历史运行时约束，008新增Worker清理回执；[数据库联合验收](docs/数据库联合验收.md)提供分权、升级及多连接验证入口。
 - `tools/`：文档/协议检查、隔离数据库检查。
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
+- [frontend/UI约定.md](frontend/UI约定.md)：前端展示层约定——颜色变量、状态色调、新页面骨架与窄屏规则。
+
+## Python 视频模块
+
+视频模块已提供媒体检查、播放代理、关键帧及严格 1.1 Worker 回传代码，复用已有 vision-lab 0.4.3 的行为分析能力。Go 的内部任务接口已实现；Worker 经这些接口领取任务、读取媒体和回传产物。安装、启动、测试与结果边界见 [视频模块说明](workers/README.md)，队友接入与验证记录见 [交接说明](workers/HANDOFF.md)，提交清单见 [commits 报告](workers/COMMITS.md)。清理功能默认关闭，启用前须确认后端完整协议及 Worker 身份和暂存目录的独占归属。
 
 ## Go 后端运行骨架
 
@@ -152,14 +157,14 @@ node tools/check_prototype.mjs
 
 数据库验证命令见[数据库设计第6节](docs/数据库设计.md#6-执行与验证)。
 
-真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库没有真实授权样本，也尚无音视频成员交付的可启动 Worker；当前 Go 服务已具备 M0 后端环境，以及 M1 所需的身份、教务、课表、课堂、媒体和分析任务前置能力，固定 JSON 可通过内部接口联调。真实 probe/代理、ASR、关键帧、证据和报告仍待跨模块接入与验收，不能把后端任务链路或固定结果误报为 M1/M2 整体完成。
+真实 ASR 评测入口为 `python tools/check_quality.py <受控本地评测.json>`，格式及已确认的暂定门槛见[验收计划](docs/开发与验收计划.md#3-样本与质量验证)。本仓库不附真实课堂样本；React 与视频 Worker 已有独立运行入口。媒体准备与回放可通过 Go 联调，真实 ASR、六维报告、完整修订发布和故障恢复仍须按验收计划完成共同验证。检查通过仅说明相应契约、SQL、草图行为、已实现接口或度量工具通过，不能代替真实音视频效果与模型验收。
 
-## 前端（M1 数据访问层）
+## 前端（数据访问层与 M2 回放）
 
 `frontend/` 为 React 19 + Vite + TypeScript 工程。页面为课堂任务（`#/sessions`）、转写（`#/transcript`）、报告（`#/reports`），三个页面统一经 `frontend/src/data/` 的数据访问层取数，不再各自读样例文件：
 
 - **默认读取 `contracts/examples` 固定样例**，不依赖后端，克隆仓库即可离线打开；
-- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getRun`、`getResults`、`getReport` 分别对应 `GET /sessions`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/reports/{id}`；后端已提供人工转写修订、复核与发布接口，前端数据层尚未接入这些写操作；
+- 设 `VITE_DATA_SOURCE=api` 时改走 `/api/v1`：`getSessions`、`getSessionMedia`、`getMedia`、`getRun`、`getResults`、`getRevision`、`getReport` 分别对应 `GET /sessions`、`/sessions/{id}/media`、`/media/{id}`、`/analysis-runs/{id}`、`/analysis-runs/{id}/results`、`/transcript-revisions/{id}`、`/reports/{id}`；
 - 统一按协议处理 `{data,request_id}`、`{error:{code,message,details}}` 与列表 `{items,next_cursor}`，错误码映射为页面中文提示；
 - 账号区在侧栏内（宽屏在左栏、≤900px 随侧栏变成顶部栏），登录链路为 `GET /auth/csrf` → 带 `X-CSRF-Token` 的 `POST /auth/login` → `GET /auth/me`；页面展示的操作以各资源返回的 `allowed_actions` 为准（服务端逐次授权），账号级能力只在账号区展示。
 - 接口模式下未登录不发业务数据请求（页面提示先登录）；确认退出或换账号后清空上一个账号的数据及分页进度，迟到的旧响应会被丢弃。初始化、登录和退出完整流程串行执行；请求中同步拦截重复操作。退出失败保留账号并清除旧 CSRF，重试时重新获取；确认退出成功或会话失效后立即显示匿名，不等待令牌预取。
@@ -174,7 +179,29 @@ npm run dev        # 开发服务器，默认 http://localhost:5173
 npm run check      # tsc --noEmit + vitest + vite build
 ```
 
-`vite.config.ts` 已把 `/api` 代理到 `http://127.0.0.1:8080`，构建产物 `frontend/dist` 由 Go 同源提供。
+`vite.config.ts` 已把 `/api` 代理到 `http://127.0.0.1:8080`。当前 Go API 未托管 `frontend/dist`；本机使用 Vite 开发或预览服务，正式部署需配置静态服务及同源 `/api` 反向代理。
+
+预览入口只有一个：**跑开发服务器或静态服务器**。直接双击 `frontend/dist/index.html` 会白屏——构建产物用的是 ES module，浏览器在 `file://` 下按 CORS 规则拒绝加载，这与页面代码无关。可选方式：
+
+```powershell
+cd frontend
+npm run dev                              # 开发模式，改代码即时生效
+# 或看构建产物
+npm run build
+npx vite preview --port 18768            # 静态服务，支持 Range
+```
+
+按 UI 约定第 8 节，改了控件或焦点样式后跑一次键盘/焦点探针（零依赖，用本机 Edge）：
+
+```powershell
+# 第一个终端：在 frontend/ 下构建并起静态服务（保持运行，支持 Range）
+cd frontend
+npm run build
+npx vite preview --port 18768
+
+# 第二个终端：在仓库根目录跑探针
+node frontend/tools/a11y-probe.mjs http://127.0.0.1:18768
+```
 
 ### 接口模式联调
 
@@ -196,7 +223,15 @@ $env:VITE_DATA_SOURCE = 'api'
 npm run dev
 ```
 
-尚未实现：从课堂列表进入指定详情的真实导航（接口模式暂时自动查找可见结果，可通过“继续查找”越过单轮预算）、上传与分析等动作按钮、活动批次每 2 秒轮询。
+已实现：课堂列表可进入指定课堂详情（`#/sessions/{id}`，内含批次与操作 / 转写 / 报告 / 回放四个标签），并按资源 `allowed_actions` 显示上传、媒体准备、提交分析、取消与重试等动作按钮；活动批次每 2 秒轮询、进入终态停止。回放标签（M2，FR-05）按课堂主媒体取 `GET /media/{id}` 的 `playback_url` 播放播放代理，支持 0.5×～2× 倍速、前后 5 秒（播放器聚焦时可用 ← / →）、当前片段字幕（可开关，走浏览器原生字幕轨，排在播放控件上方，画中画字幕取决于浏览器支持）和画中画，并列出该批次的转写片段与可用证据，点击即跳到对应的原录像毫秒且高亮该行；媒体未就绪、没有 `playback_url`（未核验 / 无 playback 用途 / 已过期）或时间点超出媒体时长时，页面给出原因而不是拿别的地址顶替。
+
+回放只在**固定样例模式**用仓库内的合成样例视频 `frontend/public/samples/m2-playback-demo.mp4`（480×270、30 秒、无音轨、带时间码，无真实课堂内容）；样例的 `sha256` 与字节数写在前端样例里并由单元测试锁定，只有重新生成视频时才需要同步。拖动进度条与时间跳转依赖服务端支持 Range：`npm run dev`、`npx vite preview` 和 Go 同源服务都支持，`python -m http.server` 不支持（只能从头连续播放）。接口模式一律使用服务端返回的 `playback_url`。
+
+接口模式下拿到 `playback_url` 后，前端发一次 `Range: bytes=0-0` 预检；成功后取消不需要的响应体，即使服务端返回整份媒体的 200，也不继续下载。换地址、换账号、重查或离开页面会取消旧预检；响应头和错误正文读取都有期限。`VITE_PLAYBACK_PROBE_TIMEOUT_MS` 默认 10000 毫秒，可在启动/构建环境或 `frontend/.env.local` 设置正整数（非法值使用默认），修改后重启开发服务或重新构建。配置模板见 `.env.example`。预检保留服务端真实错误码（如 416、403、410），失败可重新检查；实际视频加载失败还提供“重试播放”，重取当前获准地址并重新加载，撤权后不沿用旧地址。
+
+回放只叠加与当前原媒体、课堂及批次归属一致的字幕和证据；主媒体与最新分析使用不同录像时明确提示，保持当前录像播放并停止叠加不匹配结果。播放器失败或不存在时定位不可用，恢复后才开放有效定位。没有主媒体时，回放标签保留媒体列表的加载、错误、重试及加载更多入口；空页仍有游标时继续查找，查完无可回放目标才显示空态。实际字幕及画中画支持以浏览器为准，不承诺所有画中画窗口显示字幕。
+
+尚未实现：课堂筛选控件、来源登记界面（上传需先有 `source_record_id`）、与后端的真实联调。
 
 ### PR #7 浏览器回归
 
