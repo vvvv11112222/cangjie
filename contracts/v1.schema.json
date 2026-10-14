@@ -269,6 +269,87 @@
       ],
       "additionalProperties": false
     },
+    "WorkerCleanupClaimRequest": {
+      "type": "object",
+      "properties": {
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "worker_id"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerCleanup": {
+      "type": "object",
+      "properties": {
+        "deletion_request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "job_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "deletion_request_id",
+        "session_id",
+        "storage_generation",
+        "job_ids"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerCleanupComplete": {
+      "type": "object",
+      "properties": {
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "storage_generation"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerCleanupReceipt": {
+      "type": "object",
+      "properties": {
+        "deletion_request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage_generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "deletion_request_id",
+        "worker_id",
+        "storage_generation"
+      ],
+      "additionalProperties": false
+    },
     "Claim": {
       "type": "object",
       "properties": {
@@ -1611,6 +1692,10 @@
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         },
+        "selection_version": {
+          "type": "string",
+          "minLength": 1
+        },
         "manifest_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
@@ -1676,6 +1761,7 @@
         "model",
         "prompt_version",
         "prompt_sha256",
+        "selection_version",
         "manifest_sha256",
         "coverage",
         "limitations",
@@ -4671,6 +4757,15 @@
             "$ref": "#/$defs/Interval"
           }
         },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "maxItems": 32
+        },
         "evidence": {
           "type": "array",
           "items": {
@@ -4729,6 +4824,7 @@
         "selection_version",
         "course_context",
         "coverage",
+        "limitations",
         "evidence"
       ],
       "additionalProperties": false
