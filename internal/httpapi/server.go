@@ -17,6 +17,7 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/analysis"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
+	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/media"
 )
@@ -32,6 +33,7 @@ type Options struct {
 	Classroom          *classroom.Service
 	Media              *media.Service
 	Analysis           *analysis.Service
+	Governance         *governance.Service
 	WorkerToken        string
 	WorkerID           string
 	WorkerCapabilities []string
@@ -51,6 +53,7 @@ type server struct {
 	classroom          *classroom.Service
 	media              *media.Service
 	analysis           *analysis.Service
+	governance         *governance.Service
 	workerToken        string
 	workerID           string
 	workerCapabilities map[string]bool
@@ -75,7 +78,7 @@ func New(options Options) http.Handler {
 	}
 	s := &server{
 		logger: logger, readiness: options.Readiness,
-		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media, analysis: options.Analysis,
+		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media, analysis: options.Analysis, governance: options.Governance,
 		workerToken: options.WorkerToken, workerID: options.WorkerID, maxArtifactBytes: options.MaxArtifactBytes,
 		origin:       strings.TrimRight(options.PublicOrigin, "/"),
 		secureCookie: options.SecureCookie, sessionTTL: options.SessionTTL,

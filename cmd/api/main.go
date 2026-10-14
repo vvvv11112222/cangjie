@@ -56,16 +56,42 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
+	// Do not start background writers against an incomplete or unverified upgrade.
+	schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	schemaErr := pool.CheckSchema(schemaCtx, cfg.DatabaseMigrationsDir)
+	schemaCancel()
+	if schemaErr != nil {
+		return schemaErr
+	}
 	analysisService := analysis.NewService(pool.Pool, mediaStore, analysis.Config{
 		Lease: cfg.JobLease, ProbeTimeout: cfg.ProbeTimeout, ASRTimeout: cfg.ASRTimeout, VideoTimeout: cfg.VideoTimeout,
 		MediaJobAttempts: cfg.MediaJobAttempts, ProcessorVersion: cfg.ProcessorVersion, FFmpegSHA256: cfg.FFmpegSHA256,
 		ASRModelName: cfg.ASRModelName, ASRModelRevision: cfg.ASRModelRevision, ASRDevice: cfg.ASRDevice,
 		KeyframeIntervalMS: cfg.KeyframeIntervalMS, MaxKeyframes: cfg.MaxKeyframes, MaxVideoHeight: cfg.MaxVideoHeight,
 		MaxMediaDurationMS: cfg.MaxMediaDurationMS, MaxArtifactBytes: cfg.MaxArtifactBytes,
+		GoStageTimeout: cfg.GoStageTimeout, ReportEnabled: cfg.ReportEnabled,
+		ReportAPIBase: cfg.ReportAPIBase, ReportAPIKey: cfg.ReportAPIKey,
+		ReportModel: cfg.ReportModel, ReportModelRevision: cfg.ReportModelRevision,
+		ReportPromptVersion: cfg.ReportPromptVersion, ReportPromptSHA256: cfg.ReportPromptSHA256,
+		ReportSelectionVersion: cfg.ReportSelectionVersion, ReportTimeout: cfg.ReportTimeout,
+		ReportPriceVersion:   cfg.ReportPriceVersion,
+		ReportBudgetCurrency: cfg.ReportBudgetCurrency, ReportBudgetTimezone: cfg.ReportBudgetTimezone,
+		ReportMonthlyBudgetMicros: cfg.ReportMonthlyBudgetMicros,
+		ReportInputPriceMicros:    cfg.ReportInputPriceMicros, ReportOutputPriceMicros: cfg.ReportOutputPriceMicros,
+		ReportMaxInputTokens: cfg.ReportMaxInputTokens, ReportMaxOutputTokens: cfg.ReportMaxOutputTokens,
 	})
+	governanceService := governance.NewService(pool.Pool, mediaStore, ledger, governance.Config{
+		Lease: cfg.GovernanceLease, Recheck: cfg.GovernanceRecheck, MaxAttempts: cfg.GovernanceMaxAttempts,
+		ExportRetention: cfg.ExportRetention, ExecutorID: cfg.WorkerID + "-governance",
+		BudgetCurrency: cfg.ReportBudgetCurrency, BudgetMonthlyMicros: cfg.ReportMonthlyBudgetMicros,
+		WorkerTempRoot: cfg.WorkerTempRoot, AuditRetention: cfg.AuditRetention,
+	})
+	if err := governanceService.ReplayLedger(context.Background()); err != nil {
+		return err
+	}
 
 	checks := httpapi.ReadinessChecks{
-		"database": pool.Ping,
+		"database": func(ctx context.Context) error { return pool.CheckSchema(ctx, cfg.DatabaseMigrationsDir) },
 		"media_storage": func(ctx context.Context) error {
 			return mediaStore.Check(ctx)
 		},
@@ -79,9 +105,10 @@ func run() error {
 		Readiness:          checks,
 		Identity:           identity.NewService(pool.Pool, cfg.SessionTTL),
 		Academic:           academic.NewService(pool.Pool),
-		Classroom:          classroom.NewService(pool.Pool),
+		Classroom:          classroom.NewServiceWithRetention(pool.Pool, cfg.ContentRetention),
 		Media:              media.NewService(pool.Pool, mediaStore, cfg.MaxUploadBytes, cfg.MediaRetention),
 		Analysis:           analysisService,
+		Governance:         governanceService,
 		WorkerToken:        cfg.WorkerToken,
 		WorkerID:           cfg.WorkerID,
 		WorkerCapabilities: cfg.WorkerCapabilities,
@@ -102,6 +129,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go analysisService.RunReaper(ctx, cfg.JobReaper)
+	go analysisService.RunGoWorker(ctx, time.Second)
+	go governanceService.Run(ctx, time.Second)
 
 	errCh := make(chan error, 1)
 	go func() {

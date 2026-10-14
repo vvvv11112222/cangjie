@@ -24,6 +24,7 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:${COMPOSE_API_PORT:-8080}}
       SESSION_TTL_SECONDS: "28800"
       DATABASE_URL: postgres://teaching:teaching_dev@postgres:5432/teaching?sslmode=disable
+      DATABASE_MIGRATIONS_DIR: /app/database
       MEDIA_ROOT: /data/media
       WORKER_TEMP_ROOT: /data/worker-tmp
       DELETION_LEDGER_PATH: /data/governance/deletions.jsonl
@@ -34,7 +35,20 @@ services:
       FFMPEG_BUILD_SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       ASR_MODEL_NAME: fixed-json-asr
       ASR_MODEL_REVISION: p0-v1
-      MODEL_MONTHLY_BUDGET: "0"
+      REPORT_API_BASE: ${REPORT_API_BASE:-}
+      REPORT_API_KEY: ${REPORT_API_KEY:-}
+      REPORT_MODEL: ${REPORT_MODEL:-}
+      REPORT_MODEL_REVISION: ${REPORT_MODEL_REVISION:-}
+      REPORT_PROMPT_VERSION: ${REPORT_PROMPT_VERSION:-p0-v1}
+      REPORT_PROMPT_SHA256: ${REPORT_PROMPT_SHA256:-}
+      REPORT_SELECTION_VERSION: ${REPORT_SELECTION_VERSION:-time-window-v1}
+      REPORT_TIMEOUT_SECONDS: ${REPORT_TIMEOUT_SECONDS:-180}
+      REPORT_MAX_INPUT_TOKENS: ${REPORT_MAX_INPUT_TOKENS:-8000}
+      REPORT_MAX_OUTPUT_TOKENS: ${REPORT_MAX_OUTPUT_TOKENS:-3000}
+      MODEL_MONTHLY_BUDGET: ${MODEL_MONTHLY_BUDGET:-0}
+      MODEL_PRICE_VERSION: ${MODEL_PRICE_VERSION:-}
+      MODEL_INPUT_PRICE_PER_MILLION: ${MODEL_INPUT_PRICE_PER_MILLION:-0}
+      MODEL_OUTPUT_PRICE_PER_MILLION: ${MODEL_OUTPUT_PRICE_PER_MILLION:-0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,6 +61,14 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:${COMPOSE_API_PORT:-8080}:8080"
+    volumes:
+      - app-data:/data
+
+  init-deletion-ledger:
+    profiles: ["bootstrap"]
+    build: .
+    command: ["/app/bin/init-deletion-ledger"]
+    environment: *api-environment
     volumes:
       - app-data:/data
 
