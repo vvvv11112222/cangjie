@@ -77,6 +77,16 @@ func TestModelInputLimitAndCostHelpers(t *testing.T) {
 	}
 }
 
+func TestOptionalUUIDComparisonUsesIdentity(t *testing.T) {
+	lower := "00112233-4455-6677-8899-aabbccddeeff"
+	upper := strings.ToUpper(lower)
+	different := "00112233-4455-6677-8899-aabbccddee00"
+	invalid := "not-a-uuid"
+	if !sameOptionalUUID(&lower, &upper) || sameOptionalUUID(&lower, &different) || sameOptionalUUID(&lower, &invalid) || sameOptionalUUID(nil, &lower) || !sameOptionalUUID(nil, nil) {
+		t.Fatal("UUID identity comparison returned an unexpected result")
+	}
+}
+
 func TestModelLimitationsAndCompletePromptAreBounded(t *testing.T) {
 	values := make([]string, 10_000)
 	for index := range values {

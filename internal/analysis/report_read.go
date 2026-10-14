@@ -53,7 +53,7 @@ func (s *Service) GetReport(ctx context.Context, p identity.Principal, id string
 		}
 		out.Dimensions = append(out.Dimensions, d)
 	}
-	oRows, err := s.pool.Query(ctx, `SELECT ro.id::text,ro.dimension_code,ro.observation_type,ro.observation_text,ro.suggestion,ro.review_status,COALESCE(array_agg(oe.evidence_id::text ORDER BY oe.evidence_id) FILTER(WHERE oe.evidence_id IS NOT NULL),'{}') FROM teaching.report_observations ro LEFT JOIN teaching.observation_evidence oe ON oe.observation_id=ro.id WHERE ro.report_id=$1 AND ro.removed_at IS NULL GROUP BY ro.id ORDER BY ro.sort_order,ro.id`, id)
+	oRows, err := s.pool.Query(ctx, `SELECT ro.id::text,ro.dimension_code,ro.observation_type,ro.observation_text,ro.suggestion,ro.review_status,COALESCE(array_agg(oe.evidence_id::text ORDER BY oe.evidence_id) FILTER(WHERE oe.evidence_id IS NOT NULL),'{}') FROM teaching.report_observations ro LEFT JOIN teaching.observation_evidence oe ON oe.observation_id=ro.id WHERE ro.report_id=$1 AND ro.removed_at IS NULL AND ro.review_status<>'rejected' GROUP BY ro.id ORDER BY ro.sort_order,ro.id`, id)
 	if err != nil {
 		return Report{}, err
 	}
@@ -81,8 +81,27 @@ func (s *Service) GetReport(ctx context.Context, p identity.Principal, id string
 	if out.ContentSHA256 == nil || out.Provenance == nil {
 		return out, nil
 	}
-	if out.Status == "draft" && canAnalyze(p, teacher) {
-		out.AllowedActions = []string{"edit", "submit"}
+	if out.Status == "draft" && canEdit(p, teacher, college) {
+		out.AllowedActions = append(out.AllowedActions, "edit", "submit")
+	}
+	if out.Status == "in_review" {
+		if canEdit(p, teacher, college) {
+			out.AllowedActions = append(out.AllowedActions, "edit")
+		}
+		if canReview(p, college) {
+			out.AllowedActions = append(out.AllowedActions, "review", "confirm_report", "publish")
+		}
+	}
+	if out.Status == "published" {
+		if canEdit(p, teacher, college) {
+			out.AllowedActions = append(out.AllowedActions, "revise")
+		}
+		if canReview(p, college) {
+			out.AllowedActions = append(out.AllowedActions, "withdraw")
+		}
+	}
+	if (out.Status == "superseded" || out.Status == "withdrawn") && canEdit(p, teacher, college) {
+		out.AllowedActions = append(out.AllowedActions, "revise")
 	}
 	return out, nil
 }

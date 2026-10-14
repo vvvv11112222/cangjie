@@ -19,9 +19,14 @@ type Config struct {
 	APIListenAddr             string
 	PublicOrigin              string
 	DatabaseURL               string
+	DatabaseMigrationsDir     string
 	MediaRoot                 string
 	WorkerTempRoot            string
 	DeletionLedgerPath        string
+	GovernanceLease           time.Duration
+	GovernanceRecheck         time.Duration
+	GovernanceMaxAttempts     int
+	ExportRetention           time.Duration
 	JobLease                  time.Duration
 	JobHeartbeat              time.Duration
 	JobReaper                 time.Duration
@@ -50,6 +55,9 @@ type Config struct {
 	MaxUploadBytes            int64
 	UploadTimeout             time.Duration
 	MediaRetention            time.Duration
+	ContentRetention          time.Duration
+	AuditRetention            time.Duration
+	BackupRetention           time.Duration
 	WorkerToken               string
 	WorkerID                  string
 	WorkerCapabilities        []string
@@ -109,6 +117,22 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	governanceLease, err := seconds(value("GOVERNANCE_LEASE_SECONDS", "120"), "GOVERNANCE_LEASE_SECONDS")
+	if err != nil {
+		return Config{}, err
+	}
+	governanceRecheck, err := seconds(value("GOVERNANCE_RECHECK_SECONDS", "60"), "GOVERNANCE_RECHECK_SECONDS")
+	if err != nil {
+		return Config{}, err
+	}
+	governanceAttempts, err := positiveInt(value("GOVERNANCE_MAX_ATTEMPTS", "3"), "GOVERNANCE_MAX_ATTEMPTS")
+	if err != nil {
+		return Config{}, err
+	}
+	exportHours, err := positiveInt64(value("EXPORT_RETENTION_HOURS", "24"), "EXPORT_RETENTION_HOURS")
+	if err != nil {
+		return Config{}, err
+	}
 	sessionTTL, err := seconds(value("SESSION_TTL_SECONDS", "28800"), "SESSION_TTL_SECONDS")
 	if err != nil {
 		return Config{}, err
@@ -122,6 +146,18 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 	retentionDays, err := positiveInt64(value("MEDIA_RETENTION_DAYS", "14"), "MEDIA_RETENTION_DAYS")
+	if err != nil {
+		return Config{}, err
+	}
+	contentRetentionDays, err := positiveInt64(value("CONTENT_RETENTION_DAYS", "180"), "CONTENT_RETENTION_DAYS")
+	if err != nil {
+		return Config{}, err
+	}
+	auditRetentionDays, err := positiveInt64(value("AUDIT_RETENTION_DAYS", "180"), "AUDIT_RETENTION_DAYS")
+	if err != nil {
+		return Config{}, err
+	}
+	backupRetentionDays, err := positiveInt64(value("BACKUP_RETENTION_DAYS", "7"), "BACKUP_RETENTION_DAYS")
 	if err != nil {
 		return Config{}, err
 	}
@@ -174,14 +210,27 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	migrationsDir := value("DATABASE_MIGRATIONS_DIR", "database")
+	if migrationsDir == "" {
+		return Config{}, fmt.Errorf("DATABASE_MIGRATIONS_DIR must name the packaged migration directory")
+	}
+	migrationsDir, err = filepath.Abs(migrationsDir)
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve DATABASE_MIGRATIONS_DIR: %w", err)
+	}
 	cfg := Config{
 		AppEnv:                    value("APP_ENV", "development"),
 		APIListenAddr:             value("API_LISTEN_ADDR", "127.0.0.1:8080"),
 		PublicOrigin:              value("PUBLIC_ORIGIN", "http://localhost:8080"),
 		DatabaseURL:               value("DATABASE_URL", ""),
+		DatabaseMigrationsDir:     migrationsDir,
 		MediaRoot:                 value("MEDIA_ROOT", "./var/media"),
 		WorkerTempRoot:            value("WORKER_TEMP_ROOT", "./var/worker-tmp"),
 		DeletionLedgerPath:        value("DELETION_LEDGER_PATH", "./var/governance/deletions.jsonl"),
+		GovernanceLease:           governanceLease,
+		GovernanceRecheck:         governanceRecheck,
+		GovernanceMaxAttempts:     governanceAttempts,
+		ExportRetention:           time.Duration(exportHours) * time.Hour,
 		JobLease:                  lease,
 		JobHeartbeat:              heartbeat,
 		JobReaper:                 reaper,
@@ -210,6 +259,9 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		MaxUploadBytes:            maxUploadBytes,
 		UploadTimeout:             uploadTimeout,
 		MediaRetention:            time.Duration(retentionDays) * 24 * time.Hour,
+		ContentRetention:          time.Duration(contentRetentionDays) * 24 * time.Hour,
+		AuditRetention:            time.Duration(auditRetentionDays) * 24 * time.Hour,
+		BackupRetention:           time.Duration(backupRetentionDays) * 24 * time.Hour,
 		WorkerToken:               value("WORKER_TOKEN", ""),
 		WorkerID:                  value("WORKER_ID", "worker-01"),
 		WorkerCapabilities:        splitCSV(value("WORKER_CAPABILITIES", "probe,audio_analysis,video_analysis")),

@@ -2684,6 +2684,49 @@
     }
   },
   {
+    "name": "endpoint-WorkerCleanupClaimRequest",
+    "definition": "WorkerCleanupClaimRequest",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "worker_id": "worker-01"
+    }
+  },
+  {
+    "name": "endpoint-WorkerCleanup",
+    "definition": "WorkerCleanup",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "deletion_request_id": "00000000-0000-4000-8000-000000000011",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "storage_generation": 2,
+      "job_ids": [
+        "00000000-0000-4000-8000-000000000004"
+      ]
+    }
+  },
+  {
+    "name": "endpoint-WorkerCleanupComplete",
+    "definition": "WorkerCleanupComplete",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "storage_generation": 2
+    }
+  },
+  {
+    "name": "endpoint-WorkerCleanupReceipt",
+    "definition": "WorkerCleanupReceipt",
+    "valid": true,
+    "semantic_valid": true,
+    "value": {
+      "deletion_request_id": "00000000-0000-4000-8000-000000000011",
+      "worker_id": "worker-01",
+      "storage_generation": 2
+    }
+  },
+  {
     "name": "model-input-missing-limitations",
     "definition": "ModelInput",
     "valid": false,
