@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>课堂采集联调</title>
+<meta name="referrer" content="no-referrer">
 <link rel="icon" href="data:,">
 <style>body{font:16px system-ui;margin:24px auto;padding:0 16px;max-width:850px}input{width:95%;padding:8px;margin:6px 0}button{padding:10px;margin:6px}video{width:100%;background:#111;max-height:55vh}pre{white-space:pre-wrap;overflow-wrap:anywhere}a{overflow-wrap:anywhere}</style>
 <h1>课堂采集联调</h1>
@@ -22,7 +23,7 @@
 const $=id=>document.getElementById(id);
 let captureID='',controlToken='',pc=null,local=null,resource=null,mediaToken='',csrf='',poll=null;
 const fragment=new URLSearchParams(location.hash.slice(1));let pairing=fragment.get('pairing_token');
-if(pairing){history.replaceState(null,'',location.pathname);$('desktop').hidden=true;$('start').hidden=false;}
+if(pairing){history.replaceState(null,'',location.pathname);$('desktop').hidden=true;location.replace('/capture-phone.html#pairing_token='+encodeURIComponent(pairing));}
 function note(text){$('notice').textContent=text;}
 async function api(path,body,token=''){
  const headers={};if(body!==undefined)headers['Content-Type']='application/json';
@@ -64,13 +65,6 @@ $('recover').onclick=()=>action(async()=>{
  const session=$('session').value.trim();if(!session)throw Error('请先填写课堂 ID');
  const v=await api('sessions/'+session+'/live-captures/active');captureID=v.id;$('capture').value=captureID;
  note(v.state==='recording'?'已恢复正在录制的采集，可继续观看或停止。':'已恢复活动采集：'+v.state);await startPoll();
-});
-$('start').onclick=()=>action(async()=>{
- if(!pairing)throw Error('配对凭据已使用，请在电脑重新创建配对。');
- local=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:15}},audio:true});
- const r=await fetch('/api/v1/capture-pairings/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pairing_token:pairing})});
- const j=await r.json();if(!r.ok)throw Error(j.error?.message||'配对失败');pairing=null;captureID=j.data.live_capture_id;controlToken=j.data.control_token;
- $('video').srcObject=local;await connect(j.data.whip_url,j.data.publish_token,local);$('start').disabled=true;await startPoll();
 });
 $('watch').onclick=()=>action(async()=>{captureID=$('capture').value.trim();const v=await api('live-captures/'+captureID+'/viewer-sessions',{});await connect(v.whep_url,v.view_token,null);await startPoll();});
 $('stop').onclick=()=>action(async()=>{
