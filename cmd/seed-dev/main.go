@@ -15,7 +15,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	if cfg.AppEnv == "production" {
+	if cfg.AppEnv != "development" && cfg.AppEnv != "test" {
 		fail(fmt.Errorf("development users cannot be created in production"))
 	}
 	request, err := identity.DevelopmentUsersRequestFromEnvironment()
@@ -28,6 +28,9 @@ func main() {
 		fail(err)
 	}
 	defer pool.Close()
+	if err := pool.CheckSchema(context.Background(), cfg.DatabaseMigrationsDir); err != nil {
+		fail(err)
+	}
 
 	adminCreated, err := identity.BootstrapAdmin(context.Background(), pool.Pool, identity.BootstrapRequest{
 		SchoolCode: request.SchoolCode, SchoolName: request.SchoolName,
@@ -40,7 +43,11 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	if err := identity.BootstrapDevelopmentData(context.Background(), pool.Pool, request); err != nil {
+		fail(err)
+	}
 	fmt.Printf("development identities ready (admin_created=%t, users_created=%d)\n", adminCreated, created)
+	fmt.Println("development data ready: 2 courses, 2 groups, 2 rooms, 2 offerings, 6 schedules, 6 demo sessions, 6 source registrations")
 }
 
 func fail(err error) {

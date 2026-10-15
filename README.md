@@ -32,7 +32,7 @@
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
 - `cmd/migrate`：按文件名顺序执行 `database/001`～`007`，记录并校验迁移摘要及历史顺序；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
-- `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
+- `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色账号和虚构教学联调数据；
 - `internal/identity`：Cookie 会话、登录/登出、CSRF、固定角色、组织范围和账号授权；
 - `internal/academic`：学院、学期、课程、班级、教室和开课实例的范围化读写；
 - `internal/classroom`：课表关联的课堂目录、筛选、归档和主媒体选择；
@@ -99,6 +99,15 @@ Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 ```
 
 默认创建 `admin`、`academic_demo`、`supervisor_demo` 和 `teacher_demo`；密码只从本地环境读取，不写入仓库。命令在 production 环境会拒绝执行。
+
+该命令还创建1个测试学期、2门课程、2个班级、2间教室、2个开课实例、6条无冲突排课、6个演示课堂和6条来源登记。数据代码以 `DEV-` 开头，课堂名称标记“测试”，排课覆盖2026年10月19日、26日及11月2日。课堂包含4个待上课、2个归档场景，来源待审核、通过、拒绝各2条；所有来源均未授权处理用途或外部模型调用。不存在真实录像、转写、报告或计费记录，这些产物须经正常后端与 Worker 流程生成。
+
+先执行迁移，再运行 `seed-dev`。数据使用稳定ID和单个业务事务，重复运行不会增加重复数据，也不会覆盖已有编辑、密码或审核结果；若预留测试代码与现有不同ID数据冲突，命令报错并回滚本次业务数据写入。账号初始化属于已有的独立事务。四种账号可通过前端登录，教务查看排课、教师查看自己的演示课堂、督导检查来源状态。已安装 `pg` 时可在首次导入后检查默认样例（之后的业务编辑可能改变这些初始状态）：
+
+```powershell
+$env:DATABASE_URL = '<本地开发库连接串>'
+node tools/check_development_data.mjs <已安装的pg包目录>
+```
 
 ### 容器启动
 

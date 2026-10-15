@@ -8,6 +8,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'tools/check_database.mjs'
+      - 'tools/check_development_data.mjs'
       - 'tools/check_schema.mjs'
       - 'tools/upgrade_cases.mjs'
       - '.github/workflows/database.yml'
@@ -52,12 +53,23 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U dbtest -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cangjie_database_acceptance'
           psql -h 127.0.0.1 -U dbtest -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cangjie_backend_acceptance'
+          psql -h 127.0.0.1 -U dbtest -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cangjie_development'
           npm install --prefix "$RUNNER_TEMP/database-tools" --ignore-scripts --no-audit --no-fund pg@8.16.3 @electric-sql/pglite@0.5.8
           python -m pip install jsonschema==4.25.1
       - name: Native upgrade, backend integration and race checks
         run: go test -p 1 -race -count=1 ./...
       - name: Native competing transactions and historical upgrades
         run: node tools/check_database.mjs "$RUNNER_TEMP/database-tools/node_modules/pg"
+      - name: Fictional development data and repeat import
+        env:
+          APP_ENV: test
+          DATABASE_URL: postgres://dbtest:disposable-test-password@127.0.0.1:5432/cangjie_development?sslmode=disable
+          BOOTSTRAP_TEST_PASSWORD: disposable-fixture-password
+        run: |
+          go run ./cmd/migrate
+          go run ./cmd/seed-dev
+          go run ./cmd/seed-dev
+          node tools/check_development_data.mjs "$RUNNER_TEMP/database-tools/node_modules/pg"
       - name: Contracts, complete migration chain and static checks
         run: |
           python tools/check_docs.py
