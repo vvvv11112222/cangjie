@@ -1,9 +1,17 @@
 # 前端 UI 约定
 
-这份文件只讲**展示层怎么写**，目的是新增页面时不用重新设计，直接沿用同一套颜色、间距和组件。
-接口、字段、枚举、权限和错误码仍然以 [开发协议](../docs/开发协议.md) 与 [Schema](../contracts/v1.schema.json) 为准，本文件不作规定。
+这份文件只讲**展示层怎么写**，目的是让 React 页面与仓库提供的[系统草图](../系统草图.html)保持同一套信息结构、布局和视觉语言。
+系统草图是页面模板，不是数据或权限实现；接口、字段、枚举、权限和错误码仍然以 [开发协议](../docs/开发协议.md)、[端点映射](../contracts/endpoints.json) 与 [Schema](../contracts/v1.schema.json) 为准。
 
 技术栈：React 19 + Vite + TypeScript，样式是唯一的全局文件 `src/styles.css`，没有 CSS 框架、没有 UI 组件库、没有图标库。
+
+## 0. 模板与实现的边界
+
+- 页面名称、角色入口、侧栏分组、页头层级、筛选区、卡片和表格布局以 `系统草图.html` 为模板；不要另起一套导航或视觉结构。
+- 草图中的记录和交互都是浏览器内演示数据。React 页面只展示固定协议样例或 Go HTTP API 返回的数据，不能把草图数据复制成业务结果。
+- 草图中的按钮必须同时满足“协议有端点”和“资源 `allowed_actions` 允许”才可实现。角色菜单只控制入口可见性，不能代替服务端授权。
+- P1 页面可以展示规划关系，但必须标明尚未接入，不能伪造实时设备、行为识别或趋势结果。
+- 页面正文使用人能理解的中文；协议字段名、哈希和锁版本放进 `TechDetails`。
 
 ## 1. 颜色和形状只用 `:root` 变量
 
@@ -43,13 +51,18 @@
 
 **页面上的错误和限制怎么显示**：带错误码和失败阶段的结构化错误用 `RunErrorBox`；一行说明性提示（批次限制、结果限制、批次读取失败、轮询失败）用 `.notice-strip`。这两种就是全部，不要自己再拼第三种提示样式。
 
-## 3. 新页面怎么加
+## 3. 应用外壳与新页面
 
-1. 在 `src/App.tsx` 的 `NAV_ROUTES` 加一条路由，在 `NAV_ICONS` 配上图标，在 `PAGES` 注册页面组件——导航、路由、面包屑、侧栏和顶栏会自动带上；
-2. 页面最外层用 `<div className="page">`；
-3. 标题区用 `<header className="page-head">`，里面是 `eyebrow`（小字）+ `h1`（页面名）+ 一句说明；
-4. 内容分区用 `Card`（可选 `icon`、`subtitle`、`actions`）；
-5. 字段用 `Field`，编号用 `IdChip`，空态用 `EmptyState`，加载/失败用 `LoadStateNote`。
+应用外壳固定由 `App.tsx` 渲染：宽屏左侧栏、顶栏面包屑、账号入口、主内容和页脚。页面不能自行复制这些结构。
+
+1. 在 `src/roleNav.ts` 的 `NAV_GROUPS` 登记菜单、角色和顺序；没有独立菜单的辅助地址放在辅助路由清单；
+2. 在 `src/App.tsx` 的 `NAV_ICONS` 配图标，在 `PAGE_RENDERERS` 注册页面组件；
+3. 页面最外层用 `<div className="page">`；
+4. 标题区用 `<header className="page-head">`，里面是 `eyebrow`（小字）+ `h1`（页面名）+ 一句说明；主操作放在标题区右侧；
+5. 内容分区用 `Card`（可选 `icon`、`subtitle`、`actions`）；筛选条件放在统一工具栏，表格必须套 `.table-wrap`；
+6. 字段用 `Field`，编号用 `IdChip`，空态用 `EmptyState`，加载/失败用 `LoadStateNote`。
+
+角色与模板的入口必须一致：系统管理员查看全校管理入口；学院教务查看本学院人员、教务、课堂和来源；督导查看课堂、任务、报告、来源、操作记录和设备规划；教师只查看本人课堂相关入口。转写属于课堂复核流程，不在侧栏重复增加模板外入口。
 
 ## 4. 技术字段放进 `TechDetails`
 
@@ -71,7 +84,7 @@
 
 ## 6. 窄屏
 
-全站只有一个断点：`@media (max-width: 900px)`，规则是"侧栏变成顶部导航条"。
+全站 React 实现只有一个主断点：`@media (max-width: 900px)`，规则是“侧栏变成顶部导航区”。草图里的 1200/980/760 是原型实现细节，不照抄成第二套断点体系。
 
 新页面只需要保证两件事：
 
@@ -99,8 +112,11 @@ npm run check
 改了按钮、输入控件、焦点样式或 `<details>` 折叠区时，再跑一次键盘/焦点探针（零依赖，用本机 Edge）：
 
 ```powershell
-# 先构建并起一个静态服务：python -m http.server 18767 --directory frontend/dist
-node frontend/tools/a11y-probe.mjs http://127.0.0.1:18767
+# 先在 frontend/ 下构建并启动支持 Range 的预览服务
+npm run build
+npx vite preview --port 18768
+# 再从仓库根目录执行
+node frontend/tools/a11y-probe.mjs http://127.0.0.1:18768
 ```
 
 它检查 Tab 顺序、焦点是否可见、`<details>` 能否用键盘展开，并在真实布局里量一遍控件尺寸——

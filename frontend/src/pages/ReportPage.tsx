@@ -263,9 +263,10 @@ export function ReportPage({
         )}
       </Card>
 
-      <Card title="样例数据核对" subtitle="引用不一致必须显示，不能拼成一条看似完整但实际不存在的链路。">
+      {/* 样例口径说明收进折叠区：引用不一致仍要显示，但不占业务视线（UI约定第 4 节）。 */}
+      <TechDetails summary="样例数据核对">
         <DisclosureList items={disclosures} />
-      </Card>
+      </TechDetails>
     </div>
   );
 }
