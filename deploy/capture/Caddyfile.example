@@ -1,0 +1,19 @@
+# Replace the address with the computer LAN IP. Trust this local CA on Android.
+https://192.168.1.10 {
+    tls internal
+    handle /api/v1/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+    handle_path /media/* {
+        reverse_proxy 127.0.0.1:8889 {
+            header_down Location ^/ /media/
+        }
+    }
+    # Internal callbacks/Control API are never forwarded from this listener.
+    handle /internal/* {
+        respond 404
+    }
+    handle {
+        reverse_proxy 127.0.0.1:5173
+    }
+}

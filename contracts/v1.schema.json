@@ -4963,6 +4963,385 @@
         "media_asset_id"
       ],
       "additionalProperties": false
+    },
+    "CreateLiveCapture": {
+      "type": "object",
+      "properties": {
+        "source_record_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "config_profile": {
+          "const": "phone-demo-v1"
+        }
+      },
+      "required": [
+        "source_record_id",
+        "config_profile"
+      ],
+      "additionalProperties": false
+    },
+    "LiveCapture": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "state": {
+          "enum": [
+            "waiting",
+            "recording",
+            "finalizing",
+            "ready",
+            "failed"
+          ]
+        },
+        "connection_state": {
+          "enum": [
+            "unknown",
+            "connected",
+            "disconnected"
+          ]
+        },
+        "recording_state": {
+          "enum": [
+            "waiting",
+            "recording",
+            "stopping",
+            "preparing",
+            "complete",
+            "cleanup_pending",
+            "cleaned"
+          ]
+        },
+        "audio_track": {
+          "enum": [
+            "unknown",
+            "present",
+            "absent"
+          ]
+        },
+        "video_track": {
+          "enum": [
+            "unknown",
+            "present",
+            "absent"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "media_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "media_prepare_run_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "read",
+              "pair",
+              "watch",
+              "stop"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "state",
+        "connection_state",
+        "recording_state",
+        "audio_track",
+        "video_track",
+        "created_at",
+        "expires_at",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "media_asset_id",
+        "media_prepare_run_id",
+        "end_reason",
+        "error_code",
+        "allowed_actions"
+      ],
+      "additionalProperties": false
+    },
+    "CapturePairing": {
+      "type": "object",
+      "properties": {
+        "pairing_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "phone_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "pairing_id",
+        "phone_url",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "CaptureExchange": {
+      "type": "object",
+      "properties": {
+        "pairing_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "pairing_token"
+      ],
+      "additionalProperties": false
+    },
+    "CapturePublisher": {
+      "type": "object",
+      "properties": {
+        "live_capture_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "whip_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "publish_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "control_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "live_capture_id",
+        "session_id",
+        "whip_url",
+        "publish_token",
+        "control_token",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "CaptureViewer": {
+      "type": "object",
+      "properties": {
+        "viewer_session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "whep_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "view_token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "viewer_session_id",
+        "whep_url",
+        "view_token",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "StreamAuth": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user",
+        "password",
+        "token",
+        "ip",
+        "action",
+        "path",
+        "protocol",
+        "id",
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "StreamEvent": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "enum": [
+            "online",
+            "offline",
+            "segment_started",
+            "segment_complete"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "connection_id": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "segment_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "path",
+        "connection_id",
+        "occurred_at",
+        "segment_path"
+      ],
+      "additionalProperties": false
     }
   }
 }

@@ -37,12 +37,14 @@ type Config struct {
 }
 
 type Service struct {
-	pool           *pgxpool.Pool
-	store          storage.Backend
-	ledger         *Ledger
-	cfg            Config
-	now            func() time.Time
-	commitExportTx func(context.Context, pgx.Tx) error
+	// Set before Run. Deletion cannot complete while capture writers remain active.
+	BeforeCaptureCleanup func(context.Context, string) error
+	pool                 *pgxpool.Pool
+	store                storage.Backend
+	ledger               *Ledger
+	cfg                  Config
+	now                  func() time.Time
+	commitExportTx       func(context.Context, pgx.Tx) error
 }
 
 type CreateExport struct {
@@ -805,13 +807,25 @@ func (s *Service) ReplayLedger(ctx context.Context) error {
 func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 	var id, sessionID, token string
 	err := s.pool.QueryRow(ctx, `WITH candidate AS (SELECT id FROM teaching.data_deletion_requests WHERE (status IN('requested','blocked') AND available_at<=now()) OR (status='processing' AND lease_expires_at<=now()) ORDER BY available_at,created_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE teaching.data_deletion_requests d SET status='processing',executor_id=$1,lease_token=gen_random_uuid(),lease_expires_at=now()+$2::interval,
-		attempts=attempts+CASE WHEN d.status='blocked' AND d.error_code='WORKER_CLEANUP_PENDING' THEN 0 ELSE 1 END,updated_at=now()
+		attempts=attempts+CASE WHEN d.status='blocked' AND d.error_code IN('WORKER_CLEANUP_PENDING','CAPTURE_CLEANUP_PENDING') THEN 0 ELSE 1 END,updated_at=now()
 		FROM candidate c WHERE d.id=c.id RETURNING d.id::text,d.session_id::text,d.lease_token::text`, s.cfg.ExecutorID, s.cfg.Lease.String()).Scan(&id, &sessionID, &token)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	var hasCaptures bool
+	if err = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.live_captures WHERE session_id=$1)`, sessionID).Scan(&hasCaptures); err != nil {
+		return true, s.failDeletion(ctx, id, token, "CAPTURE_CLEANUP_CHECK_FAILED")
+	}
+	if hasCaptures {
+		if s.BeforeCaptureCleanup == nil {
+			return true, s.blockDeletion(ctx, id, token, "CAPTURE_CLEANUP_PENDING")
+		}
+		if err = s.BeforeCaptureCleanup(ctx, sessionID); err != nil {
+			return true, s.blockDeletion(ctx, id, token, "CAPTURE_CLEANUP_PENDING")
+		}
 	}
 	rows, err := s.pool.Query(ctx, `SELECT object_key FROM teaching.media_assets WHERE session_id=$1 AND status<>'deleted'`, sessionID)
 	if err != nil {
@@ -895,6 +909,7 @@ func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 		return databaseFailure(err)
 	}
 	statements := []string{
+		`DELETE FROM teaching.live_captures WHERE session_id=$1`,
 		`UPDATE teaching.model_calls SET run_id=NULL,job_id=NULL WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1)`,
 		`DELETE FROM teaching.export_jobs WHERE session_id=$1`,
 		`UPDATE teaching.reports SET parent_report_id=NULL WHERE session_id=$1`, `DELETE FROM teaching.reports WHERE session_id=$1`,

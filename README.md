@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 前端 | [开发协议](docs/开发协议.md)、[接口样例](contracts/examples/manifest.json) | 用固定样例显示任务、转写和报告 |
 | 后端 | 开发协议、[数据库设计](docs/数据库设计.md) | Go API、任务流转和权限校验 |
-| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[008](database/008_worker_cleanup_receipts.sql) | 初始化、迁移及约束检查 |
+| 数据库 | 数据库设计、[001](database/001_initial_schema.sql)～[009](database/009_live_captures.sql) | 初始化、迁移及约束检查 |
 | 音频 | 开发协议第3节、audio-result 样例 | Worker 公共入口和带时间戳转写 |
 | 视频 | 开发协议第3节、probe-result/video-result 样例 | 媒体检查、播放代理和关键帧 |
 
@@ -264,3 +264,7 @@ node frontend/tools/browser-regression.mjs '<已安装的playwright包目录>/in
 成员可用下面的格式开始任务：
 
 > 我负责【前端/后端/数据库/音频/视频】，本次实现【FR编号与具体功能】，使用【分支名】。请按 AGENTS.md 查阅相关文档，完成【交付项】并验证【验收条件】，说明需要其他模块配合的部分。
+
+## 安卓手机采集与实时预览（P1）
+
+新增六个业务接口、两个媒体服务内部接口和009迁移；采用 MediaMTX v1.15.3，默认关闭。配置、可信HTTPS、安卓接入、调用顺序、状态与错误见[实时采集接口](docs/实时采集接口.md)。最小联调页为[手机/电脑测试页](frontend/public/capture-demo.html)。录制结束后复用媒体入库、media_prepare和原回放接口；真实ASR、OCR、行为及报告仍按原分析链单独验收。

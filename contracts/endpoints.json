@@ -922,6 +922,96 @@
         201,
         200
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{id}/live-captures",
+      "request": "CreateLiveCapture",
+      "response": "LiveCapture",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201,
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/live-captures/{id}/pairings",
+      "request": "Empty",
+      "response": "CapturePairing",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/capture-pairings/exchange",
+      "request": "CaptureExchange",
+      "response": "CapturePublisher",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/live-captures/{id}",
+      "request": null,
+      "response": "LiveCapture",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/live-captures/{id}/viewer-sessions",
+      "request": "Empty",
+      "response": "CaptureViewer",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        201
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/live-captures/{id}/stop",
+      "request": "Empty",
+      "response": "LiveCapture",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        202,
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/streams/auth",
+      "request": "StreamAuth",
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/streams/events",
+      "request": "StreamEvent",
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
     }
   ]
 }
