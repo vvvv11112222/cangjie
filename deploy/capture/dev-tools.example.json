@@ -1,0 +1,11 @@
+{
+  "go": "C:/tools/go/bin/go.exe",
+  "node": "C:/Program Files/nodejs/node.exe",
+  "npm_cli": "C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js",
+  "python": "D:/project/.venv/Scripts/python.exe",
+  "postgres_bin": "C:/tools/pgsql/bin",
+  "mediamtx": "C:/tools/mediamtx/mediamtx.exe",
+  "ffmpeg": "C:/tools/ffmpeg/bin/ffmpeg.exe",
+  "ffprobe": "C:/tools/ffmpeg/bin/ffprobe.exe",
+  "caddy": "C:/tools/caddy/caddy.exe"
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>手机采集环境检查</title>
+<link rel="icon" href="data:,">
+<style>body{font:17px system-ui;max-width:640px;margin:24px auto;padding:0 16px}button{font:inherit;padding:12px;margin:6px 6px 6px 0}video{width:100%;background:#111}#result{white-space:pre-wrap}meter{width:100%}</style>
+<h1>手机采集环境检查</h1>
+<p>连接电脑所在 Wi-Fi，安装并信任开发 CA 后打开本页。点击检查并允许摄像头、麦克风权限。</p>
+<p>检查只在手机本地预览，不上传、不录制。画面会静音，讲话时观察音量条。</p>
+<p id="result" role="status"></p>
+<button id="check">检查摄像头和麦克风</button><button id="stop" disabled>结束检查</button>
+<video id="preview" autoplay playsinline muted></video>
+<label>麦克风音量<meter id="level" min="0" max="1" value="0"></meter></label>
+<script type="module">
+const result=document.getElementById('result'),check=document.getElementById('check'),stop=document.getElementById('stop');
+const preview=document.getElementById('preview'),level=document.getElementById('level');
+let stream=null,audio=null,frame=0;
+const supported=window.isSecureContext&&!!navigator.mediaDevices?.getUserMedia;
+result.textContent=supported?'HTTPS 安全环境检查通过，请点击按钮检查设备。':'环境未通过：请核对 HTTPS 地址及证书信任，不能跳过证书警告。';
+check.disabled=!supported;
+async function release(){cancelAnimationFrame(frame);stream?.getTracks().forEach(t=>t.stop());stream=null;preview.srcObject=null;if(audio){await audio.close();audio=null;}level.value=0;stop.disabled=true;check.disabled=!supported;}
+check.onclick=async()=>{
+ check.disabled=true;
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:true});
+  preview.srcObject=stream;
+  audio=new AudioContext();await audio.resume();const analyser=audio.createAnalyser();analyser.fftSize=1024;
+  audio.createMediaStreamSource(stream).connect(analyser);const values=new Float32Array(analyser.fftSize);
+  function update(){analyser.getFloatTimeDomainData(values);level.value=Math.min(1,Math.sqrt(values.reduce((sum,v)=>sum+v*v,0)/values.length)*5);frame=requestAnimationFrame(update);}update();
+  result.textContent='已取得摄像头和麦克风。请确认画面可见、讲话时音量条变化，然后点击结束检查。';stop.disabled=false;
+ }catch(error){await release();result.textContent='设备检查失败：'+error.name+'。请检查浏览器权限及设备是否被其他应用占用。';}
+};
+stop.onclick=async()=>{await release();result.textContent='检查已结束，摄像头与麦克风已释放。';};
+window.addEventListener('pagehide',()=>{void release();});
+</script>
+</html>
