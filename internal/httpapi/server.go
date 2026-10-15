@@ -16,6 +16,7 @@ import (
 
 	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/analysis"
+	"github.com/vvvv11112222/cangjie/internal/capture"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/identity"
@@ -26,6 +27,7 @@ type CheckFunc func(context.Context) error
 type ReadinessChecks map[string]CheckFunc
 
 type Options struct {
+	Capture            *capture.Service
 	Logger             *slog.Logger
 	Readiness          ReadinessChecks
 	Identity           *identity.Service
@@ -46,6 +48,7 @@ type Options struct {
 }
 
 type server struct {
+	capture            *capture.Service
 	logger             *slog.Logger
 	readiness          ReadinessChecks
 	identity           *identity.Service
@@ -77,7 +80,8 @@ func New(options Options) http.Handler {
 		logger = slog.Default()
 	}
 	s := &server{
-		logger: logger, readiness: options.Readiness,
+		capture: options.Capture,
+		logger:  logger, readiness: options.Readiness,
 		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media, analysis: options.Analysis, governance: options.Governance,
 		workerToken: options.WorkerToken, workerID: options.WorkerID, maxArtifactBytes: options.MaxArtifactBytes,
 		origin:       strings.TrimRight(options.PublicOrigin, "/"),
@@ -101,6 +105,7 @@ func New(options Options) http.Handler {
 		s.maxArtifactBytes = 4 << 30
 	}
 	mux := http.NewServeMux()
+	s.registerCaptureRoutes(mux)
 	mux.HandleFunc("/health/live", requireGet(s.live))
 	mux.HandleFunc("/health/ready", requireGet(s.ready))
 	if s.identity != nil && s.academic != nil {

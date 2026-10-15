@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>课堂采集联调</title>
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
+<style>body{font:16px system-ui;margin:24px auto;padding:0 16px;max-width:850px}input{width:95%;padding:8px;margin:6px 0}button{padding:10px;margin:6px}video{width:100%;background:#111;max-height:55vh}pre{white-space:pre-wrap;overflow-wrap:anywhere}a{overflow-wrap:anywhere}</style>
+<h1>课堂采集联调</h1>
+<p id="intro">电脑端先在系统登录，再填写课堂与已核验来源。手机端打开配对链接并点击开始。</p>
+<section id="desktop">
+<label>课堂 ID<input id="session" autocomplete="off"></label>
+<label>来源 ID<input id="source" autocomplete="off"></label>
+<button id="create">创建采集并取得手机链接</button>
+<button id="recover">恢复当前活动采集</button>
+<p><a id="pair" target="_blank" rel="noreferrer"></a></p>
+<label>采集 ID（可粘贴已有 ID）<input id="capture" autocomplete="off"></label>
+<button id="watch">观看实时画面</button>
+</section>
+<button id="start" hidden>开始手机采集</button><button id="stop">停止录制</button>
+<button id="sound">开启声音</button>
+<video id="video" autoplay playsinline muted controls></video>
+<p id="notice" role="status"></p><pre id="status"></pre>
+<script type="module">
+const $=id=>document.getElementById(id);
+let captureID='',controlToken='',pc=null,local=null,resource=null,mediaToken='',csrf='',poll=null;
+const fragment=new URLSearchParams(location.hash.slice(1));let pairing=fragment.get('pairing_token');
+if(pairing){history.replaceState(null,'',location.pathname);$('desktop').hidden=true;location.replace('/capture-phone.html#pairing_token='+encodeURIComponent(pairing));}
+function note(text){$('notice').textContent=text;}
+async function api(path,body,token=''){
+ const headers={};if(body!==undefined)headers['Content-Type']='application/json';
+ if(token)headers.Authorization='Bearer '+token;
+ else if(body!==undefined){if(!csrf){const r=await fetch('/api/v1/auth/csrf',{credentials:'same-origin'});const j=await r.json();csrf=j.data.csrf_token;}headers['X-CSRF-Token']=csrf;}
+ const r=await fetch('/api/v1/'+path,{method:body===undefined?'GET':'POST',headers,credentials:'same-origin',...(body!==undefined?{body:JSON.stringify(body)}:{})});
+ const j=await r.json();if(!r.ok)throw Error(j.error?.message||`请求失败 ${r.status}`);return j.data;
+}
+async function startPoll(){clearInterval(poll);const update=async()=>{
+ try{const v=await api('live-captures/'+captureID,undefined,controlToken);$('status').textContent=JSON.stringify(v,null,2);
+ if(v.state==='ready'||v.state==='failed'){clearInterval(poll);note(v.state==='ready'?'录像已准备，可回到课堂页面回放。':'采集结束，请查看错误信息。');}}
+ catch(e){note(e.message)}
+ };await update();poll=setInterval(update,1500);}
+async function connect(url,token,stream){
+ if(pc)pc.close();pc=new RTCPeerConnection();mediaToken=token;
+ if(stream){for(const track of stream.getTracks())pc.addTrack(track,stream);
+ const caps=RTCRtpSender.getCapabilities('video')?.codecs.filter(c=>c.mimeType.toLowerCase()==='video/h264');
+ const trans=pc.getTransceivers().find(t=>t.sender.track?.kind==='video');if(caps?.length&&trans?.setCodecPreferences)trans.setCodecPreferences(caps);
+ }else{pc.addTransceiver('video',{direction:'recvonly'});pc.addTransceiver('audio',{direction:'recvonly'});
+ const received=new MediaStream();$('video').srcObject=received;pc.ontrack=e=>{received.addTrack(e.track);};}
+ pc.onconnectionstatechange=()=>note('媒体连接：'+pc.connectionState);
+ await pc.setLocalDescription(await pc.createOffer());
+ if(pc.iceGatheringState!=='complete')await new Promise((resolve,reject)=>{
+ const timeout=setTimeout(()=>reject(Error('网络候选收集超时')),10000);
+ const done=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(timeout);pc.removeEventListener('icegatheringstatechange',done);resolve();}};pc.addEventListener('icegatheringstatechange',done);done();});
+ const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/sdp',Authorization:'Bearer '+token},body:pc.localDescription.sdp});
+ if(!r.ok)throw Error('媒体服务连接失败：'+r.status);
+ const loc=r.headers.get('Location');resource=loc?new URL(loc,url).href:null;
+ await pc.setRemoteDescription({type:'answer',sdp:await r.text()});
+}
+async function action(fn){try{await fn()}catch(e){note(e.message);if(local){local.getTracks().forEach(t=>t.stop());local=null;}if(pc){pc.close();pc=null;}}}
+$('create').onclick=()=>action(async()=>{
+ const r=await fetch('/api/v1/auth/csrf',{credentials:'same-origin'});csrf=(await r.json()).data.csrf_token;
+ const res=await fetch('/api/v1/sessions/'+$('session').value.trim()+'/live-captures',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({source_record_id:$('source').value.trim(),config_profile:'phone-demo-v1'})});
+ const j=await res.json();if(!res.ok)throw Error(j.error?.message||'创建失败');captureID=j.data.id;$('capture').value=captureID;
+ const pair=await api('live-captures/'+captureID+'/pairings',{});$('pair').href=pair.phone_url;$('pair').textContent=pair.phone_url;note('将配对链接发到同一 Wi-Fi 的手机打开，勿分享给其他人。');await startPoll();
+});
+$('recover').onclick=()=>action(async()=>{
+ const session=$('session').value.trim();if(!session)throw Error('请先填写课堂 ID');
+ const v=await api('sessions/'+session+'/live-captures/active');captureID=v.id;$('capture').value=captureID;
+ note(v.state==='recording'?'已恢复正在录制的采集，可继续观看或停止。':'已恢复活动采集：'+v.state);await startPoll();
+});
+$('watch').onclick=()=>action(async()=>{captureID=$('capture').value.trim();const v=await api('live-captures/'+captureID+'/viewer-sessions',{});await connect(v.whep_url,v.view_token,null);await startPoll();});
+$('stop').onclick=()=>action(async()=>{
+ captureID=captureID||$('capture').value.trim();if(!captureID)throw Error('尚未创建采集');await api('live-captures/'+captureID+'/stop',{},controlToken);
+ if(resource){await fetch(resource,{method:'DELETE',headers:{Authorization:'Bearer '+mediaToken}}).catch(()=>{});resource=null;}
+ if(pc)pc.close();if(local)local.getTracks().forEach(t=>t.stop());note('服务端正在收尾录像。');await startPoll();
+});
+$('sound').onclick=()=>{$('video').muted=false;$('video').play().catch(e=>note(e.message));};
+window.addEventListener('pagehide',()=>{if(local)local.getTracks().forEach(t=>t.stop());if(pc)pc.close();});
+</script></html>

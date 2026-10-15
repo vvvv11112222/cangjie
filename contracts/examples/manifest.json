@@ -104,6 +104,7 @@
     }
   ],
   "case_sets": [
-    "api-cases.json"
+    "api-cases.json",
+    "capture-cases.json"
   ]
 }

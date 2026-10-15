@@ -3,16 +3,19 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/analysis"
+	"github.com/vvvv11112222/cangjie/internal/capture"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
 	"github.com/vvvv11112222/cangjie/internal/config"
 	"github.com/vvvv11112222/cangjie/internal/database"
@@ -100,13 +103,34 @@ func run() error {
 		},
 	}
 	origin, _ := url.Parse(cfg.PublicOrigin)
+	identityService := identity.NewService(pool.Pool, cfg.SessionTTL)
+	mediaService := media.NewService(pool.Pool, mediaStore, cfg.MaxUploadBytes, cfg.MediaRetention)
+	var captureService *capture.Service
+	captureConfig, captureEnabled, err := capture.LoadConfig()
+	if err != nil {
+		return err
+	}
+	if captureEnabled {
+		if strings.TrimRight(captureConfig.PublicURL, "/") != cfg.PublicOrigin {
+			return fmt.Errorf("CAPTURE_PUBLIC_URL must match PUBLIC_ORIGIN")
+		}
+		if captureConfig.EventToken == cfg.WorkerToken || captureConfig.ControlToken == cfg.WorkerToken {
+			return fmt.Errorf("capture secrets must differ from Worker token")
+		}
+		captureService, err = capture.New(pool.Pool, mediaService, analysisService, identityService, captureConfig)
+		if err != nil {
+			return err
+		}
+		governanceService.BeforeCaptureCleanup = captureService.CleanupSession
+	}
 	handler := httpapi.New(httpapi.Options{
+		Capture:            captureService,
 		Logger:             logger,
 		Readiness:          checks,
-		Identity:           identity.NewService(pool.Pool, cfg.SessionTTL),
+		Identity:           identityService,
 		Academic:           academic.NewService(pool.Pool),
 		Classroom:          classroom.NewServiceWithRetention(pool.Pool, cfg.ContentRetention),
-		Media:              media.NewService(pool.Pool, mediaStore, cfg.MaxUploadBytes, cfg.MediaRetention),
+		Media:              mediaService,
 		Analysis:           analysisService,
 		Governance:         governanceService,
 		WorkerToken:        cfg.WorkerToken,
@@ -128,6 +152,9 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if captureService != nil {
+		go captureService.Run(ctx)
+	}
 	go analysisService.RunReaper(ctx, cfg.JobReaper)
 	go analysisService.RunGoWorker(ctx, time.Second)
 	go governanceService.Run(ctx, time.Second)

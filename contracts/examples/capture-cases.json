@@ -1,0 +1,288 @@
+[
+  {
+    "name": "capture-create",
+    "definition": "CreateLiveCapture",
+    "valid": true,
+    "value": {
+      "source_record_id": "00000000-0000-4000-8000-000000000001",
+      "config_profile": "phone-demo-v1"
+    }
+  },
+  {
+    "name": "capture-waiting",
+    "definition": "LiveCapture",
+    "valid": true,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "state": "waiting",
+      "connection_state": "unknown",
+      "recording_state": "waiting",
+      "audio_track": "unknown",
+      "video_track": "unknown",
+      "created_at": "2026-10-15T00:00:00Z",
+      "expires_at": "2026-10-15T00:00:00Z",
+      "started_at": null,
+      "ended_at": null,
+      "duration_ms": null,
+      "media_asset_id": null,
+      "media_prepare_run_id": null,
+      "end_reason": null,
+      "error_code": null,
+      "allowed_actions": [
+        "read",
+        "pair",
+        "stop"
+      ]
+    }
+  },
+  {
+    "name": "capture-pairing",
+    "definition": "CapturePairing",
+    "valid": true,
+    "value": {
+      "pairing_id": "00000000-0000-4000-8000-000000000001",
+      "phone_url": "https://demo.example/capture-demo.html#pairing_token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expires_at": "2026-10-15T00:00:00Z"
+    }
+  },
+  {
+    "name": "capture-exchange",
+    "definition": "CaptureExchange",
+    "valid": true,
+    "value": {
+      "pairing_token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "name": "capture-publisher",
+    "definition": "CapturePublisher",
+    "valid": true,
+    "value": {
+      "live_capture_id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "whip_url": "https://demo.example/media/captures/00000000-0000-4000-8000-000000000001/0/whip",
+      "publish_token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "control_token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "expires_at": "2026-10-15T00:00:00Z"
+    }
+  },
+  {
+    "name": "capture-viewer",
+    "definition": "CaptureViewer",
+    "valid": true,
+    "value": {
+      "viewer_session_id": "00000000-0000-4000-8000-000000000001",
+      "whep_url": "https://demo.example/media/captures/00000000-0000-4000-8000-000000000001/0/whep",
+      "view_token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expires_at": "2026-10-15T00:00:00Z"
+    }
+  },
+  {
+    "name": "capture-auth",
+    "definition": "StreamAuth",
+    "valid": true,
+    "value": {
+      "user": "",
+      "password": "",
+      "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ip": "127.0.0.1",
+      "action": "publish",
+      "path": "captures/00000000-0000-4000-8000-000000000001/0",
+      "protocol": "webrtc",
+      "id": "00000000-0000-4000-8000-000000000001",
+      "query": ""
+    }
+  },
+  {
+    "name": "capture-segment",
+    "definition": "StreamEvent",
+    "valid": true,
+    "value": {
+      "event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "type": "segment_complete",
+      "path": "captures/00000000-0000-4000-8000-000000000001/0",
+      "connection_id": "",
+      "occurred_at": "2026-10-15T00:00:00Z",
+      "segment_path": "synthetic/segment.mp4"
+    }
+  },
+  {
+    "name": "capture-invalid-profile",
+    "definition": "CreateLiveCapture",
+    "valid": false,
+    "value": {
+      "source_record_id": "00000000-0000-4000-8000-000000000001",
+      "config_profile": "arbitrary-url"
+    }
+  },
+  {
+    "name": "capture-invalid-secret",
+    "definition": "CaptureExchange",
+    "valid": false,
+    "value": {
+      "pairing_token": "short"
+    }
+  },
+  {
+    "name": "capture-leaked-secret",
+    "definition": "LiveCapture",
+    "valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "state": "waiting",
+      "connection_state": "unknown",
+      "recording_state": "waiting",
+      "audio_track": "unknown",
+      "video_track": "unknown",
+      "created_at": "2026-10-15T00:00:00Z",
+      "expires_at": "2026-10-15T00:00:00Z",
+      "started_at": null,
+      "ended_at": null,
+      "duration_ms": null,
+      "media_asset_id": null,
+      "media_prepare_run_id": null,
+      "end_reason": null,
+      "error_code": null,
+      "allowed_actions": [
+        "read",
+        "pair",
+        "stop"
+      ],
+      "publish_token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "name": "capture-invalid-state",
+    "definition": "LiveCapture",
+    "valid": false,
+    "value": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "state": "succeeded",
+      "connection_state": "unknown",
+      "recording_state": "waiting",
+      "audio_track": "unknown",
+      "video_track": "unknown",
+      "created_at": "2026-10-15T00:00:00Z",
+      "expires_at": "2026-10-15T00:00:00Z",
+      "started_at": null,
+      "ended_at": null,
+      "duration_ms": null,
+      "media_asset_id": null,
+      "media_prepare_run_id": null,
+      "end_reason": null,
+      "error_code": null,
+      "allowed_actions": [
+        "read",
+        "pair",
+        "stop"
+      ]
+    }
+  },
+  {
+    "name": "capture-unknown-event",
+    "definition": "StreamEvent",
+    "valid": false,
+    "value": {
+      "event_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "type": "arbitrary",
+      "path": "",
+      "connection_id": "",
+      "occurred_at": "2026-10-15T00:00:00Z",
+      "segment_path": null
+    }
+  },
+  {
+    "name": "capture-error-CAPTURE_ACTIVE",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "CAPTURE_ACTIVE",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  },
+  {
+    "name": "capture-error-CAPTURE_NO_MEDIA",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "CAPTURE_NO_MEDIA",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  },
+  {
+    "name": "capture-error-CAPTURE_FINALIZE_FAILED",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "CAPTURE_FINALIZE_FAILED",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  },
+  {
+    "name": "capture-error-CAPTURE_FINALIZE_TIMEOUT",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "CAPTURE_FINALIZE_TIMEOUT",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  },
+  {
+    "name": "capture-error-CAPTURE_PREPARE_FAILED",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "CAPTURE_PREPARE_FAILED",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  },
+  {
+    "name": "capture-error-CAPTURE_CLEANUP_PENDING",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "CAPTURE_CLEANUP_PENDING",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  },
+  {
+    "name": "capture-error-RATE_LIMITED",
+    "definition": "ErrorResponse",
+    "valid": true,
+    "value": {
+      "error": {
+        "code": "RATE_LIMITED",
+        "message": "Synthetic capture error",
+        "details": {}
+      },
+      "request_id": "synthetic-capture"
+    }
+  }
+]

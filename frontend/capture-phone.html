@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="data:," />
+    <title>手机课堂采集 · 观课</title>
+    <script>
+      // Remove the fragment before loading the application or any other resource.
+      window.__capturePairing = new URLSearchParams(location.hash.slice(1)).get('pairing_token');
+      history.replaceState(null, '', location.pathname);
+    </script>
+  </head>
+  <body>
+    <main id="phone-root" class="phone-capture page"></main>
+    <script type="module" src="/src/capture/phone-entry.ts"></script>
+  </body>
+</html>
