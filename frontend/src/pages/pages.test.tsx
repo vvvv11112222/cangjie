@@ -10,11 +10,14 @@ import type { ReportAction, SessionAction } from '../types';
 import { fixtures } from '../data/samples';
 
 describe('三个页面的固定样例渲染', () => {
-  it('课堂任务列表显示课堂、批次阶段和允许操作', () => {
+  it('课堂档案列表按草图结构显示状态页签、表格与允许操作', () => {
     const html = renderToStaticMarkup(<SessionListPage tasks={buildSessionTasks()} />);
-    expect(html).toContain('课堂任务');
+    expect(html).toContain('课堂档案');
     expect(html).toContain('合成课堂');
-    expect(html).toContain('阶段完成 4/6');
+    // 草图的工具条与表格列（阶段流程移到了课堂详情页，这里只断言列表结构）。
+    expect(html).toContain('全部课堂');
+    expect(html).toContain('查看详情');
+    expect(html).toContain('课堂 / 课程');
     expect(html).toContain('提交分析');
     expect(html).toContain('contracts/examples/session-page.json');
   });
@@ -44,10 +47,10 @@ describe('三个页面的固定样例渲染', () => {
  * 所以不传 props 时的输出必须和 M0 一致：同步有内容，不出现加载态。
  */
 describe('页面默认路径（数据访问层 · 固定样例模式）', () => {
-  it('课堂任务页不传 props 也能直接渲染样例', () => {
+  it('课堂档案页不传 props 也能直接渲染样例', () => {
     const html = renderToStaticMarkup(<SessionListPage />);
     expect(html).toContain('合成课堂');
-    expect(html).toContain('阶段完成 4/6');
+    expect(html).toContain('课堂档案');
     expect(html).not.toContain('正在读取数据');
   });
 

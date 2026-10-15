@@ -218,3 +218,117 @@ export function IconShield(props: IconProps): ReactElement {
     </Glyph>
   );
 }
+
+/*
+ * 以下六个图标对应《系统草图.html》侧栏用到的图形（grid / video / calendar /
+ * folder / camera / settings）。草图是 HTML 原型、没有可复用的图标集，
+ * 这里按本文件统一的 24 视图框、1.7 描边手写一份，不引入图标库。
+ */
+
+/** 管理工作台：宫格 */
+export function IconGrid(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <rect x="4" y="4" width="7" height="7" rx="1.6" />
+      <rect x="13" y="4" width="7" height="7" rx="1.6" />
+      <rect x="4" y="13" width="7" height="7" rx="1.6" />
+      <rect x="13" y="13" width="7" height="7" rx="1.6" />
+    </Glyph>
+  );
+}
+
+/** 课堂录像：摄像机机身 */
+export function IconVideo(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <rect x="3.5" y="6.5" width="12" height="11" rx="2" />
+      <path d="M15.5 11l5-3v8l-5-3z" />
+    </Glyph>
+  );
+}
+
+/** 教务与课表：日历 */
+export function IconCalendar(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
+      <path d="M4 10h16" />
+      <path d="M8.5 3.5v4M15.5 3.5v4" />
+    </Glyph>
+  );
+}
+
+/** 素材与来源：文件夹 */
+export function IconFolder(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <path d="M4 7.5A2 2 0 0 1 6 5.5h3.2l1.8 2h7A2 2 0 0 1 20 9.5v7A2 2 0 0 1 18 18.5H6a2 2 0 0 1-2-2z" />
+    </Glyph>
+  );
+}
+
+/** 设备接入：摄像头 */
+export function IconCamera(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <path d="M4 8.5A2 2 0 0 1 6 6.5h6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+      <path d="M14 11.5 20 8v8l-6-3.5z" />
+      <circle cx="8.5" cy="11.5" r="1.6" />
+    </Glyph>
+  );
+}
+
+/** 运行与设置：齿轮 */
+export function IconSettings(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.5v2.2M12 18.3v2.2M4.9 7.8l1.9 1.1M17.2 15.1l1.9 1.1M4.9 16.2l1.9-1.1M17.2 8.9l1.9-1.1" />
+    </Glyph>
+  );
+}
+
+/** 账号头像：未登录时的默认人形 */
+export function IconUser(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5.5 19.5c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" />
+    </Glyph>
+  );
+}
+
+/** 待办提醒：铃铛（对应《系统草图.html》顶栏的通知按钮） */
+export function IconBell(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <path d="M12 4a5.5 5.5 0 0 0-5.5 5.5c0 4.2-1.2 5.6-1.7 6.1-.3.3-.1.9.4.9h13.6c.5 0 .7-.6.4-.9-.5-.5-1.7-1.9-1.7-6.1A5.5 5.5 0 0 0 12 4z" />
+      <path d="M10 19.5a2 2 0 0 0 4 0" />
+    </Glyph>
+  );
+}
+
+/**
+ * 品牌标志：摊开的书（与《系统草图.html》左上角 brand-mark 里的 book 图标同形）。
+ * 草图是内联 SVG，这里按本文件统一的 24 视图框、1.7 描边写一份。
+ */
+export function IconBook(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <path d="M12 6c-3-3-7-3-9-2v15c3-1 6 0 9 2 3-2 6-3 9-2V4c-2-1-6-1-9 2v15" />
+      <path d="M6 8l3 1M15 9l3-1" />
+    </Glyph>
+  );
+}
+
+export function IconPlus(props: IconProps): ReactElement {
+  return <Glyph {...props}><path d="M12 5v14M5 12h14" /></Glyph>;
+}
+
+export function IconUpload(props: IconProps): ReactElement {
+  return <Glyph {...props}><path d="M4 15v5h16v-5M12 16V3m-5 5 5-5 5 5" /></Glyph>;
+}
+
+export function IconRefresh(props: IconProps): ReactElement {
+  return <Glyph {...props}><path d="M20 7V2l-4 4a8 8 0 1 0 3 11M20 7h-5" /></Glyph>;
+}

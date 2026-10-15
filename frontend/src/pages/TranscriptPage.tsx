@@ -237,9 +237,10 @@ export function TranscriptPage({
         )}
       </Card>
 
-      <Card title="样例数据核对" subtitle="以下差异属于样例本身，接入后端后应由服务端状态替代。">
+      {/* 样例口径说明收进折叠区：内容不删，但不占业务视线（UI约定第 4 节）。 */}
+      <TechDetails summary="样例数据核对">
         <DisclosureList items={disclosures} />
-      </Card>
+      </TechDetails>
     </div>
   );
 }

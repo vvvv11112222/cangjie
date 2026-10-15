@@ -72,14 +72,18 @@ async function main() {
 
   // ---- 1. 列表页：Tab 顺序与焦点可见性 ----
   await goto('#/sessions');
-  const tabbed = await collectTabOrder(24);
-  const navReached = ['#/sessions', '#/transcript', '#/reports'].every(
+  const tabbed = await collectTabOrder(60);
+  const navReached = ['#/sessions', '#/tasks', '#/reports'].every(
     (href) => tabbed.some((item) => item.href === href),
   );
-  check(navReached, '三个导航入口都能用 Tab 到达', tabbed.filter((i) => i.href).map((i) => i.href).join(' '));
+  check(navReached, '模板核心导航入口都能用 Tab 到达', tabbed.filter((i) => i.href).map((i) => i.href).join(' '));
   check(
     tabbed.some((item) => item.text.includes('详情')),
     '课堂行的「详情」入口能用 Tab 到达',
+  );
+  check(
+    tabbed.some((item) => item.cls.includes('account-trigger')),
+    '顶栏右上角的账号入口能用 Tab 到达',
   );
 
   const noRing = tabbed.filter((item) => item.tag !== 'body' && !item.hasVisibleFocus);
@@ -91,13 +95,13 @@ async function main() {
   check(detailsResult.reachable, '「技术详情」summary 能用 Tab 到达');
   check(detailsResult.toggledOpen && detailsResult.toggledClosed, '「技术详情」能用 Enter 展开并收起', JSON.stringify(detailsResult));
 
-  // ---- 3. 导航往返：列表 → 详情 → 转写 → 报告 ----
+  // ---- 3. 导航往返：列表 → 详情 → 分析任务 → 报告 ----
   await goto('#/sessions');
   const roundTrip = await probeNavigation();
-  check(roundTrip.listTitle === '课堂任务', '列表页标题正确', roundTrip.listTitle);
+  check(roundTrip.listTitle === '课堂档案', '列表页标题正确', roundTrip.listTitle);
   check(roundTrip.detailTitle === '合成课堂', '点「详情」进入课堂详情', roundTrip.detailTitle);
-  check(roundTrip.backTitle === '课堂任务', '详情页「返回课堂列表」可用', roundTrip.backTitle);
-  check(roundTrip.transcriptTitle === '转写', '导航到转写页', roundTrip.transcriptTitle);
+  check(roundTrip.backTitle === '课堂档案', '详情页「返回课堂列表」可用', roundTrip.backTitle);
+  check(roundTrip.tasksTitle === '分析任务', '导航到分析任务页', roundTrip.tasksTitle);
   check(roundTrip.reportTitle === '报告', '导航到报告页', roundTrip.reportTitle);
 
   // ---- 4. 设计 Token 在真实渲染里的落点 ----
@@ -106,12 +110,13 @@ async function main() {
   check(styles.input.height === styles.select.height, '下拉框与输入框等高', `${styles.input.height} / ${styles.select.height}`);
   check(styles.input.radius === styles.select.radius, '下拉框与输入框同圆角', `${styles.input.radius} / ${styles.select.radius}`);
   check(styles.input.border === styles.select.border, '下拉框与输入框同边框', `${styles.input.border} / ${styles.select.border}`);
-  notes.push(`深色侧栏里的输入框高度 ${styles.sideInput.height}；浅色页面里的输入框 ${styles.input.height}`);
+  check(styles.accountTrigger !== null, '顶栏右上角渲染出账号入口', styles.accountTrigger ? styles.accountTrigger.radius : '');
+  notes.push(`顶栏头像直径 ${styles.accountAvatar ? styles.accountAvatar.height : '未渲染'}；页面输入框高度 ${styles.input.height}`);
   // 危险操作按设计是"白底 + 红字 + 红描边"，和次按钮同底色，所以按整体签名比较。
   const signature = (s) => `${s.bg} / ${s.color} / ${s.border}`;
   const signatures = new Set([signature(styles.primary), signature(styles.secondary), signature(styles.danger)]);
   check(signatures.size === 3, '主/次/危险三种按钮在真实渲染里可区分', [...signatures].join('  |  '));
-  check(styles.primary.bg === 'rgb(21, 56, 61)', '主按钮用的是品牌主色 #15383D', styles.primary.bg);
+  check(styles.primary.bg === 'rgb(22, 136, 121)', '主按钮使用系统草图强调色 #168879', styles.primary.bg);
   check(styles.notice.bg === 'rgb(253, 236, 234)', '提示条用的是浅红底 #FDECEA', styles.notice.bg);
   check(styles.noticeText !== styles.notice.bg, '提示条文字与底色不同', `${styles.noticeText} / ${styles.notice.bg}`);
 
@@ -241,13 +246,13 @@ async function probeNavigation() {
   await clickByText('a', '返回课堂列表');
   await sleep(400);
   const backTitle = await title();
-  await clickByText('nav a', '转写');
+  await clickByText('nav a', '分析任务');
   await sleep(400);
-  const transcriptTitle = await title();
-  await clickByText('nav a', '报告');
+  const tasksTitle = await title();
+  await clickByText('nav a', '教学报告');
   await sleep(400);
   const reportTitle = await title();
-  return { listTitle, detailTitle, backTitle, transcriptTitle, reportTitle };
+  return { listTitle, detailTitle, backTitle, tasksTitle, reportTitle };
 }
 
 /** 往页面里临时插入要素，量一下设计 Token 是否真的落到了真实渲染上（用完即删）。 */
@@ -261,14 +266,9 @@ async function probeTokens() {
     const input = document.createElement('input');
     const select = document.createElement('select');
     label.append(input, select);
-    // 顺便量一下深色侧栏里的输入框（登录表单只在接口模式下出现，这里用同样的 DOM 结构取样）。
-    const sideBar = document.createElement('div');
-    sideBar.className = 'account-bar';
-    const sideLabel = document.createElement('label');
-    sideLabel.className = 'account-field';
-    const sideInput = document.createElement('input');
-    sideLabel.append(sideInput);
-    sideBar.append(sideLabel);
+    // 账号入口是真实渲染出来的（顶栏右上角），直接量它，不再注入一份模拟结构。
+    const accountTrigger = document.querySelector('.account-trigger');
+    const accountAvatar = document.querySelector('.account-avatar');
     const notice = document.createElement('p');
     notice.className = 'notice-strip';
     const p = document.createElement('button');
@@ -277,7 +277,7 @@ async function probeTokens() {
     s.className = 'btn btn-secondary';
     const d = document.createElement('button');
     d.className = 'btn btn-danger';
-    box.append(label, sideBar, notice, p, s, d);
+    box.append(label, notice, p, s, d);
     const read = (el) => {
       const cs = getComputedStyle(el);
       return {
@@ -291,7 +291,8 @@ async function probeTokens() {
     const result = {
       input: read(input),
       select: read(select),
-      sideInput: read(sideInput),
+      accountTrigger: accountTrigger ? read(accountTrigger) : null,
+      accountAvatar: accountAvatar ? read(accountAvatar) : null,
       notice: read(notice),
       noticeText: getComputedStyle(notice).color,
       primary: read(p),
