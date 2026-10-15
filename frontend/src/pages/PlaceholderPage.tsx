@@ -66,48 +66,6 @@ export function PlaceholderPage({ page }: { page: PlannedPage }): ReactElement {
  * 已经实现的页面不在这里（例如 #/organizations 已经由 OrganizationsPage 实现）。
  */
 export const PLANNED_PAGES: Record<string, PlannedPage> = {
-  '#/dashboard': {
-    kicker: 'TEACHING OVERVIEW',
-    title: '教学工作台',
-    description: '从课堂记录到教学改进，每一步都有证据可循。',
-    dependency: 'available',
-    dependencyDetail: 'GET /sessions、GET /sessions/{id}/reports',
-  },
-  '#/management': {
-    kicker: 'SCHOOL ADMINISTRATION',
-    title: '全校管理工作台',
-    description: '系统管理员独立于各学院，统一管理全校组织、账号权限与课堂录像。',
-    dependency: 'available',
-    dependencyDetail: 'GET /org-units、GET /users、GET /sessions',
-  },
-  '#/recordings': {
-    kicker: 'RECORDING MANAGEMENT',
-    title: '课堂录像管理',
-    description: '按学院、年级、班级定位录像，维护课堂信息与对应访问链接。',
-    dependency: 'available',
-    dependencyDetail: 'GET /sessions、GET /sessions/{id}/media',
-  },
-  '#/academic': {
-    kicker: 'ACADEMIC AFFAIRS',
-    title: '教务与课表',
-    description: '管理各班课表，同一教师、班级或教室禁止时间重叠。',
-    dependency: 'available',
-    dependencyDetail: 'GET/POST/PATCH /schedules；/courses、/class-groups、/offerings',
-  },
-  '#/tasks': {
-    kicker: 'ANALYSIS WORKSPACE',
-    title: '分析任务',
-    description: '了解分析的每一步，让异常与处理结果清晰可见。',
-    dependency: 'available',
-    dependencyDetail: 'GET /sessions/{id}/analysis-runs、GET /analysis-runs/{id}',
-  },
-  '#/sources': {
-    kicker: 'MEDIA & SOURCES',
-    title: '素材与来源',
-    description: '为课堂素材保留来处、用途与使用限制。',
-    dependency: 'available',
-    dependencyDetail: 'POST /sources、GET /sessions/{id}/sources、POST /sources/{id}/verify',
-  },
   '#/devices': {
     kicker: 'DEVICE CONNECTION',
     title: '设备接入',
