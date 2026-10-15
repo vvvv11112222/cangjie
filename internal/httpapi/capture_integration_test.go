@@ -69,8 +69,15 @@ func TestLiveCaptureAuthorizationConcurrencyAndStop(t *testing.T) {
 	create := func(key string, want int) map[string]any {
 		return requestWithHeaders(t, client, "POST", srv.URL+"/api/v1/sessions/"+lesson+"/live-captures", map[string]any{"source_record_id": source, "config_profile": "phone-demo-v1"}, csrf, map[string]string{"Idempotency-Key": key}, want)
 	}
+	activeURL := srv.URL + "/api/v1/sessions/" + lesson + "/live-captures/active"
+	if status := rawStatus(client, "GET", activeURL, nil, nil); status != 404 {
+		t.Fatalf("missing active capture status=%d", status)
+	}
 	first := create("capture-test", 201)
 	id := first["id"].(string)
+	if active := requestJSON(t, client, "GET", activeURL, nil, "", 200); active["id"] != id {
+		t.Fatal("active capture lookup returned a different capture")
+	}
 	base := srv.URL + "/api/v1/live-captures/" + id
 	if v := create("capture-test", 200); v["id"] != id {
 		t.Fatal("idempotent create returned a different capture")
@@ -109,6 +116,9 @@ func TestLiveCaptureAuthorizationConcurrencyAndStop(t *testing.T) {
 	requestJSON(t, client, "POST", base+"/stop", map[string]any{}, csrf, 202)
 	if _, e = pool.Exec(ctx, `UPDATE teaching.live_captures SET state='failed' WHERE id=$1`, id); e != nil {
 		t.Fatal(e)
+	}
+	if status := rawStatus(client, "GET", activeURL, nil, nil); status != 404 {
+		t.Fatalf("terminal capture remained active status=%d", status)
 	}
 	id = create("capture-second", 201)["id"].(string)
 	base = srv.URL + "/api/v1/live-captures/" + id

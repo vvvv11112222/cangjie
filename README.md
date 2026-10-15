@@ -267,4 +267,4 @@ node frontend/tools/browser-regression.mjs '<已安装的playwright包目录>/in
 
 ## 安卓手机采集与实时预览（P1）
 
-新增六个业务接口、两个媒体服务内部接口和009迁移；采用 MediaMTX v1.15.3，默认关闭。配置、可信HTTPS、安卓接入、调用顺序、状态与错误见[实时采集接口](docs/实时采集接口.md)。最小联调页为[手机/电脑测试页](frontend/public/capture-demo.html)。录制结束后复用媒体入库、media_prepare和原回放接口；真实ASR、OCR、行为及报告仍按原分析链单独验收。
+新增七个业务接口（含按课堂恢复活动采集）、两个媒体服务内部接口和009迁移；采用 MediaMTX v1.15.3，默认关闭。配置、可信HTTPS、安卓接入、调用顺序、状态与错误见[实时采集接口](docs/实时采集接口.md)。最小联调页为[手机/电脑测试页](frontend/public/capture-demo.html)。录制结束后复用媒体入库、media_prepare和原回放接口；真实ASR、OCR、行为及报告仍按原分析链单独验收。

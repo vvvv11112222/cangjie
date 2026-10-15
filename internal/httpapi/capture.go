@@ -31,6 +31,7 @@ func (s *server) registerCaptureRoutes(mux *http.ServeMux) {
 		}
 	}
 	mux.HandleFunc("POST /api/v1/sessions/{id}/live-captures", wrap(s.createCapture))
+	mux.HandleFunc("GET /api/v1/sessions/{id}/live-captures/active", wrap(s.activeCapture))
 	mux.HandleFunc("POST /api/v1/live-captures/{id}/pairings", wrap(s.pairCapture))
 	mux.HandleFunc("POST /api/v1/capture-pairings/exchange", wrap(func(w http.ResponseWriter, r *http.Request) {
 		// Global bound also protects the database from distributed failed exchanges.
@@ -92,6 +93,22 @@ func (s *server) registerCaptureRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	}))
+}
+func (s *server) activeCapture(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	v, e := s.capture.Active(r.Context(), p, id)
+	if e != nil {
+		s.writeServiceError(w, r, e)
+		return
+	}
+	writeData(w, r, 200, v)
 }
 func (s *server) capturePrincipal(w http.ResponseWriter, r *http.Request, id string, write bool) (identity.Principal, bool) {
 	if h := r.Header.Get("Authorization"); h != "" {

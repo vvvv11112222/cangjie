@@ -20,6 +20,10 @@ func checkedFile(root, path string) (string, error) {
 	if e != nil {
 		return "", e
 	}
+	resolvedRoot, e := filepath.EvalSymlinks(root)
+	if e != nil {
+		return "", e
+	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(root, path)
 	}
@@ -32,8 +36,10 @@ func checkedFile(root, path string) (string, error) {
 		return "", invalid("recording path escapes capture root")
 	}
 	current := root
+	resolvedCurrent := resolvedRoot
 	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
 		current = filepath.Join(current, part)
+		resolvedCurrent = filepath.Join(resolvedCurrent, part)
 		info, e := os.Lstat(current)
 		if e != nil {
 			return "", e
@@ -45,7 +51,11 @@ func checkedFile(root, path string) (string, error) {
 		if e != nil {
 			return "", e
 		}
-		if !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(current)) {
+		// The configured root can itself sit below a Windows junction (for
+		// example the system temporary directory). Compare descendants against
+		// the root's canonical form so that trusted ancestors are allowed while
+		// links or junctions introduced below the root are still rejected.
+		if !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(resolvedCurrent)) {
 			return "", invalid("recording reparse points are not permitted")
 		}
 	}

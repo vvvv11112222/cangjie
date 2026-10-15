@@ -274,6 +274,10 @@ func (s *Service) clean(ctx context.Context, r record) error {
 	}
 	if _, e = os.Stat(target); e == nil {
 		// Validate every path before the recursive removal (including Windows junctions).
+		resolvedRoot, resolveErr := filepath.EvalSymlinks(s.cfg.RecordRoot)
+		if resolveErr != nil {
+			return resolveErr
+		}
 		e = filepath.WalkDir(target, func(path string, d os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -282,8 +286,9 @@ func (s *Service) clean(ctx context.Context, r record) error {
 			if e != nil {
 				return e
 			}
-			rel, e := filepath.Rel(s.cfg.RecordRoot, resolved)
-			if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || d.Type()&os.ModeSymlink != 0 {
+			rel, e := filepath.Rel(s.cfg.RecordRoot, path)
+			expected := filepath.Join(resolvedRoot, rel)
+			if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || d.Type()&os.ModeSymlink != 0 || !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(expected)) {
 				return invalid("unsafe recording cleanup path")
 			}
 			return nil
@@ -308,7 +313,12 @@ func (s *Service) clean(ctx context.Context, r record) error {
 			if er != nil {
 				return er
 			}
-			if entry.Type()&os.ModeSymlink != 0 || !strings.EqualFold(resolved, work) {
+			resolvedRoot, er := filepath.EvalSymlinks(s.cfg.RecordRoot)
+			if er != nil {
+				return er
+			}
+			expected := filepath.Join(resolvedRoot, entry.Name())
+			if entry.Type()&os.ModeSymlink != 0 || !strings.EqualFold(filepath.Clean(resolved), filepath.Clean(expected)) {
 				return invalid("unsafe finalizer directory")
 			}
 			files, er := os.ReadDir(work)

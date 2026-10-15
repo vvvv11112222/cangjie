@@ -9,6 +9,7 @@
 <label>课堂 ID<input id="session" autocomplete="off"></label>
 <label>来源 ID<input id="source" autocomplete="off"></label>
 <button id="create">创建采集并取得手机链接</button>
+<button id="recover">恢复当前活动采集</button>
 <p><a id="pair" target="_blank" rel="noreferrer"></a></p>
 <label>采集 ID（可粘贴已有 ID）<input id="capture" autocomplete="off"></label>
 <button id="watch">观看实时画面</button>
@@ -58,6 +59,11 @@ $('create').onclick=()=>action(async()=>{
  const res=await fetch('/api/v1/sessions/'+$('session').value.trim()+'/live-captures',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({source_record_id:$('source').value.trim(),config_profile:'phone-demo-v1'})});
  const j=await res.json();if(!res.ok)throw Error(j.error?.message||'创建失败');captureID=j.data.id;$('capture').value=captureID;
  const pair=await api('live-captures/'+captureID+'/pairings',{});$('pair').href=pair.phone_url;$('pair').textContent=pair.phone_url;note('将配对链接发到同一 Wi-Fi 的手机打开，勿分享给其他人。');await startPoll();
+});
+$('recover').onclick=()=>action(async()=>{
+ const session=$('session').value.trim();if(!session)throw Error('请先填写课堂 ID');
+ const v=await api('sessions/'+session+'/live-captures/active');captureID=v.id;$('capture').value=captureID;
+ note(v.state==='recording'?'已恢复正在录制的采集，可继续观看或停止。':'已恢复活动采集：'+v.state);await startPoll();
 });
 $('start').onclick=()=>action(async()=>{
  if(!pairing)throw Error('配对凭据已使用，请在电脑重新创建配对。');

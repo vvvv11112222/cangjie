@@ -205,6 +205,21 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Cap
 	}
 	return r.Capture, nil
 }
+
+// Active returns the single non-terminal capture for a lesson. The partial
+// unique index in migration 009 enforces that there can be at most one.
+func (s *Service) Active(ctx context.Context, p identity.Principal, session string) (Capture, error) {
+	if e := s.media.AuthorizeCaptureRead(ctx, p, session); e != nil {
+		return Capture{}, e
+	}
+	var id string
+	if e := s.pool.QueryRow(ctx, `SELECT id::text FROM teaching.live_captures WHERE session_id=$1 AND state IN('waiting','recording','finalizing')`, session).Scan(&id); errors.Is(e, pgx.ErrNoRows) {
+		return Capture{}, missing()
+	} else if e != nil {
+		return Capture{}, e
+	}
+	return s.Get(ctx, p, id)
+}
 func (s *Service) Pair(ctx context.Context, p identity.Principal, id string) (Pairing, error) {
 	tx, r, e := s.lock(ctx, id)
 	if e != nil {

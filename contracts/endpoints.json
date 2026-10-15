@@ -936,6 +936,17 @@
       ]
     },
     {
+      "method": "GET",
+      "path": "/api/v1/sessions/{id}/live-captures/active",
+      "request": null,
+      "response": "LiveCapture",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
       "method": "POST",
       "path": "/api/v1/live-captures/{id}/pairings",
       "request": "Empty",
