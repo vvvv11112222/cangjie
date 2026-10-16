@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence, Segment } from '../types';
 import { useTranscriptData } from '../data/hooks';
@@ -15,10 +16,20 @@ import {
 } from '../format';
 import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, TechDetails } from '../components/ui';
 import { IconAlert } from '../components/icons';
+import { apiPath } from '../data/http';
+import { isApiMode } from '../data/sources';
 
 /** 证据与片段的业务关联在后端建立；样例用 provenance.source_segment_no 表达。 */
 function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] {
   return evidence.filter((item) => item.provenance['source_segment_no'] === segment.segment_no);
+}
+
+function KeyframeImage({ assetId, label }: { assetId: string; label: string }): ReactElement {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <div className="keyframe-placeholder"><span>图片不可用，可能已过期或没有读取权限。</span><button className="text-button" type="button" onClick={() => setFailed(false)}>重试</button></div>;
+  }
+  return <img src={apiPath(`/media/${encodeURIComponent(assetId)}/content`)} alt={label} loading="lazy" onError={() => setFailed(true)}/>;
 }
 
 export function TranscriptPage({
@@ -120,6 +131,25 @@ export function TranscriptPage({
             结果限制：{results.limitations.join('；')}
           </p>
         ) : null}
+      </Card>
+
+      <Card title="关键帧" subtitle={`${results.frames.length} 帧；时间点统一以原录像起点的整数毫秒表示。`}>
+        {results.frames.length === 0 ? (
+          <p className="empty">当前没有关键帧。P0 行为事件可以为空，但关键帧是否生成须结合视频分析阶段状态判断。</p>
+        ) : (
+          <div className="keyframe-grid">
+            {results.frames.map((frame, index) => (
+              <article className="keyframe-card" key={`${frame.asset_id}-${frame.timestamp_ms}`}>
+                {isApiMode() ? (
+                  <KeyframeImage assetId={frame.asset_id} label={`关键帧 ${index + 1}，时间 ${formatTimestamp(frame.timestamp_ms)}`}/>
+                ) : <div className="keyframe-placeholder">固定样例不包含真实图片</div>}
+                <strong>关键帧 {index + 1}</strong>
+                <span className="mono">{formatTimestamp(frame.timestamp_ms)}</span>
+                <IdChip id={frame.asset_id} label="媒体" />
+              </article>
+            ))}
+          </div>
+        )}
       </Card>
 
       {revision === null ? null : (

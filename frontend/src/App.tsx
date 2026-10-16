@@ -33,6 +33,9 @@ import { ReportPage } from './pages/ReportPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
+import { TasksPage } from './pages/TasksPage';
+import { SourcesPage } from './pages/SourcesPage';
+import { AcademicPage, DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
 import {
   DEFAULT_ROUTE,
   isVisiblePath,
@@ -72,6 +75,12 @@ const NAV_ICONS: Record<string, ReactElement> = {
 
 /** 已经实现的页面：课堂档案（列表 + 详情）、转写、教学报告。 */
 const IMPLEMENTED_PAGES: Record<string, () => ReactElement> = {
+  '#/dashboard': () => <DashboardPage />,
+  '#/management': () => <ManagementPage />,
+  '#/recordings': () => <RecordingsPage />,
+  '#/academic': () => <AcademicPage />,
+  '#/tasks': () => <TasksPage />,
+  '#/sources': () => <SourcesPage />,
   [SESSIONS_PATH]: () => <SessionListPage />,
   '#/accounts': () => <AccountsPage />,
   '#/organizations': () => <OrganizationsPage />,
@@ -154,7 +163,7 @@ function PageNotice({ eyebrow, title, message }: {
 
 export function App(): ReactElement {
   const hash = useHashRoute();
-  const { me } = useAuth();
+  const { me, sessionKey } = useAuth();
   const apiMode = isApiMode();
   const [previewRole, setPreviewRole] = useState<RoleCode | null>(null);
   // 账号面板由 App 掌管开合：顶栏头像和侧栏底部的"当前身份"都能打开它。
@@ -260,6 +269,7 @@ export function App(): ReactElement {
           </div>
         </header>
         <main id="main">
+          <M1RoleContext.Provider key={sessionKey} value={roles}>
           {sessionRoute.kind === 'invalid' ? (
             <PageNotice
               eyebrow="课堂地址无法解析"
@@ -283,6 +293,7 @@ export function App(): ReactElement {
           ) : (
             render()
           )}
+          </M1RoleContext.Provider>
         </main>
         <footer className="workspace-footer">
           <span>观课 · 让教学观察有据可循</span>

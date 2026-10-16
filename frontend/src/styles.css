@@ -1080,6 +1080,87 @@ code {
   overflow-x: auto;
 }
 
+/* M1 页面严格沿用系统草图的页头、工具条、统计卡、双栏和管理入口结构。 */
+.page-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.context-strip { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; padding: 10px 15px; border: 1px solid var(--accent-edge); border-radius: 9px; background: linear-gradient(100deg, var(--accent-soft), var(--surface-hover)); color: var(--accent-ink-soft); font-size: 12px; }
+.context-strip span { display: inline-flex; align-items: center; gap: 8px; }
+.m1-callout { margin: 18px 0; padding: 12px 15px; border: 1px solid var(--accent-edge); border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink-soft); font-size: 12px; line-height: 1.8; }
+.tabs { display: flex; align-items: center; gap: 4px; width: max-content; max-width: 100%; padding: 4px; overflow-x: auto; border-radius: 8px; background: var(--neutral-soft); }
+.tab { padding: 7px 14px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.tab.active { background: var(--card); color: var(--accent-deep); box-shadow: 0 1px 5px #173d3710; font-weight: 600; }
+.filters { display: flex; align-items: center; gap: 9px; }
+.m1-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 18px 0 21px; }
+.m1-stat { min-width: 0; padding: 20px 21px; }
+.m1-stat-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; color: var(--muted); font-size: 13px; }
+.m1-stat-icon { display: grid; place-items: center; padding: 7px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-deep); }
+.m1-stat strong { display: block; margin-bottom: 9px; color: var(--ink); font-size: 30px; line-height: 1; }
+.m1-stat p { color: var(--muted); font-size: 11px; }
+.m1-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.m1-form .account-field { display: grid; gap: 7px; color: var(--muted); }
+.m1-form .account-field input, .m1-form .account-field select { width: 100%; }
+.m1-form .form-actions, .m1-form .load-note, .m1-form .check-row { grid-column: 1 / -1; }
+.m1-filter-control { min-height: var(--control-height); padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--card); color: var(--ink); font: inherit; }
+.m1-filter-control:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+.m1-search { width: 210px; }
+.m1-table-card { overflow: hidden; }
+.m1-table-card > .load-note { margin: 12px 20px; }
+.m1-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+.m1-section-head h2 { font-size: 16px; }
+.m1-section-head p { margin-top: 3px; }
+.m1-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.management-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.management-grid a { padding: 26px; color: inherit; text-decoration: none; }
+.management-entry > svg { margin-bottom: 20px; color: var(--accent-deep); }
+.management-entry h2 { margin-bottom: 12px; font-size: 17px; }
+.management-entry p { min-height: 70px; color: var(--muted); font-size: 12px; line-height: 1.9; }
+.management-entry span { display: block; margin-top: 20px; color: var(--accent-deep); font-size: 12px; }
+.management-entry:hover { border-color: var(--accent); background: var(--surface-hover); }
+.m1-dashboard-upper { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(310px, 1fr); gap: 20px; margin-bottom: 21px; }
+.m1-dashboard-lower { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(250px, .85fr); gap: 20px; }
+.m1-aside-stack { display: flex; flex-direction: column; gap: 18px; }
+.m1-chart { display: flex; align-items: flex-end; justify-content: space-around; gap: 12px; min-height: 190px; padding: 16px 8px 4px; border-bottom: 1px solid var(--line); }
+.m1-chart-column { display: grid; grid-template-rows: 18px 130px 18px; align-items: end; justify-items: center; min-width: 34px; color: var(--muted); font-size: 10px; }
+.m1-chart-value { color: var(--accent-deep); }
+.m1-chart-bar { width: 18px; max-height: 130px; align-self: end; border-radius: 5px 5px 0 0; background: var(--accent); }
+.m1-progress-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 9px; color: var(--muted); font-size: 12px; }
+.m1-progress-label strong { color: var(--accent-deep); }
+.m1-todo { display: grid; gap: 16px; }
+.m1-todo a { display: grid; gap: 5px; padding-bottom: 15px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.m1-todo a:last-child { padding-bottom: 0; border-bottom: 0; }
+.m1-todo span { color: var(--muted); font-size: 11px; }
+.m1-storage-value { display: block; margin: 4px 0 10px; font-size: 30px; }
+.m1-task-list { display: grid; gap: 16px; }
+.m1-task-card { padding: 22px; }
+.m1-task-head, .m1-task-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.m1-task-head h2 { margin-bottom: 4px; font-size: 16px; }
+.m1-task-footer { align-items: center; margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+
+/* 账号与权限：对应草图的页头操作、三项筛选、六列表格和编辑弹层。 */
+.accounts-page-head { margin-bottom: 34px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.accounts-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.accounts-toolbar .filters { flex-wrap: wrap; }
+.accounts-toolbar .m1-filter-control { min-width: 180px; }
+.accounts-toolbar .accounts-search { width: 240px; }
+.accounts-table-card { overflow: hidden; }
+.accounts-table td { vertical-align: middle; }
+.accounts-table .permission-cell { min-width: 280px; max-width: 390px; white-space: normal; line-height: 1.8; }
+.accounts-row-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.accounts-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.badge-gray { background: var(--neutral-soft); color: var(--muted); }
+.accounts-editor-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: #16374066; backdrop-filter: blur(3px); }
+.accounts-editor { width: min(720px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: 0 22px 100px #12343c28; }
+.accounts-editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
+.accounts-editor-head h2 { font-size: 20px; }
+.accounts-editor-head .icon-button { width: 34px; height: 34px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
+.accounts-editor-head .icon-button:hover { background: var(--surface-hover); color: var(--ink); }
+.accounts-editor-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 22px 26px 26px; }
+.accounts-editor-form .account-field { display: grid; gap: 7px; }
+.accounts-editor-form .accounts-permission-preview, .accounts-editor-form .notice-strip, .accounts-editor-form .form-actions { grid-column: 1 / -1; }
+.accounts-permission-preview { padding: 14px 16px; border: 1px solid var(--accent-edge); border-radius: 8px; background: var(--accent-soft); }
+.accounts-permission-preview strong { display: block; margin-bottom: 5px; font-size: 12px; }
+.accounts-permission-preview p { color: var(--accent-ink-soft); font-size: 12px; line-height: 1.7; }
+
 .table {
   border-collapse: separate;
   border-spacing: 0;
@@ -1256,6 +1337,22 @@ code {
   background: var(--ok);
   transition: width 0.3s ease;
 }
+
+/* M2 分析任务与来源页沿用模板卡片、表格和全局控件，仅补页面级排列。 */
+.task-list, .task-group { display: grid; gap: 16px; }
+.task-card { padding: 20px; }
+.task-head, .task-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.task-head h2 { margin: 0 0 4px; font-size: 17px; }
+.task-footer { margin-top: 16px; color: var(--muted); font-size: 13px; }
+.source-form { display: grid; gap: 16px; }
+.source-uses { display: flex; flex-wrap: wrap; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 12px; }
+.source-uses legend { color: var(--faint); font-size: 12px; padding: 0 6px; }
+.keyframe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.keyframe-card { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-sunken); }
+.keyframe-card img, .keyframe-placeholder { width: 100%; aspect-ratio: 16 / 9; border-radius: 7px; background: var(--line); object-fit: cover; }
+.keyframe-placeholder { display: grid; place-items: center; align-content: center; gap: 8px; padding: 12px; color: var(--muted); font-size: 11px; text-align: center; }
+.keyframe-card strong { font-size: 13px; }
+.keyframe-card > .mono { color: var(--muted); font-size: 11px; }
 
 /*
  * 六阶段横向流程。桌面端六张卡片平分宽度，用箭头表达先后顺序；
@@ -2117,10 +2214,71 @@ code {
     min-width: 700px;
   }
 
+  .task-head,
+  .task-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   /* 窄屏收窄表格内边距，让更多列直接可见，其余仍可在表格内横向滚动。 */
   .table th,
   .table td {
     padding: 10px 12px;
+  }
+
+  .m1-stat-grid,
+  .m1-form {
+    grid-template-columns: 1fr;
+  }
+
+  .m1-dashboard-upper,
+  .m1-dashboard-lower,
+  .management-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .context-strip,
+  .m1-table-footer,
+  .m1-task-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .page-actions,
+  .filters {
+    flex-wrap: wrap;
+  }
+
+  .filters,
+  .m1-filter-control,
+  .m1-search {
+    width: 100%;
+  }
+
+  .management-entry p {
+    min-height: 0;
+  }
+
+  .accounts-toolbar,
+  .accounts-table-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .accounts-toolbar .filters,
+  .accounts-toolbar .m1-filter-control,
+  .accounts-toolbar .accounts-search {
+    width: 100%;
+  }
+
+  .accounts-editor-form {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts-editor-form .accounts-permission-preview,
+  .accounts-editor-form .notice-strip,
+  .accounts-editor-form .form-actions {
+    grid-column: auto;
   }
 }
 
