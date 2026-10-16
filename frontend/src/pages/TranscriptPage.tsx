@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Evidence, Run, Segment, Session } from '../types';
+import type { Evidence, Segment } from '../types';
 import { useTranscriptData } from '../data/hooks';
 import type { TranscriptView } from '../data/viewModel';
 import {
@@ -18,7 +18,6 @@ import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadCont
 import { IconAlert } from '../components/icons';
 import { apiPath } from '../data/http';
 import { isApiMode } from '../data/sources';
-import { TranscriptRevisionPanel } from './TranscriptRevisionPanel';
 
 /** 证据与片段的业务关联在后端建立；样例用 provenance.source_segment_no 表达。 */
 function evidenceForSegment(evidence: Evidence[], segment: Segment): Evidence[] {
@@ -36,22 +35,15 @@ function KeyframeImage({ assetId, label }: { assetId: string; label: string }): 
 export function TranscriptPage({
   view: injectedView,
   embedded = false,
-  session,
-  onRunCreated,
 }: {
   view?: TranscriptView;
   /** 嵌入课堂详情页时隐藏页头与数据来源说明，只保留正文卡片。 */
   embedded?: boolean;
-  session?: Session;
-  onRunCreated?(run: Run): void;
 } = {}): ReactElement {
   const loaded = useTranscriptData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
-  const { results, revision: incomingRevision, run, evidence, disclosures } = view;
-  const [revision, setRevision] = useState(incomingRevision);
-  useEffect(() => setRevision(incomingRevision), [incomingRevision]);
-  const segments = revision?.segments ?? view.segments;
+  const { results, revision, run, segments, evidence, disclosures } = view;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免把空数组当成"确实没有转写"。
   const ready = injectedView !== undefined || loaded.hasData;
@@ -200,10 +192,6 @@ export function TranscriptPage({
           </TechDetails>
         </Card>
       )}
-
-      {isApiMode() && revision !== null && session !== undefined ? (
-        <TranscriptRevisionPanel session={session} initial={revision} onChange={setRevision} onRunCreated={onRunCreated} />
-      ) : null}
 
       <Card title="转写片段" subtitle={`${segments.length} 段，按 segment_no 升序`}>
         {segments.length === 0 ? (

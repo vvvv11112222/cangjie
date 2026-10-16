@@ -22,4 +22,3 @@ export interface CreateLiveCapture { source_record_id: string; config_profile: '
 export interface CapturePairing { pairing_id: string; phone_url: string; expires_at: string }
 export interface CapturePublisher { live_capture_id: string; session_id: string; whip_url: string; publish_token: string; control_token: string; expires_at: string }
 export interface CaptureViewer { viewer_session_id: string; whep_url: string; view_token: string; expires_at: string }
-export type LiveCaptureAction = LiveCapture['allowed_actions'][number];

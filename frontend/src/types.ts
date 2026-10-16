@@ -170,19 +170,6 @@ export interface Revision {
   segments: Segment[];
 }
 
-export interface RevisionPage {
-  items: Revision[];
-  next_cursor: string | null;
-}
-
-export interface CreateRevision {
-  media_asset_id: string;
-  base_revision_id: string;
-  transcript_lock_version: number;
-  reason: string;
-  segments: Segment[];
-}
-
 export type ReportStatus = 'draft' | 'in_review' | 'published' | 'superseded' | 'withdrawn';
 export type ReportAction =
   | 'edit'
@@ -223,15 +210,6 @@ export interface Observation {
   evidence_ids: string[];
 }
 
-export interface WritableObservation {
-  id: string | null;
-  dimension_code: DimensionCode;
-  observation_type: ObservationType;
-  observation_text: string;
-  suggestion: string;
-  evidence_ids: string[];
-}
-
 export interface ReportProvenance {
   media_asset_id: string;
   input_sha256: string;
@@ -268,45 +246,4 @@ export interface Report {
   reviewed_at: string | null;
   provenance: ReportProvenance | null;
   allowed_actions: ReportAction[];
-}
-
-export interface ReportPage {
-  items: Report[];
-  next_cursor: string | null;
-}
-
-export interface PatchReport {
-  lock_version: number;
-  summary: string;
-  summary_evidence_ids: string[];
-  dimensions: Dimension[];
-  observations: WritableObservation[];
-  reason: string;
-}
-
-export type ReviewAction = 'submit' | 'accept' | 'revise' | 'reject' | 'confirm_report';
-
-export interface ReviewReport {
-  lock_version: number;
-  action: ReviewAction;
-  observation_id: string | null;
-  content_sha256: string | null;
-  reason: string;
-}
-
-export interface PublishReport {
-  lock_version: number;
-  expected_current_report_id: string | null;
-}
-
-export type ExportFormat = 'pdf' | 'json';
-export type ExportStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'expired';
-
-export interface ReportExport {
-  id: string;
-  report_id: string;
-  status: ExportStatus;
-  error_code: string | null;
-  download_url: string | null;
-  expires_at: string;
 }
