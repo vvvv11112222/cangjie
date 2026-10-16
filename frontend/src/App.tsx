@@ -33,6 +33,7 @@ import { ReportPage } from './pages/ReportPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
+import { AcademicPage, DashboardPage, M1RoleContext, ManagementPage, RecordingsPage, SourcesPage, TasksPage } from './pages/M1Pages';
 import {
   DEFAULT_ROUTE,
   isVisiblePath,
@@ -72,6 +73,12 @@ const NAV_ICONS: Record<string, ReactElement> = {
 
 /** 已经实现的页面：课堂档案（列表 + 详情）、转写、教学报告。 */
 const IMPLEMENTED_PAGES: Record<string, () => ReactElement> = {
+  '#/dashboard': () => <DashboardPage />,
+  '#/management': () => <ManagementPage />,
+  '#/recordings': () => <RecordingsPage />,
+  '#/academic': () => <AcademicPage />,
+  '#/tasks': () => <TasksPage />,
+  '#/sources': () => <SourcesPage />,
   [SESSIONS_PATH]: () => <SessionListPage />,
   '#/accounts': () => <AccountsPage />,
   '#/organizations': () => <OrganizationsPage />,
@@ -260,6 +267,7 @@ export function App(): ReactElement {
           </div>
         </header>
         <main id="main">
+          <M1RoleContext.Provider value={roles}>
           {sessionRoute.kind === 'invalid' ? (
             <PageNotice
               eyebrow="课堂地址无法解析"
@@ -283,6 +291,7 @@ export function App(): ReactElement {
           ) : (
             render()
           )}
+          </M1RoleContext.Provider>
         </main>
         <footer className="workspace-footer">
           <span>观课 · 让教学观察有据可循</span>
