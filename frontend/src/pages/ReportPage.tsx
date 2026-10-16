@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence } from '../types';
 import { useReportData } from '../data/hooks';
@@ -14,6 +15,8 @@ import {
   shortId,
 } from '../format';
 import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill, TechDetails } from '../components/ui';
+import { isApiMode } from '../data/sources';
+import { ReportWorkflowPanel } from './ReportWorkflowPanel';
 
 function CitedEvidence({
   ids,
@@ -54,8 +57,12 @@ export function ReportPage({
   const loaded = useReportData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
-  const { report, session, run, evidenceById, disclosures } = view;
-  const published = session !== null && session.current_report_id === report.id;
+  const { report: incomingReport, session, run, evidenceById, disclosures } = view;
+  const [report, setReport] = useState(incomingReport);
+  const [currentReportId, setCurrentReportId] = useState(session?.current_report_id ?? null);
+  useEffect(() => setReport(incomingReport), [incomingReport]);
+  useEffect(() => setCurrentReportId(session?.current_report_id ?? null), [session?.current_report_id]);
+  const published = currentReportId === report.id;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空报告假装"确实没有内容"。
   const ready = injectedView !== undefined || loaded.hasData;
@@ -139,6 +146,8 @@ export function ReportPage({
           </ul>
         </TechDetails>
       </Card>
+
+      {isApiMode() && session !== null ? <ReportWorkflowPanel session={session} initial={report} onChange={(next) => { setReport(next); if (next.status === 'published') setCurrentReportId(next.id); else if (next.status === 'withdrawn' && currentReportId === next.id) setCurrentReportId(null); }} /> : null}
 
       <Card title="总摘要" subtitle="总摘要中的事实也须引用证据。">
         <p className="summary-text">{report.summary === '' ? '（空）' : report.summary}</p>

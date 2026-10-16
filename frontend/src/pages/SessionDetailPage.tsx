@@ -52,11 +52,13 @@ import { pendingIntent } from './pendingIntent';
 import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
 import { PlaybackPanel } from './PlaybackPanel';
+import { LiveCapturePanel } from './LiveCapturePanel';
 
-type Tab = 'run' | 'transcript' | 'report' | 'playback';
+type Tab = 'run' | 'live' | 'transcript' | 'report' | 'playback';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'run', label: '批次与操作' },
+  { key: 'live', label: '实时课堂' },
   { key: 'transcript', label: '转写' },
   { key: 'report', label: '报告' },
   { key: 'playback', label: '回放' },
@@ -119,7 +121,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const transcript = useSessionTranscript(session, tab === 'transcript' || tab === 'playback');
   const report = useSessionReport(session, baseRun, tab === 'report');
   // 回放要用媒体列表挑出可播放的目标（没有主媒体时退回到列表里的原媒体），因此也在这里加载。
-  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'playback'));
+  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'live' || tab === 'playback'));
   const playbackMediaId = session === null ? null : pickPlaybackMediaId(session, media.data.items);
   const playback = useMediaDetail(playbackMediaId, tab === 'playback');
 
@@ -614,12 +616,38 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
           {tab === 'transcript' ? (
             transcript.status === 'ready' ? (
-              <TranscriptPage embedded view={transcript.data} />
+              <TranscriptPage
+                embedded
+                view={transcript.data}
+                session={session}
+                onRunCreated={(run) => {
+                  write(scope, (base) => ({ ...base, run, note: `报告重跑 ${shortId(run.id)} 已创建。` }));
+                  setTab('run');
+                }}
+              />
             ) : (
               <>
                 <LoadStateNote status={transcript.status} error={transcript.error} />
                 <LoadControls actionLabel={transcript.actionLabel} loadMore={transcript.loadMore} />
               </>
+            )
+          ) : null}
+
+          {tab === 'live' ? (
+            api ? (
+              <LiveCapturePanel
+                session={session}
+                enabled
+                onUseMedia={(mediaId) => {
+                  write(scope, (base) => ({ ...base, mediaChoice: { kind: 'asset', mediaId } }));
+                  media.reload();
+                  setTab('run');
+                }}
+              />
+            ) : (
+              <Card title="实时课堂" subtitle="该能力只连接真实 Go API 与媒体服务。">
+                <p className="empty">固定样例模式不伪造实时画面。切换到接口模式后可创建手机采集。</p>
+              </Card>
             )
           ) : null}
 

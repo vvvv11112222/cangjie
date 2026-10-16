@@ -134,6 +134,25 @@ function capture(init?: RequestInit): void {
 }
 
 describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
+  it('按前端模板在课堂详情提供实时课堂标签，固定到当前课堂而不是另建监控站点', async () => {
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/sources')) {
+        return new Response(JSON.stringify({ data: { items: [], next_cursor: null }, request_id: 'sources' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: { code: 'NOT_FOUND', message: '没有活动采集', details: {} }, request_id: 'active' }), { status: 404 });
+    });
+    await renderAndSettle();
+    await act(async () => {
+      buttonWithExactText('实时课堂')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('手机发布音视频，电脑实时观看');
+    expect(buttonWithExactText('创建实时采集')).not.toBeNull();
+    expect(container.textContent).toContain('没有可用来源');
+  });
+
   it('账号切换后仍然能打开上传表单（新 scope 可写）', async () => {
     await renderAndSettle();
 

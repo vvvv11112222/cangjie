@@ -2100,6 +2100,100 @@ code {
  * 这里不能隐藏侧栏或导航项，否则界面里就只剩修改 URL 一条路；
  * 对应的回归检查见 src/navigation.test.tsx。
  */
+.live-capture-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.live-video {
+  display: block;
+  width: 100%;
+  min-height: 280px;
+  max-height: 65vh;
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+  object-fit: contain;
+}
+
+.capture-create,
+.revision-editor,
+.report-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.capture-pairing {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  overflow-wrap: anywhere;
+}
+
+.revision-toolbar,
+.workflow-toolbar,
+.export-row {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.revision-toolbar .account-field,
+.workflow-toolbar .account-field,
+.export-row .account-field {
+  min-width: min(320px, 100%);
+  flex: 1;
+}
+
+.account-field textarea,
+.revision-editor textarea,
+.report-editor textarea,
+.revision-editor input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  background: var(--card);
+  font: inherit;
+}
+
+.account-field textarea:focus,
+.revision-editor textarea:focus,
+.report-editor textarea:focus,
+.revision-editor input:focus {
+  outline: 3px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.account-field textarea,
+.report-editor textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.review-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
 @media (max-width: 900px) {
   .layout {
     flex-direction: column;
@@ -2279,6 +2373,18 @@ code {
   .accounts-editor-form .notice-strip,
   .accounts-editor-form .form-actions {
     grid-column: auto;
+  }
+
+  .revision-toolbar,
+  .workflow-toolbar,
+  .export-row,
+  .review-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .live-video {
+    min-height: 200px;
   }
 }
 
