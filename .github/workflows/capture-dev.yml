@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tools/capture_dev.py'
+      - 'tools/capture_worker_job.py'
       - 'tools/test_capture_dev.py'
       - 'deploy/capture/**'
       - '.github/workflows/capture-dev.yml'

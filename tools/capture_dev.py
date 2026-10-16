@@ -93,12 +93,19 @@ def identity(pid, terminate=False, expected=None):
     kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
     kernel.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
     kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
-    handle = kernel.OpenProcess(0x1000 | (1 if terminate else 0), False, int(pid))
+    kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    handle = kernel.OpenProcess(0x1000 | (0x100001 if terminate else 0), False, int(pid))
     if not handle:
         if ctypes.get_last_error() == 87:  # PID no longer exists
             return None
         raise ctypes.WinError(ctypes.get_last_error())
     try:
+        exit_code = wintypes.DWORD()
+        if not kernel.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if exit_code.value != 259:  # STILL_ACTIVE; a retained process handle may outlive exit.
+            return None
         created, exited, system, user = (wintypes.FILETIME() for _ in range(4))
         buffer, size = ctypes.create_unicode_buffer(32768), wintypes.DWORD(32768)
         if not kernel.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited), ctypes.byref(system), ctypes.byref(user)):
@@ -107,10 +114,12 @@ def identity(pid, terminate=False, expected=None):
             raise ctypes.WinError(ctypes.get_last_error())
         current = dict(pid=int(pid), executable=buffer.value.lower(), created=(created.dwHighDateTime << 32) | created.dwLowDateTime)
         if terminate:
-            if current != expected:
+            if current != {key: expected[key] for key in current}:
                 raise RuntimeError("Refusing to terminate a reused PID")
             if not kernel.TerminateProcess(handle, 0):
                 raise ctypes.WinError(ctypes.get_last_error())
+            if kernel.WaitForSingleObject(handle, 10000) != 0:
+                raise RuntimeError("Process has not stopped; process record retained")
         return current
     finally:
         kernel.CloseHandle(handle)
@@ -122,15 +131,17 @@ def processes():
 
 
 def alive(record):
-    return identity(record["pid"]) == record
+    return identity(record["pid"]) == {key: record[key] for key in ("pid", "executable", "created")}
 
 
-def spawn(name, args, env):
+def spawn(name, args, env, *, worker_job=None):
     with (STATE / f"{name}.log").open("ab") as stream:
         process = subprocess.Popen([str(arg) for arg in args], cwd=ROOT, env=env,
                                    stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
                                    creationflags=NO_WINDOW, close_fds=True)
     record = identity(process.pid)
+    if worker_job and record:
+        record["worker_job"] = worker_job
     if not record:
         raise RuntimeError(f"{name} exited on startup; see its log")
     current = processes()
@@ -372,7 +383,9 @@ def start(config):
         worker_env = dict(env, WORKER_CAPABILITIES="probe,video_analysis", WORKER_CLEANUP_ENABLED="1",
                           WORKER_API_BASE=f'http://127.0.0.1:{config["ports"]["api"]}/internal/v1')
         worker_env.pop("WORKER_CLEANUP_CONTRACT_PATH", None)
-        spawn("worker", [config["tools"]["python"], "-m", "workers", "run"], worker_env)
+        job_name = "Local\\CangjieCaptureWorker-" + secrets.token_hex(16)
+        worker_env["CAPTURE_WORKER_JOB_NAME"] = job_name
+        spawn("worker", [config["tools"]["python"], Path(__file__).resolve(), "supervise-worker"], worker_env, worker_job=job_name)
         spawn("caddy", [config["tools"]["caddy"], "run", "--config", STATE / "Caddyfile", "--adapter", "caddyfile"], env)
         root_ca = STATE / "caddy-storage/pki/authorities/local/root.crt"
         deadline = time.monotonic() + 30
@@ -400,9 +413,23 @@ def stop(config, check_capture=True):
         active = psql(config, "SELECT count(*) FROM teaching.live_captures WHERE state IN ('waiting','recording','finalizing')")
         if active != "0":
             raise RuntimeError("Stop active captures in the page and wait for ready/failed before stopping services")
+        worker = current.get("worker")
+        if worker and not worker.get("worker_job") and alive(worker):
+            jobs = psql(config, "SELECT count(*) FROM teaching.analysis_jobs WHERE status='running'")
+            if jobs != "0":
+                raise RuntimeError("Legacy worker has running analysis jobs; wait for completion before upgrading")
     for name in ("caddy", "mediamtx", "worker", "api", "postgres"):
         record = current.get(name)
-        if record and alive(record):
+        if record and name == "worker" and record.get("worker_job"):
+            from capture_worker_job import Job
+            job = Job(record["worker_job"])
+            try:
+                if alive(record):
+                    identity(record["pid"], terminate=True, expected=record)
+                job.terminate_and_wait()
+            finally:
+                job.close()
+        elif record and alive(record):
             if name == "postgres":
                 run([Path(config["tools"]["postgres_bin"]) / "pg_ctl.exe", "-D", STATE / "pgdata", "-m", "fast", "-w", "stop"], environment(config))
             else:
@@ -442,11 +469,15 @@ def main():
     setup = commands.add_parser("prepare")
     setup.add_argument("--ip", required=True)
     setup.add_argument("--tools", required=True)
-    for name in ("start", "start-detached", "stop", "status", "trust"):
+    for name in ("start", "start-detached", "stop", "status", "trust", "supervise-worker"):
         commands.add_parser(name)
     args = parser.parse_args()
     if os.name != "nt":
         parser.error("This launcher targets Windows; use the deployment templates on other systems")
+    if args.command == "supervise-worker":
+        from capture_worker_job import supervise
+        raise SystemExit(supervise(os.environ["CAPTURE_WORKER_JOB_NAME"],
+            "import runpy, sys; sys.argv=['workers', 'run']; runpy.run_module('workers', run_name='__main__', alter_sys=True)"))
     if args.command == "start-detached":
         start_detached()
         return
