@@ -1338,6 +1338,22 @@ code {
   transition: width 0.3s ease;
 }
 
+/* M2 分析任务与来源页沿用模板卡片、表格和全局控件，仅补页面级排列。 */
+.task-list, .task-group { display: grid; gap: 16px; }
+.task-card { padding: 20px; }
+.task-head, .task-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.task-head h2 { margin: 0 0 4px; font-size: 17px; }
+.task-footer { margin-top: 16px; color: var(--muted); font-size: 13px; }
+.source-form { display: grid; gap: 16px; }
+.source-uses { display: flex; flex-wrap: wrap; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 12px; }
+.source-uses legend { color: var(--faint); font-size: 12px; padding: 0 6px; }
+.keyframe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.keyframe-card { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-sunken); }
+.keyframe-card img, .keyframe-placeholder { width: 100%; aspect-ratio: 16 / 9; border-radius: 7px; background: var(--line); object-fit: cover; }
+.keyframe-placeholder { display: grid; place-items: center; align-content: center; gap: 8px; padding: 12px; color: var(--muted); font-size: 11px; text-align: center; }
+.keyframe-card strong { font-size: 13px; }
+.keyframe-card > .mono { color: var(--muted); font-size: 11px; }
+
 /*
  * 六阶段横向流程。桌面端六张卡片平分宽度，用箭头表达先后顺序；
  * 窄屏保持一行并允许横向滚动，不让整页产生横向溢出。
@@ -2196,6 +2212,12 @@ code {
 
   .table {
     min-width: 700px;
+  }
+
+  .task-head,
+  .task-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   /* 窄屏收窄表格内边距，让更多列直接可见，其余仍可在表格内横向滚动。 */

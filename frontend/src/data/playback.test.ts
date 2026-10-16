@@ -108,6 +108,13 @@ describe('跳转点', () => {
     expect(targets[1]).toMatchObject({ kind: 'evidence', evidence_kind: 'frame', text: '画面证据' });
   });
 
+  it('关键帧作为独立时间点参与排序和定位', () => {
+    const targets = jumpTargets([], [], [{ asset_id: '00000000-0000-4000-8000-000000000088', timestamp_ms: 3500 }]);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({ kind: 'frame', at_ms: 3500, frame_asset_id: '00000000-0000-4000-8000-000000000088' });
+    expect(activeTargetId(targets, 3999)).toBe('frame:00000000-0000-4000-8000-000000000088');
+  });
+
   it('过期或已移除的证据不参与跳转', () => {
     const expired = evidence({ id: '00000000-0000-4000-8000-000000000006', availability: 'expired' });
     const removed = evidence({ id: '00000000-0000-4000-8000-000000000007', availability: 'removed' });

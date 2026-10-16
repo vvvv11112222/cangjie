@@ -54,7 +54,7 @@ export function PlaybackPanel({
   const media = detail.status === 'ready' || detail.status === 'loading' ? detail.data.media : null;
   const matched = useMemo(() => playbackTranscript(media, transcript.data), [media, transcript.data]);
   const targets = useMemo(
-    () => transcript.status === 'ready' ? jumpTargets(matched.segments, matched.evidence) : [],
+    () => transcript.status === 'ready' ? jumpTargets(matched.segments, matched.evidence, matched.frames) : [],
     [matched, transcript.status],
   );
   const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null);
@@ -296,7 +296,9 @@ export function PlaybackPanel({
               const label =
                 target.kind === 'segment'
                   ? `片段 ${target.segment_no}`
-                  : `证据 · ${target.evidence_kind === null ? '未知类型' : evidenceKindLabel(target.evidence_kind)}`;
+                  : target.kind === 'frame'
+                    ? '关键帧'
+                    : `证据 · ${target.evidence_kind === null ? '未知类型' : evidenceKindLabel(target.evidence_kind)}`;
               return (
                 <li
                   key={target.id}
