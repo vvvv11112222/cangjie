@@ -1,3 +1,4 @@
+import { calendarWeekRange, collectPages } from '../data/pagination';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
 import { useAuth } from '../auth';
@@ -40,8 +41,12 @@ function useAcademicData() {
     if (!api || status !== 'authenticated') return;
     setLoading(true); setError(null);
     try {
-      const [terms, courses, classrooms, offerings, schedules, classGroups, orgUnits, users] = await Promise.all([listTerms(), listCourses(), listClassrooms(), listOfferings(), listSchedules(), listClassGroups(), listOrgUnits(), listUsers()]);
-      setData({ terms: terms.items, courses: courses.items, classrooms: classrooms.items, offerings: offerings.items, schedules: schedules.items, classGroups: classGroups.items, orgUnits: orgUnits.items, users: users.items });
+      const week = calendarWeekRange();
+      const [terms, courses, classrooms, offerings, schedules, classGroups, orgUnits, users] = await Promise.all([
+        collectPages(listTerms), collectPages(listCourses), collectPages(listClassrooms), collectPages(listOfferings),
+        collectPages(cursor => listSchedules(cursor, week)), collectPages(listClassGroups), collectPages(listOrgUnits), collectPages(listUsers),
+      ]);
+      setData({ terms, courses, classrooms, offerings, schedules, classGroups, orgUnits, users });
     } catch (cause) { setError(describeError(cause)); } finally { setLoading(false); }
   };
   useEffect(() => { void reload(); }, [api, status]);
