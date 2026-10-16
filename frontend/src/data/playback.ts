@@ -7,7 +7,7 @@
  * 因此代理时间与原录像时间一致，跳转直接按毫秒定位，不做偏移换算。
  */
 
-import type { Evidence, EvidenceKind, Media, Segment, Session } from '../types';
+import type { Evidence, EvidenceKind, Media, Results, Segment, Session } from '../types';
 import type { MediaLite } from './sources';
 import type { TranscriptView } from './viewModel';
 import { isUuid, sameId } from './ids';
@@ -16,9 +16,10 @@ import { isUuid, sameId } from './ids';
 export function playbackTranscript(media: Media | null, view: TranscriptView): {
   segments: Segment[];
   evidence: Evidence[];
+  frames: Results['frames'];
   note: string | null;
 } {
-  const empty = { segments: [], evidence: [], note: null };
+  const empty = { segments: [], evidence: [], frames: [], note: null };
   if (media === null) return empty;
   const equal = (a: string | null, b: string | null) =>
     a !== null && b !== null && isUuid(a) && isUuid(b) && sameId(a, b);
@@ -40,6 +41,7 @@ export function playbackTranscript(media: Media | null, view: TranscriptView): {
   return {
     segments: view.segments,
     evidence,
+    frames: view.results.frames,
     note: evidence.length === view.evidence.length ? null : '部分证据与当前录像或批次不匹配，已停止这些证据的定位。',
   };
 }
@@ -51,7 +53,7 @@ export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 export interface JumpTarget {
   /** 目标自身 id：证据是 evidence.id，片段是 `segment:{segment_no}`。 */
   id: string;
-  kind: 'segment' | 'evidence';
+  kind: 'segment' | 'evidence' | 'frame';
   at_ms: number;
   end_ms: number;
   text: string;
@@ -59,6 +61,8 @@ export interface JumpTarget {
   segment_no: number | null;
   /** 证据类型；片段目标为 null。 */
   evidence_kind: EvidenceKind | null;
+  /** 关键帧媒体资产；片段和证据目标为 null。 */
+  frame_asset_id: string | null;
 }
 
 /**
@@ -84,6 +88,7 @@ export function pickPlaybackMediaId(session: Session, items: readonly MediaLite[
 export function jumpTargets(
   segments: readonly Segment[],
   evidence: readonly Evidence[],
+  frames: readonly Results['frames'][number][] = [],
 ): JumpTarget[] {
   const fromSegments: JumpTarget[] = segments.map((segment) => ({
     id: `segment:${segment.segment_no}`,
@@ -93,6 +98,7 @@ export function jumpTargets(
     text: segment.text_content,
     segment_no: segment.segment_no,
     evidence_kind: null,
+    frame_asset_id: null,
   }));
   const fromEvidence: JumpTarget[] = evidence
     .filter((item) => item.availability === 'available')
@@ -104,8 +110,20 @@ export function jumpTargets(
       text: item.description,
       segment_no: null,
       evidence_kind: item.kind,
+      frame_asset_id: null,
     }));
-  return [...fromSegments, ...fromEvidence].sort(
+  const fromFrames: JumpTarget[] = frames.map((frame) => ({
+    id: `frame:${frame.asset_id}`,
+    kind: 'frame',
+    at_ms: frame.timestamp_ms,
+    // 关键帧是瞬时采样，给高亮区间 1 秒；跳转仍使用准确的 timestamp_ms。
+    end_ms: frame.timestamp_ms + 1_000,
+    text: `关键帧 ${frame.asset_id.slice(-4)}`,
+    segment_no: null,
+    evidence_kind: null,
+    frame_asset_id: frame.asset_id,
+  }));
+  return [...fromSegments, ...fromEvidence, ...fromFrames].sort(
     (left, right) => left.at_ms - right.at_ms || left.id.localeCompare(right.id),
   );
 }
