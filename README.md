@@ -8,6 +8,8 @@
 
 [系统草图](系统草图.html)供前端参考布局，正式实现以当前需求和协议为准，页面可自行设计。
 
+手机采集联调从 [B0 开发环境](docs/B0开发环境.md)开始：提供 Windows 独立数据库、后台启动/停止、HTTPS 证书、测试课堂与账号及安卓设备检查步骤。
+
 | 成员 | 重点资料 | 首个联调目标 |
 | --- | --- | --- |
 | 前端 | [开发协议](docs/开发协议.md)、[接口样例](contracts/examples/manifest.json) | 用固定样例显示任务、转写和报告 |
@@ -21,7 +23,7 @@
 - [AGENTS.md](AGENTS.md)：Codex 的仓库开发约定，包含按任务查阅文档、模块边界、验证及协作规则。
 - `docs/`：架构、协议、数据库、验收计划。
 - `contracts/v1.schema.json`、[端点映射](contracts/endpoints.json)与 `contracts/examples/`：契约1.1及联调样例；api-cases.json 中每个 value 是独立 DTO，按 definition 选择。前端和 Worker 须同步更新，不能混用1.0结果。
-- `database/`：迁移和约束验证；新库按编号依次执行001～008，旧库只执行未应用迁移。007核验历史运行时约束，008新增Worker清理回执；[数据库联合验收](docs/数据库联合验收.md)提供分权、升级及多连接验证入口。
+- `database/`：迁移和约束验证；新库按编号依次执行001～009，旧库只执行未应用迁移。007核验历史运行时约束，008新增Worker清理回执，009新增实时采集；[数据库联合验收](docs/数据库联合验收.md)提供分权、升级及多连接验证入口。
 - `tools/`：文档/协议检查、隔离数据库检查。
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
 - [frontend/UI约定.md](frontend/UI约定.md)：前端展示层约定——颜色变量、状态色调、新页面骨架与窄屏规则。
@@ -35,7 +37,7 @@
 后端使用 Go 1.26 系列和 PostgreSQL 17。当前已提供：
 
 - `cmd/api`：API 进程、统一 JSON 响应、请求 ID、优雅停机及健康检查；
-- `cmd/migrate`：按文件名顺序执行 `database/001`～`008`，记录并校验迁移摘要及历史顺序；
+- `cmd/migrate`：按文件名顺序执行 `database/001`～`009`，记录并校验迁移摘要及历史顺序；
 - `cmd/init-deletion-ledger`：显式、幂等地执行一次独立删除账本初始化；API 启动不会自动补建丢失账本；
 - `cmd/bootstrap-admin`：幂等创建首个学校、系统管理员及角色；
 - `cmd/seed-dev`：仅在 development/test 环境幂等创建四种角色的联调账号；
