@@ -22,12 +22,12 @@ function offering(value: unknown, path: string): Offering { const x = asRecord(v
 function schedule(value: unknown, path: string): Schedule { const x = asRecord(value,path); return { id: asString(x,'id',path), offering_id: asString(x,'offering_id',path), classroom_id: asString(x,'classroom_id',path), starts_at: asString(x,'starts_at',path), ends_at: asString(x,'ends_at',path), status: asString(x,'status',path), teacher_id: asString(x,'teacher_id',path), class_group_id: asString(x,'class_group_id',path) }; }
 function source(value: unknown, path: string): SourceRecord { const x = asRecord(value,path); return { id: asString(x,'id',path), session_id: asNullableString(x,'session_id',path), source_type: asString(x,'source_type',path), title: asString(x,'title',path), attribution: asString(x,'attribution',path), source_url: asNullableString(x,'source_url',path), authorization_note: asString(x,'authorization_note',path), requested_uses: stringList(x.requested_uses,`${path}.requested_uses`), external_processing_requested: x.external_processing_requested === true, rights_status: asString(x,'rights_status',path), allowed_uses: stringList(x.allowed_uses,`${path}.allowed_uses`), external_processing_allowed: x.external_processing_allowed === true, rights_version: Number(x.rights_version), verified_by: asNullableString(x,'verified_by',path), verified_at: asNullableString(x,'verified_at',path), allowed_actions: stringList(x.allowed_actions,`${path}.allowed_actions`) }; }
 
-async function list<T>(path: string, parser: (value: unknown, path: string) => T): Promise<Page<T>> { const { data } = await requestJson<unknown>(path, { query: { limit: 100 } }); return page(data, `${path}Page`, parser); }
-export const listTerms = () => list('/terms', term);
-export const listCourses = () => list('/courses', course);
-export const listClassrooms = () => list('/classrooms', classroom);
-export const listOfferings = () => list('/offerings', offering);
-export const listSchedules = () => list('/schedules', schedule);
+async function list<T>(path: string, parser: (value: unknown, path: string) => T, cursor?: string, range?: { from: string; to: string }): Promise<Page<T>> { const { data } = await requestJson<unknown>(path, { query: { limit: 100, cursor, ...range } }); return page(data, `${path}Page`, parser); }
+export const listTerms = (cursor?: string) => list('/terms', term, cursor);
+export const listCourses = (cursor?: string) => list('/courses', course, cursor);
+export const listClassrooms = (cursor?: string) => list('/classrooms', classroom, cursor);
+export const listOfferings = (cursor?: string) => list('/offerings', offering, cursor);
+export const listSchedules = (cursor?: string, range?: { from: string; to: string }) => list('/schedules', schedule, cursor, range);
 export const listSources = (sessionId: string) => list(`/sessions/${encodeURIComponent(sessionId)}/sources`, source);
 export async function createSchedule(input: Pick<Schedule, 'offering_id' | 'classroom_id' | 'starts_at' | 'ends_at' | 'status'>): Promise<Schedule> { const { data } = await requestJson<unknown>('/schedules', { method: 'POST', body: input, csrf: true }); return schedule(data, 'Schedule'); }
 export async function createSource(input: Record<string, unknown>): Promise<SourceRecord> { const { data } = await requestJson<unknown>('/sources', { method: 'POST', body: input, csrf: true }); return source(data, 'Source'); }

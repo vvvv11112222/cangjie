@@ -4,7 +4,7 @@ import { useAuth } from '../auth';
 import { BadgeTag, EmptyState, LoadControls, LoadStateNote, RunErrorBox, StageFlow } from '../components/ui';
 import { IconUpload } from '../components/icons';
 import { cancelRun } from '../data/actions';
-import { describeError } from '../data/errors';
+import { ApiError, describeError } from '../data/errors';
 import { useSessionTasks } from '../data/hooks';
 import { listSessionRuns } from '../data/m2Api';
 import { dataSource, isApiMode } from '../data/sources';
@@ -35,6 +35,7 @@ export function TasksPage(): ReactElement {
   const [history, setHistory] = useState<Record<string, HistoryState>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pollFailures, setPollFailures] = useState<Record<string, { message: string; terminal: boolean }>>({});
   const historyGeneration = useRef(0);
   const sessionIds = loaded.data.tasks.map(({ session }) => session.id).join('|');
 
@@ -42,15 +43,16 @@ export function TasksPage(): ReactElement {
   useEffect(() => {
     const generation = ++historyGeneration.current;
     setHistory({});
+    setPollFailures({});
     if (!apiMode || authStatus !== 'authenticated') return undefined;
     for (const { session } of loaded.data.tasks) {
       setHistory((current) => ({ ...current, [session.id]: { items: [], nextCursor: null, loading: true, error: null } }));
       void listSessionRuns(session.id).then((page) => {
         if (generation !== historyGeneration.current) return;
-        setHistory((current) => ({ ...current, [session.id]: { items: page.items, nextCursor: page.next_cursor, loading: false, error: null } }));
+        setHistory((current) => ({ ...current, [session.id]: { items: mergeRuns(page.items, current[session.id]?.items ?? []), nextCursor: page.next_cursor, loading: false, error: null } }));
       }).catch((error: unknown) => {
         if (generation !== historyGeneration.current) return;
-        setHistory((current) => ({ ...current, [session.id]: { items: [], nextCursor: null, loading: false, error: describeError(error) } }));
+        setHistory((current) => ({ ...current, [session.id]: { items: current[session.id]?.items ?? [], nextCursor: null, loading: false, error: describeError(error) } }));
       });
     }
     return () => { if (historyGeneration.current === generation) historyGeneration.current += 1; };
@@ -59,14 +61,14 @@ export function TasksPage(): ReactElement {
   const visibleGroups = useMemo(() => loaded.data.tasks.map(({ session, run }) => {
     if (!apiMode) return { session, runs: run === null ? [] : [run], state: null };
     const state = history[session.id];
-    return { session, runs: mergeRuns(state?.items ?? [], run === null ? [] : [run]), state: state ?? null };
+    return { session, runs: mergeRuns(run === null ? [] : [run], state?.items ?? []), state: state ?? null };
   }), [apiMode, history, loaded.data.tasks]);
-  const activeRunIds = visibleGroups.flatMap(({ runs }) => runs.filter(isActive).map((run) => run.id));
+  const activeRunIds = visibleGroups.flatMap(({ runs }) => runs.filter(run => isActive(run) && !pollFailures[run.id]?.terminal).map((run) => run.id));
   const activeKey = activeRunIds.join('|');
 
   // 串行轮询所有活动批次；本轮请求结束后才安排下一轮，避免慢响应互相覆盖。
   useEffect(() => {
-    if (!apiMode || activeRunIds.length === 0) return undefined;
+    if (!apiMode || authStatus !== 'authenticated' || activeRunIds.length === 0) return undefined;
     let cancelled = false;
     let timer: number | null = null;
     async function tick(): Promise<void> {
@@ -83,14 +85,23 @@ export function TasksPage(): ReactElement {
           return next;
         });
       }
-      const failure = results.find((result) => result.status === 'rejected');
-      if (failure?.status === 'rejected') setActionError(`任务状态未更新：${describeError(failure.reason)}`);
-      else setActionError(null);
+      setPollFailures(current => {
+        const next = { ...current };
+        results.forEach((result, index) => {
+          const id = activeRunIds[index]!;
+          if (result.status === 'fulfilled') delete next[id];
+          else next[id] = {
+            message: describeError(result.reason),
+            terminal: result.reason instanceof ApiError && [401, 403, 410].includes(result.reason.status ?? 0),
+          };
+        });
+        return next;
+      });
       timer = window.setTimeout(() => void tick(), 2_000);
     }
     timer = window.setTimeout(() => void tick(), 2_000);
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
-  }, [apiMode, activeKey]);
+  }, [apiMode, activeKey, authStatus, sessionKey]);
 
   async function loadMoreRuns(sessionId: string): Promise<void> {
     const current = history[sessionId];
@@ -100,7 +111,7 @@ export function TasksPage(): ReactElement {
     try {
       const page = await listSessionRuns(sessionId, current.nextCursor);
       if (generation !== historyGeneration.current) return;
-      setHistory((all) => ({ ...all, [sessionId]: { items: mergeRuns(all[sessionId]?.items ?? [], page.items), nextCursor: page.next_cursor, loading: false, error: null } }));
+      setHistory((all) => ({ ...all, [sessionId]: { items: mergeRuns(page.items, all[sessionId]?.items ?? []), nextCursor: page.next_cursor, loading: false, error: null } }));
     } catch (error) {
       if (generation !== historyGeneration.current) return;
       setHistory((all) => ({ ...all, [sessionId]: { ...(all[sessionId] ?? current), loading: false, error: describeError(error) } }));
@@ -144,6 +155,7 @@ export function TasksPage(): ReactElement {
     <p className="notice-strip">分析历史按课堂分页恢复；活动批次每 2 秒自动刷新，全部进入终态后停止。</p>
     <LoadStateNote status={loaded.status} error={loaded.error}/>
     {actionError ? <p className="load-note load-note-error">{actionError}</p> : null}
+    {Object.entries(pollFailures).map(([id, failure]) => <p className="load-note load-note-error" key={id}>任务状态未更新：{failure.message}{failure.terminal ? '；已停止自动刷新，请确认权限后重新进入页面。' : ''}</p>)}
     <div className="task-list">
       {visibleGroups.map(({ session, runs, state }) => <div className="task-group" key={session.id}>
         {runs.map((run) => runCard(session, run))}

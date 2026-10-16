@@ -163,7 +163,7 @@ function PageNotice({ eyebrow, title, message }: {
 
 export function App(): ReactElement {
   const hash = useHashRoute();
-  const { me } = useAuth();
+  const { me, sessionKey } = useAuth();
   const apiMode = isApiMode();
   const [previewRole, setPreviewRole] = useState<RoleCode | null>(null);
   // 账号面板由 App 掌管开合：顶栏头像和侧栏底部的"当前身份"都能打开它。
@@ -269,7 +269,7 @@ export function App(): ReactElement {
           </div>
         </header>
         <main id="main">
-          <M1RoleContext.Provider value={roles}>
+          <M1RoleContext.Provider key={sessionKey} value={roles}>
           {sessionRoute.kind === 'invalid' ? (
             <PageNotice
               eyebrow="课堂地址无法解析"
