@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Revision, Run, Segment, Session } from '../types';
-import { createRun, newIdempotencyKey } from '../data/actions';
+import type { CreateRun, Revision, Run, Segment, Session } from '../types';
+import { createRun } from '../data/actions';
+import { useAuth } from '../auth';
+import { collectPages } from '../data/pagination';
+import { pendingIntent } from './pendingIntent';
+import { intentSignature } from './sessionActions';
 import { createRevision, listRevisions } from '../data/m3Api';
 import { describeError } from '../data/errors';
 import { Card, IdChip } from '../components/ui';
@@ -9,20 +13,12 @@ import { formatDateTime, formatTimestamp } from '../format';
 
 function cloneSegments(segments: Segment[]): Segment[] { return segments.map((item) => ({ ...item })); }
 async function revisionHistory(sessionId: string, mediaAssetId: string): Promise<Revision[]> {
-  const collected = new Map<string, Revision>();
-  const seen = new Set<string>();
-  let cursor: string | undefined;
-  for (let pageNo = 0; pageNo < 10; pageNo += 1) {
-    const page = await listRevisions(sessionId, mediaAssetId, cursor);
-    for (const item of page.items) collected.set(item.id, item);
-    if (page.next_cursor === null) break;
-    if (seen.has(page.next_cursor)) throw new Error('修订分页游标重复，已停止加载');
-    seen.add(page.next_cursor); cursor = page.next_cursor;
-  }
-  return [...collected.values()].sort((a, b) => b.revision_no - a.revision_no);
+  return collectPages((cursor) => listRevisions(sessionId, mediaAssetId, cursor));
 }
 
 export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreated }: { session: Session; initial: Revision; onChange?(revision: Revision): void; onRunCreated?(run: Run): void }): ReactElement {
+  const { me, sessionKey } = useAuth();
+  const accountScope = me?.user_id ?? sessionKey;
   const [current, setCurrent] = useState(initial);
   const [history, setHistory] = useState<Revision[]>([initial]);
   const [segments, setSegments] = useState(() => cloneSegments(initial.segments));
@@ -31,17 +27,27 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const reportKey = useRef(newIdempotencyKey());
+  const generation = useRef(0);
+  const knownLock = useRef(initial.transcript_lock_version);
+  useEffect(() => () => { generation.current += 1; }, []);
+
+  function mergeHistory(items: Revision[]): void {
+    knownLock.current = Math.max(knownLock.current, ...items.map((item) => item.transcript_lock_version));
+    setHistory((previous) => [...new Map([...previous, ...items].map((item) => [item.id, item])).values()]
+      .map((item) => ({ ...item, transcript_lock_version: knownLock.current }))
+      .sort((a, b) => b.revision_no - a.revision_no));
+  }
 
   useEffect(() => {
     let active = true;
     void revisionHistory(session.id, initial.media_asset_id).then((items) => {
-      if (active) setHistory(items);
+      if (active) mergeHistory(items);
     }).catch((value: unknown) => { if (active) setError(`修订历史读取失败：${describeError(value)}`); });
     return () => { active = false; };
   }, [initial.media_asset_id, session.id]);
 
   async function save(): Promise<void> {
+    const requestGeneration = generation.current;
     setBusy(true); setError(null); setMessage(null);
     try {
       const saved = await createRevision(session.id, {
@@ -50,21 +56,26 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
         transcript_lock_version: current.transcript_lock_version,
         reason: reason.trim(), segments,
       });
+      if (requestGeneration !== generation.current) return;
       setCurrent(saved); setSegments(cloneSegments(saved.segments)); setEditing(false); setReason('');
       onChange?.(saved);
-      setHistory((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
+      mergeHistory([saved]);
       setMessage(`已保存第 ${saved.revision_no} 版；旧版本仍保留。`);
     } catch (value) { setError(describeError(value)); } finally { setBusy(false); }
   }
 
   async function regenerate(): Promise<void> {
+    const requestGeneration = generation.current;
+    const input: CreateRun = {
+      media_asset_id: current.media_asset_id,
+      mode: 'report_only', input_transcript_revision_id: current.id, config_profile: 'p0-v1',
+    };
+    const key = pendingIntent.keyFor(accountScope, session.id, intentSignature(session.id, input));
     setBusy(true); setError(null); setMessage(null);
     try {
-      const run = await createRun(session.id, {
-        media_asset_id: current.media_asset_id,
-        mode: 'report_only', input_transcript_revision_id: current.id, config_profile: 'p0-v1',
-      }, reportKey.current);
-      reportKey.current = newIdempotencyKey();
+      const run = await createRun(session.id, input, key);
+      pendingIntent.resolve(accountScope, session.id, key);
+      if (requestGeneration !== generation.current) return;
       onRunCreated?.(run);
       setMessage(`报告重跑已创建：${run.id}。它固定使用第 ${current.revision_no} 版转写。`);
     } catch (value) { setError(describeError(value)); } finally { setBusy(false); }
@@ -73,9 +84,9 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
   return (
     <Card title="转写修订" subtitle="每次保存都创建新快照；并发版本冲突时不会覆盖别人刚保存的内容。">
       <div className="revision-toolbar">
-        <label className="account-field"><span>查看版本</span><select value={current.id} onChange={(event) => {
+        <label className="account-field"><span>查看版本</span><select value={current.id} disabled={busy} onChange={(event) => {
           const selected = history.find((item) => item.id === event.target.value);
-          if (selected !== undefined) { setCurrent(selected); setSegments(cloneSegments(selected.segments)); setEditing(false); }
+          if (selected !== undefined) { setCurrent(selected); setSegments(cloneSegments(selected.segments)); setEditing(false); onChange?.(selected); }
         }}>{history.map((item) => <option key={item.id} value={item.id}>第 {item.revision_no} 版 · {item.source_type} · {formatDateTime(item.created_at)}</option>)}</select></label>
         <div className="action-row">
           {session.allowed_actions.includes('edit_transcript') ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setEditing((value) => !value)}>{editing ? '取消编辑' : '修订转写'}</button> : null}

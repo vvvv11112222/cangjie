@@ -13,7 +13,8 @@ import {
   stopLiveCapture,
 } from '../data/liveCaptureApi';
 import { newIdempotencyKey } from '../data/actions';
-import { ApiError, describeError } from '../data/errors';
+import { ApiError, describeError, isTerminalReadError } from '../data/errors';
+import { collectPages } from '../data/pagination';
 import { connectWHEP } from '../capture/whep';
 import type { WHEPSession } from '../capture/whep';
 import { BadgeTag, Card, Field, TechDetails } from '../components/ui';
@@ -21,17 +22,9 @@ import { formatDateTime, formatTimestamp } from '../format';
 
 const terminal = (capture: LiveCapture): boolean => capture.state === 'ready' || capture.state === 'failed';
 async function verifiedSources(sessionId: string): Promise<SourceRecord[]> {
-  const collected = new Map<string, SourceRecord>();
-  const seen = new Set<string>();
-  let cursor: string | undefined;
-  for (let pageNo = 0; pageNo < 10; pageNo += 1) {
-    const page = await listSessionSources(sessionId, cursor);
-    for (const item of page.items) if (item.rights_status === 'verified') collected.set(item.id, item);
-    if (page.next_cursor === null) break;
-    if (seen.has(page.next_cursor)) throw new Error('来源分页游标重复，已停止加载');
-    seen.add(page.next_cursor); cursor = page.next_cursor;
-  }
-  return [...collected.values()];
+  const items = await collectPages((cursor) => listSessionSources(sessionId, cursor));
+  return [...new Map(items.filter((item) => item.rights_status === 'verified' && item.allowed_uses.includes('playback'))
+    .map((item) => [item.id, item])).values()];
 }
 const stateBadge = (state: LiveCapture['state']) => ({
   label: { waiting: '等待手机', recording: '正在录像', finalizing: '正在收尾', ready: '录像就绪', failed: '采集失败' }[state],
@@ -58,6 +51,18 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   const watchAbort = useRef<AbortController | null>(null);
   const watchExpiry = useRef<number | null>(null);
   const createKey = useRef(newIdempotencyKey());
+  const watchGeneration = useRef(0);
+  const [pollStopped, setPollStopped] = useState(false);
+
+  function stopWatching(): void {
+    watchGeneration.current += 1;
+    if (watchExpiry.current !== null) window.clearTimeout(watchExpiry.current);
+    watchExpiry.current = null;
+    if (whep.current !== null) whep.current.connection.onconnectionstatechange = null;
+    watchAbort.current?.abort(); watchAbort.current = null;
+    void whep.current?.close(); whep.current = null;
+    if (video.current !== null) video.current.srcObject = null;
+  }
 
   useEffect(() => {
     if (!enabled) return;
@@ -79,21 +84,31 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   }, [enabled, session.id]);
 
   useEffect(() => {
-    if (!enabled || capture === null || terminal(capture)) return;
+    if (!enabled || pollStopped || capture === null || terminal(capture)) return;
     let current = true;
+    let pending = false;
     const timer = window.setInterval(() => {
+      if (pending) return;
+      pending = true;
       void getLiveCapture(capture.id).then((next) => {
-        if (current) setCapture(next);
-      }).catch((reason: unknown) => { if (current) setError(`状态刷新失败：${describeError(reason)}`); });
+        if (!current) return;
+        setCapture(next);
+        setError((previous) => previous?.startsWith('状态刷新失败：') ? null : previous);
+        if (terminal(next)) { current = false; window.clearInterval(timer); stopWatching(); setWatching(false); }
+      }).catch((reason: unknown) => {
+        if (!current) return;
+        const terminalError = isTerminalReadError(reason);
+        if (terminalError) {
+          current = false; window.clearInterval(timer); setPollStopped(true);
+          stopWatching(); setWatching(false); setCapture(null); setPairing(null); setSources([]); setSourceId('');
+        }
+        setError(`状态刷新失败：${describeError(reason)}${terminalError ? ' 已停止自动刷新，请重新进入页面。' : ''}`);
+      }).finally(() => { pending = false; });
     }, 1500);
     return () => { current = false; window.clearInterval(timer); };
-  }, [capture?.id, capture?.state, enabled]);
+  }, [capture?.id, capture?.state, enabled, pollStopped]);
 
-  useEffect(() => () => {
-    if (watchExpiry.current !== null) window.clearTimeout(watchExpiry.current);
-    watchAbort.current?.abort();
-    void whep.current?.close();
-  }, [session.id]);
+  useEffect(() => () => stopWatching(), [session.id]);
 
   async function act(operation: () => Promise<void>): Promise<void> {
     setBusy(true); setError(null); setNotice(null);
@@ -112,20 +127,21 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   });
   const stop = () => act(async () => {
     if (capture === null) return;
-    if (watchExpiry.current !== null) window.clearTimeout(watchExpiry.current);
-    if (whep.current !== null) whep.current.connection.onconnectionstatechange = null;
-    watchAbort.current?.abort(); await whep.current?.close(); whep.current = null; setWatching(false);
+    stopWatching(); setWatching(false);
     setCapture(await stopLiveCapture(capture.id));
     setNotice('已请求停止，服务端正在封口和准备录像。');
   });
   const watch = () => act(async () => {
-    if (capture === null) return;
-    if (watchExpiry.current !== null) window.clearTimeout(watchExpiry.current);
-    if (whep.current !== null) whep.current.connection.onconnectionstatechange = null;
-    watchAbort.current?.abort(); await whep.current?.close();
-    const viewer = await createViewer(capture.id);
+    if (capture === null || pollStopped) return;
+    stopWatching(); setWatching(false);
+    const generation = watchGeneration.current;
+    // 在任何 await 之前登记取消句柄，离开页面后迟到的授权响应不能启动连接。
     const controller = new AbortController(); watchAbort.current = controller;
+    const current = () => generation === watchGeneration.current && !controller.signal.aborted;
+    const viewer = await createViewer(capture.id);
+    if (!current()) return;
     const connected = await connectWHEP(viewer.whep_url, viewer.view_token, controller.signal);
+    if (!current()) { await connected.close(); return; }
     whep.current = connected;
     connected.connection.onconnectionstatechange = () => {
       if (whep.current !== connected) return;
@@ -138,10 +154,11 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
       video.current.srcObject = connected.stream; video.current.muted = true;
       await video.current.play().catch(() => undefined);
     }
+    if (!current()) return;
     const renewAfter = Date.parse(viewer.expires_at) - Date.now() - 5000;
     if (renewAfter > 0) {
       watchExpiry.current = window.setTimeout(() => {
-        if (whep.current !== connected) return;
+        if (!current() || whep.current !== connected) return;
         connected.connection.onconnectionstatechange = null;
         controller.abort(); whep.current = null; setWatching(false);
         setNotice('观看凭据即将到期，正在按当前权限重新连接。');
@@ -162,7 +179,7 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
                 {sources.length === 0 ? <option value="">没有可用来源</option> : sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}
               </select>
             </label>
-            <button type="button" className="btn btn-primary" disabled={busy || sourceId === '' || !session.allowed_actions.includes('upload')} onClick={() => void start()}>
+            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || sourceId === '' || !session.allowed_actions.includes('upload')} onClick={() => void start()}>
               创建实时采集
             </button>
             <p className="field-hint">创建权限由服务端再次校验；页面不会把普通观看权限当作采集权限。</p>

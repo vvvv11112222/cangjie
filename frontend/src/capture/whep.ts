@@ -29,10 +29,13 @@ export async function connectWHEP(
   viewToken: string,
   signal: AbortSignal,
 ): Promise<WHEPSession> {
+  signal.throwIfAborted();
   const endpoint = mediaURL(whepUrl, window.location.origin);
   const connection = new RTCPeerConnection();
   const stream = new MediaStream();
   let sessionResource: string | null = null;
+  let closed = false;
+  let deletedResource: string | null = null;
 
   connection.addTransceiver('video', { direction: 'recvonly' });
   connection.addTransceiver('audio', { direction: 'recvonly' });
@@ -48,10 +51,15 @@ export async function connectWHEP(
   };
 
   const close = async (): Promise<void> => {
-    connection.ontrack = null;
-    for (const track of stream.getTracks()) track.stop();
-    connection.close();
-    if (sessionResource !== null) {
+    signal.removeEventListener('abort', abort);
+    if (!closed) {
+      closed = true;
+      connection.ontrack = null;
+      for (const track of stream.getTracks()) track.stop();
+      connection.close();
+    }
+    if (sessionResource !== null && deletedResource !== sessionResource) {
+      deletedResource = sessionResource;
       await fetch(sessionResource, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${viewToken}` },
@@ -60,7 +68,8 @@ export async function connectWHEP(
     }
   };
 
-  signal.addEventListener('abort', () => void close(), { once: true });
+  const abort = () => { void close(); };
+  signal.addEventListener('abort', abort, { once: true });
   try {
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);
@@ -72,10 +81,12 @@ export async function connectWHEP(
       signal,
     });
     if (!response.ok) throw new Error(`WHEP 信令失败（HTTP ${response.status}）`);
-    const answer = await response.text();
-    verifyWHEPAnswer(answer);
     sessionResource = resourceURL(response.headers.get('Location'), endpoint);
+    const answer = await response.text();
+    signal.throwIfAborted();
+    verifyWHEPAnswer(answer);
     await connection.setRemoteDescription({ type: 'answer', sdp: answer });
+    signal.throwIfAborted();
     return { stream, connection, close };
   } catch (error) {
     await close();

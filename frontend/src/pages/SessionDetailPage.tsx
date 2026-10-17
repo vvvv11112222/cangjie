@@ -653,7 +653,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
           {tab === 'report' ? (
             report.status === 'ready' ? (
-              <ReportPage embedded view={report.data} />
+              <ReportPage embedded view={report.data} onPublicationChanged={detail.reload} />
             ) : (
               <>
                 <LoadStateNote status={report.status} error={report.error} />
