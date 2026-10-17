@@ -1,5 +1,5 @@
 /** 页面取数组合；查找检查点由 hook 按会话持有，不写入持久存储。 */
-import type { Run, Session } from '../types';
+import type { Report, Run, Session } from '../types';
 import { ApiError, describeError } from './errors';
 import { dataSource } from './sources';
 import type { DataSource, SessionQuery } from './sources';
@@ -80,6 +80,13 @@ export async function loadReportForSession(
     throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '该课堂还没有报告。' });
   }
   const report = await source.getReport(reportId);
+  return loadReportContext(source, report, session, run);
+}
+
+/** 切换报告时按所选报告的批次重建证据、转写版本和核对说明。 */
+export async function loadReportContext(
+  source: DataSource, report: Report, session: Session, run: Run | null = null,
+): Promise<ReportView> {
   const results = await source.getResults(report.run_id);
   const runForReport = run !== null && sameId(run.id, report.run_id) ? run : await source.getRun(report.run_id);
   const revision =

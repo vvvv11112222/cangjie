@@ -14,11 +14,17 @@ func (s *Service) GetReport(ctx context.Context, p identity.Principal, id string
 	var out Report
 	var teacher, college string
 	var expiresAt time.Time
+	var exportAllowed bool
 	err := s.pool.QueryRow(ctx, `SELECT r.id::text,r.run_id::text,r.session_id::text,r.revision,r.lock_version,r.status,r.summary,
 		r.summary_evidence_ids,r.content_sha256,r.reviewed_content_sha256,r.reviewed_by::text,r.reviewed_at,r.provenance,r.expires_at,
-		o.teacher_id::text,teaching.college_of(o.org_unit_id)::text
+		o.teacher_id::text,teaching.college_of(o.org_unit_id)::text,
+		(r.status='published' AND ls.status NOT IN('deleting','deleted') AND ls.content_expires_at>now()
+		AND NOT EXISTS(SELECT 1 FROM teaching.reports newer WHERE newer.session_id=r.session_id AND newer.status='published' AND newer.id<>r.id)
+		AND EXISTS(SELECT 1 FROM teaching.analysis_runs ar JOIN teaching.media_assets m ON m.id=ar.media_asset_id
+		JOIN teaching.source_records src ON src.id=m.source_record_id
+		WHERE ar.id=r.run_id AND src.rights_status='verified' AND src.allowed_uses ? 'export'))
 		FROM teaching.reports r JOIN teaching.lesson_sessions ls ON ls.id=r.session_id JOIN teaching.course_offerings o ON o.id=ls.offering_id WHERE r.id=$1`, id).
-		Scan(&out.ID, &out.RunID, &out.SessionID, &out.Revision, &out.LockVersion, &out.Status, &out.Summary, &out.SummaryEvidenceIDs, &out.ContentSHA256, &out.ReviewedContentSHA256, &out.ReviewedBy, &out.ReviewedAt, &out.Provenance, &expiresAt, &teacher, &college)
+		Scan(&out.ID, &out.RunID, &out.SessionID, &out.Revision, &out.LockVersion, &out.Status, &out.Summary, &out.SummaryEvidenceIDs, &out.ContentSHA256, &out.ReviewedContentSHA256, &out.ReviewedBy, &out.ReviewedAt, &out.Provenance, &expiresAt, &teacher, &college, &exportAllowed)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !canView(p, teacher, college) {
 		return Report{}, notFound()
 	}
@@ -93,6 +99,9 @@ func (s *Service) GetReport(ctx context.Context, p identity.Principal, id string
 		}
 	}
 	if out.Status == "published" {
+		if exportAllowed {
+			out.AllowedActions = append(out.AllowedActions, "export")
+		}
 		if canEdit(p, teacher, college) {
 			out.AllowedActions = append(out.AllowedActions, "revise")
 		}

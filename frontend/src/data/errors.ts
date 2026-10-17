@@ -59,6 +59,11 @@ export class ApiError extends Error {
   }
 }
 
+/** 权限、可见性或生命周期失效后，等待用户重新进入，不自动重试。 */
+export function isTerminalReadError(error: unknown): boolean {
+  return error instanceof ApiError && [401, 403, 404, 410].includes(error.status);
+}
+
 /**
  * 错误码 → 页面提示。文案只解释"发生了什么、我该做什么"，不复述英文原文。
  * 未收录的码统一走 errorCodeText 的兜底分支，不会让页面显示空白。
