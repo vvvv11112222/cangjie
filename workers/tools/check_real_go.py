@@ -13,17 +13,24 @@ from workers.common.runner import Runner
 from workers.vision_core.media import digest_file, ffmpeg_executable, inspect_media
 
 
-def prepare(output, odd):
+def prepare(output, odd, audio_codec=None, portrait=False):
     output.mkdir(parents=True, exist_ok=False)
     video = output / "source.mp4"
-    dimensions = "161x120" if odd else "320x240"
-    subprocess.run([ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-                    "-i", f"testsrc=size={dimensions}:rate=12:duration=4", "-an", "-c:v", "libx264",
-                    "-pix_fmt", "yuv444p" if odd else "yuv420p", str(video)], check=True, timeout=30)
+    dimensions = "240x320" if portrait else "161x120" if odd else "320x240"
+    command = [ffmpeg_executable(), "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+               "-i", f"testsrc=size={dimensions}:rate=12:duration=4"]
+    if audio_codec:
+        command += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
+                    "-c:a", "libopus" if audio_codec == "opus" else "aac"]
+    else:
+        command += ["-an"]
+    command += ["-c:v", "libx264", "-pix_fmt", "yuv444p" if odd else "yuv420p", str(video)]
+    subprocess.run(command, check=True, timeout=30)
     metadata = inspect_media(video)
     return {"video": str(video.resolve()), "duration_ms": metadata["duration_ms"],
             "processor_version": PROCESSOR_VERSION, "ffmpeg_sha256": digest_file(ffmpeg_executable()),
-            "source_sha256": metadata["sha256"], "width": metadata["width"], "height": metadata["height"]}
+            "source_sha256": metadata["sha256"], "width": metadata["width"], "height": metadata["height"],
+            "has_audio": metadata["has_audio"]}
 
 
 def work(api_base, expected_stage, expected_run, scratch):
@@ -52,6 +59,8 @@ def main():
     generation = sub.add_parser("prepare")
     generation.add_argument("--output", type=Path, required=True)
     generation.add_argument("--odd", action="store_true")
+    generation.add_argument("--audio-codec", choices=("aac", "opus"))
+    generation.add_argument("--portrait", action="store_true")
     worker = sub.add_parser("work")
     worker.add_argument("--api-base", required=True)
     worker.add_argument("--stage", choices=("probe", "video_analysis"), required=True)
@@ -65,7 +74,7 @@ def main():
     deletion.add_argument("--seed-job-id", required=True)
     args = parser.parse_args()
     if args.command == "prepare":
-        result = prepare(args.output, args.odd)
+        result = prepare(args.output, args.odd, args.audio_codec, args.portrait)
     elif args.command == "work":
         result = work(args.api_base, args.stage, args.run_id, args.scratch)
     else:

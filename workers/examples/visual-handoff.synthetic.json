@@ -1,0 +1,190 @@
+{
+  "schema_version": "visual-handoff-v1",
+  "is_team_contract_result": false,
+  "source_report_sha256": "f08b0c7052a7f7755eec0cddd248e348bb28c299df0053be97388589e2e93e2e",
+  "binding": null,
+  "source": {
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "duration_ms": 1500,
+    "width": 8,
+    "height": 8
+  },
+  "time_origin": "source_recording_start_ms",
+  "bbox_coordinates": "source_image_pixels",
+  "configuration": {
+    "sampling_fps": 2
+  },
+  "coverage": {
+    "start_ms": 0,
+    "end_ms": 1001
+  },
+  "execution": {
+    "processor_version": "synthetic-v1",
+    "rules_version": null,
+    "execution_engine": "cpu"
+  },
+  "weights": {},
+  "counts": [
+    {
+      "timestamp_ms": 0,
+      "visible_count": 1,
+      "hand_raise_count": 1,
+      "head_down_count": null
+    },
+    {
+      "timestamp_ms": 500,
+      "visible_count": 1,
+      "hand_raise_count": 1,
+      "head_down_count": 0
+    },
+    {
+      "timestamp_ms": 1000,
+      "visible_count": 1,
+      "hand_raise_count": 1,
+      "head_down_count": 1
+    }
+  ],
+  "persons": [
+    {
+      "track_id": "T0001",
+      "first_ms": 0,
+      "last_ms": 1000,
+      "sample_count": 3,
+      "observation_counts": {
+        "hand_raise": {
+          "positive": 3,
+          "negative": 0,
+          "unknown": 0
+        },
+        "head_down": {
+          "positive": 1,
+          "negative": 1,
+          "unknown": 1
+        },
+        "leave_seat": {
+          "positive": 0,
+          "negative": 3,
+          "unknown": 0
+        },
+        "possible_phone": {
+          "positive": 0,
+          "negative": 0,
+          "unknown": 3
+        }
+      },
+      "observations": [
+        {
+          "timestamp_ms": 0,
+          "frame_index": 0,
+          "bbox": [
+            1,
+            2,
+            4,
+            6
+          ],
+          "behaviors": {
+            "hand_raise": true,
+            "head_down": null,
+            "leave_seat": false,
+            "possible_phone": null
+          },
+          "behavior_scores": {
+            "hand_raise": 0.8
+          },
+          "pose_available": true,
+          "reviews": {},
+          "evidence": {
+            "original": "image-000001",
+            "annotated": null
+          }
+        },
+        {
+          "timestamp_ms": 500,
+          "frame_index": 1,
+          "bbox": [
+            1,
+            2,
+            4,
+            6
+          ],
+          "behaviors": {
+            "hand_raise": true,
+            "head_down": false,
+            "leave_seat": false,
+            "possible_phone": null
+          },
+          "behavior_scores": {
+            "hand_raise": 0.8
+          },
+          "pose_available": true,
+          "reviews": {
+            "hand_raise": {
+              "value": false,
+              "reason": "synthetic reviewer correction"
+            }
+          },
+          "evidence": {
+            "original": null,
+            "annotated": null
+          }
+        },
+        {
+          "timestamp_ms": 1000,
+          "frame_index": 2,
+          "bbox": [
+            1,
+            2,
+            4,
+            6
+          ],
+          "behaviors": {
+            "hand_raise": true,
+            "head_down": true,
+            "leave_seat": false,
+            "possible_phone": null
+          },
+          "behavior_scores": {
+            "hand_raise": 0.8
+          },
+          "pose_available": true,
+          "reviews": {},
+          "evidence": {
+            "original": null,
+            "annotated": null
+          }
+        }
+      ]
+    }
+  ],
+  "events": [],
+  "images": [
+    {
+      "image_id": "image-000001",
+      "timestamp_ms": 0,
+      "variant": "original",
+      "availability": "not_included",
+      "path": null,
+      "sha256": null,
+      "byte_size": null
+    }
+  ],
+  "summary": {
+    "sample_count": 3,
+    "anonymous_track_count": 1,
+    "person_observations": 3,
+    "sustained_event_count": 0,
+    "image_file_count": 0,
+    "image_bytes": 0
+  },
+  "acceptance_passed": false,
+  "limitations": [
+    "纯合成结构样例：无真实录像、学生或模型推理。source.sha256 是测试占位值，不能绑定真实媒体。",
+    "synthetic test only",
+    "本包用于联合接入，不是正式 StageResult；现有 Go 完成接口不接受非空行为结果。",
+    "编号只属于此段录像，不是学生身份；记录张数不等于举手次数，低头不等于走神。",
+    "机器原值和本地复核记录分别保留；本地复核不能替代团队登录授权的正式复核。",
+    "缺失证据保持为空；not_included 表示导出时未包含图片，不能当作可用画面证据。",
+    "本包不是独立人工质量验收，也不生成学生综合分数。"
+  ],
+  "example_only": true
+}

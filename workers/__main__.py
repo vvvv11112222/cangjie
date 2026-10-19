@@ -22,6 +22,12 @@ def main():
     local.add_argument("video", type=Path)
     local.add_argument("--output", type=Path, required=True)
     local.add_argument("--config", type=Path, help="AnalysisConfig JSON；未提供时全视频、2 FPS")
+    handoff = commands.add_parser("export-visual", help="将已有本地报告导出为联合接入包，不重新推理")
+    handoff.add_argument("report", type=Path)
+    handoff.add_argument("--output", type=Path, required=True)
+    handoff.add_argument("--without-images", action="store_true", help="不复制图片，保留证据缺失说明")
+    for key in ("session-id", "run-id", "media-asset-id"):
+        handoff.add_argument("--" + key)
     args = parser.parse_args()
     if args.command == "runtime-info":
         print(json.dumps({"processor_version": PROCESSOR_VERSION, "ffmpeg_binary": ffmpeg_executable(),
@@ -51,6 +57,14 @@ def main():
                 print(values.get("message", ""), flush=True)
         report = analyze_local(args.video, args.output, config, progress=progress)
         print(json.dumps({"output": str(args.output.resolve()), "statistics": report["statistics"]}, ensure_ascii=False, indent=2))
+    elif args.command == "export-visual":
+        from workers.video.handoff import export_handoff
+        binding = {key: getattr(args, key) for key in ('session_id', 'run_id', 'media_asset_id')}
+        if any(binding.values()) and not all(binding.values()):
+            parser.error('课堂、批次、媒体三个编号必须成套提供')
+        summary = export_handoff(args.report, args.output, binding=binding if all(binding.values()) else None,
+                                 include_images=not args.without_images)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
     elif args.command in ("run", "cleanup-once"):
         from workers.common.config import Settings
         from workers.common.runner import Runner
