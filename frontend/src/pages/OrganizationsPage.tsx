@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
 import { Card, EmptyState } from '../components/ui';
-import { IconAlert, IconInfo, IconList } from '../components/icons';
+import { IconAlert, IconInfo, IconList, IconPlus } from '../components/icons';
 import { isApiMode } from '../data/sources';
 import { describeError } from '../data/errors';
 import {
@@ -169,33 +169,38 @@ function DirectoryView(): ReactElement {
 
       {ready ? (
         <>
-          <div className="tab-bar" role="tablist" aria-label="基础资料分类">
-            {(Object.keys(TAB_LABEL) as Tab[]).map((key) => (
+          <div className="toolbar directory-toolbar">
+            <div className="tab-bar" role="tablist" aria-label="基础资料分类">
+              {(Object.keys(TAB_LABEL) as Tab[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === key}
+                  className={`tab-item${tab === key ? ' active' : ''}`}
+                  onClick={() => {
+                    setTab(key);
+                    setEditing(null);
+                  }}
+                >
+                  {TAB_LABEL[key]}管理
+                </button>
+              ))}
+            </div>
+
+            {editing === null ? (
               <button
-                key={key}
                 type="button"
-                role="tab"
-                aria-selected={tab === key}
-                className={`tab-item${tab === key ? ' active' : ''}`}
-                onClick={() => {
-                  setTab(key);
-                  setEditing(null);
-                }}
+                className="btn btn-primary"
+                onClick={() => setEditing(tab === 'colleges' ? { kind: 'unit', id: null } : { kind: 'group', id: null })}
               >
-                {TAB_LABEL[key]}管理
+                <IconPlus size={16} aria-hidden="true" />
+                新增{TAB_LABEL[tab]}
               </button>
-            ))}
+            ) : null}
           </div>
 
-          {editing === null ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => setEditing(tab === 'colleges' ? { kind: 'unit', id: null } : { kind: 'group', id: null })}
-            >
-              新增{TAB_LABEL[tab]}
-            </button>
-          ) : editing.kind === 'unit' ? (
+          {editing === null ? null : editing.kind === 'unit' ? (
             <UnitForm
               units={units ?? []}
               unit={editing.id === null ? null : (units ?? []).find((item) => item.id === editing.id) ?? null}

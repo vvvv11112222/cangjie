@@ -5,6 +5,7 @@ import type { Badge, Tone } from '../format';
 import { jobStageLabel, jobStatusBadge, runActionLabel, shortId } from '../format';
 import type { Disclosure } from '../data/viewModel';
 import type { LoadStatus } from '../data/loadState';
+import { errorCodeText } from '../data/errors';
 import {
   IconAlert,
   IconCheck,
@@ -323,6 +324,7 @@ export function RunErrorBox({ run }: { run: Run }): ReactElement {
           </span>
         )}
       </div>
+      {run.error_code === null ? null : <p className="error-explanation">{errorCodeText(run.error_code)}</p>}
       <TechDetails>
         <RunFields run={run} />
         <ul className="tech-list">
