@@ -1,7 +1,4 @@
-from copy import deepcopy
 from dataclasses import replace
-import json
-from pathlib import Path
 
 import pytest
 
@@ -33,11 +30,11 @@ def test_visual_disabled_or_mismatched_before_model_load(settings,source):
 
 def test_adapter_preserves_every_person_and_unknown_decision(settings,source):
     claim=visual_claim(settings,source)
-    fixture=Path(__file__).parents[2]/'contracts/examples/visual-video-result.json'
-    sample=json.loads(fixture.read_text(encoding='utf-8'))
-    observation=deepcopy(sample['visual']['persons'][0]['observations'][0])
+    # Production images carry the schema, not repository example documents.
+    observation={'timestamp_ms':0,'bbox':[10,10,40,50],
+                 'behaviors':{'hand_raise':True,'head_down':None,'leave_seat':False,'possible_phone':None}}
     report={'metadata':{'width':160,'height':120},'persons':[{'track_id':'T0001','observations':[observation]}],
-            'counts':sample['visual']['counts'],'events':[], 'coverage':{'start_ms':0,'end_ms':2000},'limitations':[]}
+            'counts':[{'timestamp_ms':0,'visible_count':1,'hand_raise_count':1,'head_down_count':None}],'events':[], 'coverage':{'start_ms':0,'end_ms':2000},'limitations':[]}
     result=package_report(report,claim,{})
     validate_result(result,claim)
     assert result['visual']['persons'][0]['observations'][0]['behaviors']==observation['behaviors']
