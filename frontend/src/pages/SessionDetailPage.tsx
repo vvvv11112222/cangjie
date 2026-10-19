@@ -52,14 +52,17 @@ import { pendingIntent } from './pendingIntent';
 import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
 import { PlaybackPanel } from './PlaybackPanel';
+import { VisualPanel } from './VisualPanel';
+import { UploadSourcePicker } from './UploadSourcePicker';
 
-type Tab = 'run' | 'transcript' | 'report' | 'playback';
+type Tab = 'run' | 'transcript' | 'report' | 'playback' | 'visual';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'run', label: '批次与操作' },
   { key: 'transcript', label: '转写' },
   { key: 'report', label: '报告' },
   { key: 'playback', label: '回放' },
+  { key: 'visual', label: '视觉观察' },
 ];
 
 function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
@@ -67,7 +70,7 @@ function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
     media_asset_id: mediaAssetId,
     mode,
     input_transcript_revision_id: null,
-    config_profile: 'p0-v1',
+    config_profile: mode === 'visual_only' ? 'vision-v1' : 'p0-v1',
   };
 }
 
@@ -170,6 +173,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     }));
     try {
       const run = await createRun(session.id, input, key);
+      if (mode === 'visual_only') setTab('visual');
       // 服务端已受理：清除未确定意图，下一次提交才算新的分析。
       pendingIntent.resolve(accountScope, session.id, key);
       write(fromScope, (base) => ({
@@ -219,7 +223,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       media_asset_id: shownRun.media_asset_id,
       mode: shownRun.mode,
       input_transcript_revision_id: shownRun.input_transcript_revision_id,
-      config_profile: 'p0-v1',
+      config_profile: shownRun.mode === 'visual_only' ? 'vision-v1' : 'p0-v1',
     };
     const signature = intentSignature(session.id, input);
     const key = pendingIntent.keyFor(accountScope, session.id, signature);
@@ -492,6 +496,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       提交分析
                     </button>
                   ) : null}
+                  {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={analyzeDisabled || (shownRun !== null && isRunActive(shownRun))} onClick={() => void submitAnalyze('visual_only')}>举手与低头分析</button> : null}
                   {canCancel ? (
                     <button type="button" className="btn btn-danger" disabled={!api || action.busy} onClick={() => void submitCancel()}>
                       取消批次
@@ -559,7 +564,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     {targetMedia !== null && targetMedia.status !== 'ready' ? (
                       <p className="load-note">
                         处理目标状态为 {targetMedia.status}
-                        {targetMedia.status === 'pending' ? '，可先做媒体准备（probe 允许对 pending 原媒体执行）。' : '，暂不能提交。'}
+                        {targetMedia.status === 'pending' ? '，可直接点击“举手与低头分析”，系统会先准备录像。' : '，暂不能提交。'}
                       </p>
                     ) : null}
                     {showRetry && retryDisabled && retryMedia === null ? (
@@ -582,6 +587,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                         }
                       />
                     </label>
+                    <UploadSourcePicker key={scope} sessionId={session.id} value={action.sourceRecordId} onChange={value => write(scope, base => ({ ...base, sourceRecordId: value }))} />
                     <label className="account-field">
                       <span>来源编号（必填）</span>
                       <input
@@ -633,6 +639,8 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
               </>
             )
           ) : null}
+
+          {tab === 'visual' ? api ? <VisualPanel key={scope} sessionId={session.id} currentRun={shownRun} /> : <Card title="视觉观察"><p className="empty">当前是固定样例模式，请连接团队后端后上传录像进行视觉分析。</p></Card> : null}
 
           {tab === 'playback' ? (
                 <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList={session.primary_media_asset_id === null} />

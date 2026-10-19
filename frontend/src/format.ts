@@ -60,7 +60,7 @@ export function formatIntervals(intervals: Interval[]): string {
  * 输入为 RFC3339（带偏移），无法解析时原样返回并标记。
  */
 export function formatDateTime(value: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:?\d{2})?$/.exec(
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/.exec(
     value,
   );
   if (!match) {
