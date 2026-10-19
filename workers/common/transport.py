@@ -72,7 +72,8 @@ class Transport:
         try:
             response = self.client.post(self.settings.api_base + "/jobs/claim",
                                         headers=self.headers(), json={
-                "worker_id": self.settings.worker_id, "capabilities": list(self.settings.capabilities)})
+                "worker_id": self.settings.worker_id, "capabilities": list(self.settings.capabilities),
+                **({"visual_enabled": True} if self.settings.vision_enabled else {})})
         except httpx.TransportError as error:
             raise WorkerError("WORKER_API_ERROR", "领取响应未确认，等待可能的租约到期后恢复轮询",
                               True, claim_uncertain=True) from error

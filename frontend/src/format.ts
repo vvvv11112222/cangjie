@@ -127,6 +127,7 @@ const JOB_STAGE: Record<JobStage, string> = {
 };
 
 const RUN_MODE: Record<RunMode, string> = {
+  visual_only: '视觉行为分析',
   full: '完整分析',
   report_only: '仅重新生成报告',
   media_prepare: '仅媒体准备',

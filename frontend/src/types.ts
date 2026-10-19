@@ -38,7 +38,7 @@ export interface SessionPage {
   next_cursor: string | null;
 }
 
-export type RunMode = 'full' | 'report_only' | 'media_prepare';
+export type RunMode = 'full' | 'report_only' | 'media_prepare' | 'visual_only';
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled';
 export type RunAction = 'view_results' | 'cancel' | 'retry';
 export type JobStage =
@@ -81,7 +81,7 @@ export interface CreateRun {
   media_asset_id: string;
   mode: RunMode;
   input_transcript_revision_id: string | null;
-  config_profile: 'p0-v1';
+  config_profile: 'p0-v1' | 'vision-v1';
 }
 
 export interface Interval {

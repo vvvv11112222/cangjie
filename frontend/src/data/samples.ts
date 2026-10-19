@@ -64,7 +64,7 @@ const SESSION_ACTIONS = [
   'archive',
   'delete',
 ] as const;
-const RUN_MODES = ['full', 'report_only', 'media_prepare'] as const;
+const RUN_MODES = ['full', 'report_only', 'media_prepare', 'visual_only'] as const;
 const RUN_STATUSES = ['queued', 'running', 'succeeded', 'partial', 'failed', 'cancelled'] as const;
 const RUN_ACTIONS = ['view_results', 'cancel', 'retry'] as const;
 const JOB_STAGES = [
