@@ -15,6 +15,8 @@ import (
 )
 
 type Config struct {
+	VisionEnabled             bool
+	VisionModelRevision       string
 	AppEnv                    string
 	APIListenAddr             string
 	PublicOrigin              string
@@ -218,7 +220,18 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve DATABASE_MIGRATIONS_DIR: %w", err)
 	}
+	visionFlag := value("VISION_ANALYSIS_ENABLED", "0")
+	visionRevision := value("VISION_MODEL_REVISION", "")
+	if visionFlag != "0" && visionFlag != "1" {
+		return Config{}, fmt.Errorf("VISION_ANALYSIS_ENABLED must be 0 or 1")
+	}
+	if visionFlag == "1" {
+		if len(visionRevision) != 64 || strings.Trim(visionRevision, "0123456789abcdef") != "" {
+			return Config{}, fmt.Errorf("VISION_MODEL_REVISION must be the runtime-info SHA256")
+		}
+	}
 	cfg := Config{
+		VisionEnabled: visionFlag == "1", VisionModelRevision: visionRevision,
 		AppEnv:                    value("APP_ENV", "development"),
 		APIListenAddr:             value("API_LISTEN_ADDR", "127.0.0.1:8080"),
 		PublicOrigin:              value("PUBLIC_ORIGIN", "http://localhost:8080"),

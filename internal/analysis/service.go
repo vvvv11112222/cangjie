@@ -68,14 +68,20 @@ func NewService(pool *pgxpool.Pool, store storage.Backend, cfg Config) *Service 
 }
 
 func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, key string, in CreateRun) (Run, bool, error) {
-	if sessionID == "" || in.MediaAssetID == "" || len(key) < 1 || len(key) > 128 || !printableASCII(key) || in.ConfigProfile != pipelineVersion {
+	if sessionID == "" || in.MediaAssetID == "" || len(key) < 1 || len(key) > 128 || !printableASCII(key) || (in.ConfigProfile != pipelineVersion && in.ConfigProfile != "vision-v1") {
 		return Run{}, false, invalid("invalid analysis request")
 	}
-	if in.Mode != "full" && in.Mode != "media_prepare" && in.Mode != "report_only" {
+	if in.Mode != "full" && in.Mode != "media_prepare" && in.Mode != "report_only" && in.Mode != "visual_only" {
 		return Run{}, false, invalid("mode is invalid")
 	}
 	if (in.Mode == "report_only") != (in.InputTranscriptRevision != nil) {
 		return Run{}, false, invalid("report_only requires input_transcript_revision_id and other modes require null")
+	}
+	if (in.Mode == "visual_only") != (in.ConfigProfile == "vision-v1") {
+		return Run{}, false, invalid("visual_only requires vision-v1; other modes require p0-v1")
+	}
+	if in.Mode == "visual_only" && (!s.cfg.VisionEnabled || len(s.cfg.VisionModelRevision) != 64) {
+		return Run{}, false, state("visual analysis is not configured")
 	}
 	requestDigest := digestJSON(in)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -173,7 +179,7 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	err = tx.QueryRow(ctx, `INSERT INTO teaching.analysis_runs(session_id,media_asset_id,requested_by,idempotency_key,
 		input_sha256,config_hash,pipeline_version,config_snapshot,mode,input_transcript_revision_id,request_sha256)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id::text`, sessionID, in.MediaAssetID, p.UserID, key,
-		inputSHA, configHash, pipelineVersion, snapshotJSON, in.Mode, in.InputTranscriptRevision, requestDigest).Scan(&runID)
+		inputSHA, configHash, in.ConfigProfile, snapshotJSON, in.Mode, in.InputTranscriptRevision, requestDigest).Scan(&runID)
 	if err != nil {
 		if isUnique(err) {
 			return Run{}, false, state("an equivalent analysis is already active")
@@ -357,7 +363,7 @@ func (s *Service) Cancel(ctx context.Context, p identity.Principal, runID string
 	return s.Get(ctx, p, runID)
 }
 
-func (s *Service) Claim(ctx context.Context, workerID string, capabilities []string) (*Claim, error) {
+func (s *Service) Claim(ctx context.Context, workerID string, capabilities []string, visualEnabled ...bool) (*Claim, error) {
 	capabilities = validCapabilities(capabilities)
 	if workerID == "" || len(capabilities) == 0 {
 		return nil, invalid("worker_id and capabilities are required")
@@ -378,10 +384,11 @@ func (s *Service) Claim(ctx context.Context, workerID string, capabilities []str
 		 JOIN teaching.lesson_sessions ls2 ON ls2.id=r2.session_id JOIN teaching.media_assets m2 ON m2.id=r2.media_asset_id AND m2.session_id=ls2.id
 		 JOIN teaching.source_records src2 ON src2.id=m2.source_record_id AND src2.session_id=ls2.id
 		 WHERE j2.status='queued' AND j2.stage=ANY($1::text[]) AND j2.available_at<=now() AND j2.attempts<j2.max_attempts
+		 AND (r2.mode<>'visual_only' OR $2::boolean)
 		 AND r2.status IN('queued','running') AND ls2.status NOT IN('deleting','deleted') AND ls2.content_expires_at>now()
 		 AND m2.expires_at>now() AND m2.status IN('pending','ready') AND src2.rights_status='verified'
 		 AND src2.allowed_uses ? CASE WHEN r2.mode='media_prepare' THEN 'playback' ELSE 'analysis' END
-		 ORDER BY j2.priority DESC,j2.available_at,j2.created_at LIMIT 1 FOR UPDATE OF j2 SKIP LOCKED)`, capabilities).
+		 ORDER BY j2.priority DESC,j2.available_at,j2.created_at LIMIT 1 FOR UPDATE OF j2 SKIP LOCKED)`, capabilities, len(visualEnabled) > 0 && visualEnabled[0]).
 		Scan(&c.JobID, &c.RunID, &c.SessionID, &c.MediaAssetID, &c.Stage, &c.InputSHA256, &c.DurationMS, &snapshotJSON, &c.RightsVersion, &c.StorageGeneration)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -840,7 +847,7 @@ func (s *Service) Results(ctx context.Context, p identity.Principal, runID strin
 		return Results{}, err
 	}
 	out := Results{Segments: []Segment{}, Evidence: []json.RawMessage{}, Frames: []Frame{}, Events: []json.RawMessage{}, Limitations: nonNilStrings(run.Limitations), RunStatus: run.Status}
-	rows, err := s.pool.Query(ctx, `SELECT j.stage,ja.metadata->'result' FROM teaching.analysis_jobs j JOIN teaching.job_artifacts ja ON ja.job_id=j.id WHERE j.run_id=$1 AND ja.artifact_key LIKE '__result/%'`, runID)
+	rows, err := s.pool.Query(ctx, `SELECT j.stage,(ja.metadata->'result') - 'visual' FROM teaching.analysis_jobs j JOIN teaching.job_artifacts ja ON ja.job_id=j.id WHERE j.run_id=$1 AND ja.artifact_key LIKE '__result/%'`, runID)
 	if err != nil {
 		return Results{}, err
 	}
@@ -1290,12 +1297,25 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 		}
 		return envelope, v, nil
 	case "video_analysis":
+		if state.Mode == "visual_only" {
+			if err := validateVisualShape(raw); err != nil {
+				return envelope, nil, err
+			}
+		}
 		var v VideoResult
 		if err := decodeStrict(raw, &v); err != nil {
 			return envelope, nil, invalidResult("video result is invalid")
 		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return envelope, nil, invalidResult("invalid result object")
+		}
+		_, hasVisual := fields["visual"]
+		if (state.Mode == "visual_only") != hasVisual {
+			return envelope, nil, invalidResult("visual payload does not match run mode")
+		}
 		params := state.Snapshot.Parameters
-		if len(v.Events) != 0 || v.Model != nil || v.Sampling.IntervalMS != params.KeyframeIntervalMS || v.Sampling.MaxFrames != params.MaxKeyframes || len(v.Frames) > params.MaxKeyframes {
+		if v.Sampling.IntervalMS != params.KeyframeIntervalMS || v.Sampling.MaxFrames != params.MaxKeyframes || len(v.Frames) > params.MaxKeyframes || (state.Mode != "visual_only" && (len(v.Events) != 0 || v.Model != nil || v.Visual != nil)) {
 			return envelope, nil, invalidResult("video result does not match P0 sampling")
 		}
 		duration, err := s.mediaDuration(ctx, tx, state.MediaID)
@@ -1311,6 +1331,32 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 			}
 			if err := s.requireArtifact(ctx, tx, state, jobID, f.AssetID, "keyframe", false); err != nil {
 				return envelope, nil, err
+			}
+		}
+		if state.Mode == "visual_only" {
+			var sha string
+			if err := tx.QueryRow(ctx, `SELECT input_sha256 FROM teaching.analysis_runs WHERE id=$1`, state.RunID).Scan(&sha); err != nil {
+				return envelope, nil, err
+			}
+			var probeRaw []byte
+			if err := tx.QueryRow(ctx, `SELECT metadata->'result' FROM teaching.job_artifacts WHERE run_id=$1 AND artifact_key='__result/probe'`, state.RunID).Scan(&probeRaw); err != nil {
+				return envelope, nil, err
+			}
+			var probe ProbeResult
+			if err := json.Unmarshal(probeRaw, &probe); err != nil {
+				return envelope, nil, err
+			}
+			if err := validateVisual(v, params, sha, duration, probe.Width, probe.Height); err != nil {
+				return envelope, nil, err
+			}
+			for _, f := range v.Frames {
+				var timestamp int64
+				if err := tx.QueryRow(ctx, `SELECT (metadata->>'timestamp_ms')::bigint FROM teaching.job_artifacts WHERE job_id=$1 AND media_asset_id=$2`, jobID, f.AssetID).Scan(&timestamp); err != nil {
+					return envelope, nil, err
+				}
+				if timestamp != f.TimestampMS {
+					return envelope, nil, invalidResult("image timestamp differs from uploaded artifact")
+				}
 			}
 		}
 		return envelope, v, nil
@@ -1362,6 +1408,13 @@ func (s *Service) applyProbe(ctx context.Context, tx pgx.Tx, state lockedJob, v 
 }
 
 func (s *Service) advance(ctx context.Context, tx pgx.Tx, state lockedJob, envelope resultEnvelope) error {
+	if state.Mode == "visual_only" {
+		if state.Stage == "probe" {
+			_, err := tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,max_attempts) VALUES($1,'video_analysis',$2) ON CONFLICT DO NOTHING`, state.RunID, s.cfg.MediaJobAttempts)
+			return err
+		}
+		return s.finishVisual(ctx, tx, state)
+	}
 	if state.Stage == "probe" {
 		if state.Mode == "media_prepare" {
 			_, err := tx.Exec(ctx, `UPDATE teaching.analysis_runs SET status='succeeded',error_code=NULL,finished_at=now() WHERE id=$1`, state.RunID)
@@ -1413,7 +1466,18 @@ func (s *Service) startEvidence(ctx context.Context, tx pgx.Tx, runID string) er
 }
 
 func (s *Service) failAfterProbe(ctx context.Context, tx pgx.Tx, runID, code string) error {
-	for _, stage := range []string{"audio_analysis", "video_analysis", "evidence", "report", "validate"} {
+	var raw []byte
+	if err := tx.QueryRow(ctx, `SELECT config_snapshot FROM teaching.analysis_runs WHERE id=$1`, runID).Scan(&raw); err != nil {
+		return err
+	}
+	var snap snapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return err
+	}
+	for _, stage := range snap.StagePlan {
+		if stage == "probe" {
+			continue
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO teaching.analysis_jobs(run_id,stage,status,max_attempts,error_code)
 			VALUES($1,$2,'skipped',$3,'DEPENDENCY_FAILED') ON CONFLICT DO NOTHING`, runID, stage, s.maxAttempts(stage)); err != nil {
 			return err
@@ -1427,10 +1491,20 @@ func (s *Service) newSnapshot(mode string) snapshot {
 	params := Parameters{ConfigProfile: pipelineVersion, KeyframeIntervalMS: s.cfg.KeyframeIntervalMS, MaxKeyframes: s.cfg.MaxKeyframes, ASRDevice: s.cfg.ASRDevice}
 	// Match the contract's sorted-key, compact JSON used by Python workers.
 	// Keep execution/result digests unchanged for already persisted leases.
-	paramHash := digestJSON(map[string]any{
+	paramMap := map[string]any{
 		"asr_device": params.ASRDevice, "config_profile": params.ConfigProfile,
 		"keyframe_interval_ms": params.KeyframeIntervalMS, "max_keyframes": params.MaxKeyframes,
-	})
+	}
+	if mode == "visual_only" {
+		params.ConfigProfile = "vision-v1"
+		params.KeyframeIntervalMS = 500
+		params.Visual = &VisualParameters{Model: Model{Name: "classroom-vision", Revision: s.cfg.VisionModelRevision}, MaxSamples: 15000, MaxPosePeople: 80, HeadDownEnabled: true}
+		paramMap["config_profile"] = params.ConfigProfile
+		paramMap["keyframe_interval_ms"] = params.KeyframeIntervalMS
+		// Nested map keeps the same canonical sorted-key hash as Python.
+		paramMap["visual"] = map[string]any{"model": map[string]any{"name": params.Visual.Model.Name, "revision": params.Visual.Model.Revision}, "max_samples": 15000, "max_pose_people": 80, "head_down_enabled": true}
+	}
+	paramHash := digestJSON(paramMap)
 	base := Execution{ProcessorVersion: s.cfg.ProcessorVersion, FFmpegBuildSHA256: s.cfg.FFmpegSHA256, ParametersSHA256: paramHash}
 	probe := base
 	video := base
@@ -1439,6 +1513,8 @@ func (s *Service) newSnapshot(mode string) snapshot {
 	plan := []string{"probe", "audio_analysis", "video_analysis", "evidence", "report", "validate"}
 	if mode == "media_prepare" {
 		plan = []string{"probe"}
+	} else if mode == "visual_only" {
+		plan = []string{"probe", "video_analysis"}
 	}
 	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
 		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},

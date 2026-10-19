@@ -191,7 +191,8 @@
           "enum": [
             "full",
             "report_only",
-            "media_prepare"
+            "media_prepare",
+            "visual_only"
           ]
         },
         "input_transcript_revision_id": {
@@ -206,7 +207,10 @@
           ]
         },
         "config_profile": {
-          "const": "p0-v1"
+          "enum": [
+            "p0-v1",
+            "vision-v1"
+          ]
         }
       },
       "required": [
@@ -240,6 +244,29 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "visual_only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "config_profile": {
+                "const": "vision-v1"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "config_profile": {
+                "const": "p0-v1"
+              }
+            }
+          }
         }
       ]
     },
@@ -261,6 +288,9 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "visual_enabled": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -407,33 +437,69 @@
           ]
         },
         "parameters": {
-          "type": "object",
-          "properties": {
-            "config_profile": {
-              "const": "p0-v1"
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "config_profile": {
+                  "const": "p0-v1"
+                },
+                "keyframe_interval_ms": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "max_keyframes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "asr_device": {
+                  "enum": [
+                    "cpu",
+                    "cuda"
+                  ]
+                }
+              },
+              "required": [
+                "config_profile",
+                "keyframe_interval_ms",
+                "max_keyframes",
+                "asr_device"
+              ],
+              "additionalProperties": false
             },
-            "keyframe_interval_ms": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "max_keyframes": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "asr_device": {
-              "enum": [
-                "cpu",
-                "cuda"
-              ]
+            {
+              "type": "object",
+              "properties": {
+                "config_profile": {
+                  "const": "vision-v1"
+                },
+                "keyframe_interval_ms": {
+                  "const": 500
+                },
+                "max_keyframes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "asr_device": {
+                  "enum": [
+                    "cpu",
+                    "cuda"
+                  ]
+                },
+                "visual": {
+                  "$ref": "#/$defs/VisualParameters"
+                }
+              },
+              "required": [
+                "config_profile",
+                "keyframe_interval_ms",
+                "max_keyframes",
+                "asr_device",
+                "visual"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "config_profile",
-            "keyframe_interval_ms",
-            "max_keyframes",
-            "asr_device"
-          ],
-          "additionalProperties": false
+          ]
         },
         "execution": {
           "$ref": "#/$defs/Execution"
@@ -735,6 +801,9 @@
         },
         {
           "$ref": "#/$defs/VideoResult"
+        },
+        {
+          "$ref": "#/$defs/VisualVideoResult"
         }
       ]
     },
@@ -832,7 +901,8 @@
           "enum": [
             "full",
             "report_only",
-            "media_prepare"
+            "media_prepare",
+            "visual_only"
           ]
         },
         "input_transcript_revision_id": {
@@ -5341,6 +5411,528 @@
         "occurred_at",
         "segment_path"
       ],
+      "additionalProperties": false
+    },
+    "VisualParameters": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "max_samples": {
+          "const": 15000
+        },
+        "max_pose_people": {
+          "const": 80
+        },
+        "head_down_enabled": {
+          "const": true
+        }
+      },
+      "required": [
+        "model",
+        "max_samples",
+        "max_pose_people",
+        "head_down_enabled"
+      ],
+      "additionalProperties": false
+    },
+    "VisualCount": {
+      "type": "object",
+      "properties": {
+        "timestamp_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visible_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hand_raise_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "head_down_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "timestamp_ms",
+        "visible_count",
+        "hand_raise_count",
+        "head_down_count"
+      ],
+      "additionalProperties": false
+    },
+    "VisualObservation": {
+      "type": "object",
+      "properties": {
+        "timestamp_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bbox": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "behaviors": {
+          "type": "object",
+          "properties": {
+            "hand_raise": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "head_down": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "leave_seat": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "possible_phone": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "hand_raise",
+            "head_down",
+            "leave_seat",
+            "possible_phone"
+          ],
+          "additionalProperties": false
+        },
+        "frame_asset_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "timestamp_ms",
+        "bbox",
+        "behaviors",
+        "frame_asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "VisualPerson": {
+      "type": "object",
+      "properties": {
+        "track_id": {
+          "type": "string",
+          "pattern": "^T[0-9]{3,8}$"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VisualObservation"
+          },
+          "minItems": 1,
+          "maxItems": 15000
+        }
+      },
+      "required": [
+        "track_id",
+        "observations"
+      ],
+      "additionalProperties": false
+    },
+    "VisualPersonSummary": {
+      "type": "object",
+      "properties": {
+        "track_id": {
+          "type": "string",
+          "pattern": "^T[0-9]{3,8}$"
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "track_id",
+        "sample_count"
+      ],
+      "additionalProperties": false
+    },
+    "VisualData": {
+      "type": "object",
+      "properties": {
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "counts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VisualCount"
+          },
+          "minItems": 1,
+          "maxItems": 15000
+        },
+        "persons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VisualPerson"
+          },
+          "maxItems": 10000
+        }
+      },
+      "required": [
+        "input_sha256",
+        "width",
+        "height",
+        "counts",
+        "persons"
+      ],
+      "additionalProperties": false
+    },
+    "VisualVideoResult": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "const": "video_analysis"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Frame"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Event"
+          },
+          "maxItems": 10000
+        },
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "sampling": {
+          "type": "object",
+          "properties": {
+            "interval_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_frames": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "interval_ms",
+            "max_frames"
+          ],
+          "additionalProperties": false
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution"
+        },
+        "visual": {
+          "$ref": "#/$defs/VisualData"
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "stage",
+        "frames",
+        "events",
+        "model",
+        "sampling",
+        "coverage",
+        "limitations",
+        "execution",
+        "visual"
+      ],
+      "additionalProperties": false
+    },
+    "VisualSummary": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "media_asset_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "stage": {
+          "const": "video_analysis"
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Frame"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Event"
+          },
+          "maxItems": 10000
+        },
+        "model": {
+          "$ref": "#/$defs/Model"
+        },
+        "sampling": {
+          "type": "object",
+          "properties": {
+            "interval_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_frames": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "interval_ms",
+            "max_frames"
+          ],
+          "additionalProperties": false
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Interval"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution"
+        },
+        "visual": {
+          "type": "object",
+          "properties": {
+            "input_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "counts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/VisualCount"
+              },
+              "minItems": 1,
+              "maxItems": 15000
+            }
+          },
+          "required": [
+            "input_sha256",
+            "width",
+            "height",
+            "counts"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "run_id",
+        "session_id",
+        "media_asset_id",
+        "stage",
+        "frames",
+        "events",
+        "model",
+        "sampling",
+        "coverage",
+        "limitations",
+        "execution",
+        "visual"
+      ],
+      "additionalProperties": false
+    },
+    "VisualPersonsPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VisualPersonSummary"
+          },
+          "maxItems": 200
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "VisualObservationsPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VisualObservation"
+          },
+          "maxItems": 200
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "VisualPageQuery": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        }
+      },
       "additionalProperties": false
     }
   }

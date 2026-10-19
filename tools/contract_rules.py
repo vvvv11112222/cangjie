@@ -62,7 +62,7 @@ def check_semantics(value, definition=None, context=None):
     visit(value)
 
     if definition == "Run":
-        plan = ["probe"] if value["mode"] == "media_prepare" else ["probe", "audio_analysis", "video_analysis", "evidence", "report", "validate"]
+        plan = ["probe"] if value["mode"] == "media_prepare" else ["probe", "video_analysis"] if value["mode"] == "visual_only" else ["probe", "audio_analysis", "video_analysis", "evidence", "report", "validate"]
         require(value["stage_plan"] == plan, "mode stage plan mismatch")
         jobs = value["jobs"]
         require(len({j["stage"] for j in jobs}) == len(jobs), "duplicate stage")
@@ -71,10 +71,10 @@ def check_semantics(value, definition=None, context=None):
         if value["status"] not in ("queued", "running"):
             require({j["stage"] for j in jobs} == set(plan), "terminal run has waiting stages")
             require(all(j["status"] not in ("queued", "running") for j in jobs), "terminal run has active jobs")
-        if value["mode"] == "media_prepare":
+        if value["mode"] in ("media_prepare", "visual_only"):
             require(value["report_id"] is None, "preparation cannot create report")
             if value["status"] == "succeeded":
-                require(jobs[0]["status"] == "succeeded", "preparation requires probe")
+                require(all(j["status"] == "succeeded" for j in jobs), "successful media stages required")
         elif value["status"] == "succeeded":
             require(value["report_id"] is not None, "successful analysis needs validated draft")
 
@@ -105,7 +105,7 @@ def check_semantics(value, definition=None, context=None):
             if value["content_sha256"] is None:
                 require(not value["allowed_actions"], "legacy report must be read-only")
 
-    if definition in ("StageResult", "ProbeResult", "AudioResult", "VideoResult"):
+    if definition in ("StageResult", "ProbeResult", "AudioResult", "VideoResult", "VisualVideoResult"):
         claim = context.get("claim")
         if claim:
             for key in ("job_id", "run_id", "session_id", "media_asset_id", "stage", "execution"):

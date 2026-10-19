@@ -101,6 +101,101 @@
       "file": "session-page.json",
       "definition": "SessionPage",
       "valid": true
+    },
+    {
+      "file": "create-visual-run.json",
+      "definition": "CreateRun",
+      "valid": true
+    },
+    {
+      "file": "invalid-visual-profile.json",
+      "definition": "CreateRun",
+      "valid": false
+    },
+    {
+      "file": "claim-visual.json",
+      "definition": "Claim",
+      "valid": true
+    },
+    {
+      "file": "visual-video-result.json",
+      "definition": "VisualVideoResult",
+      "valid": true,
+      "context": {
+        "claim": {
+          "schema_version": "1.1",
+          "job_id": "00000000-0000-4000-8000-000000000004",
+          "run_id": "00000000-0000-4000-8000-000000000003",
+          "session_id": "00000000-0000-4000-8000-000000000001",
+          "media_asset_id": "00000000-0000-4000-8000-000000000002",
+          "stage": "video_analysis",
+          "lease_token": "00000000-0000-4000-8000-000000000009",
+          "lease_expires_at": "2026-10-02T09:02:00+08:00",
+          "input_url": "/internal/v1/jobs/00000000-0000-4000-8000-000000000004/input",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "duration_ms": 2000,
+          "parameters": {
+            "config_profile": "vision-v1",
+            "keyframe_interval_ms": 500,
+            "max_keyframes": 240,
+            "asr_device": "cpu",
+            "visual": {
+              "model": {
+                "name": "classroom-vision",
+                "revision": "28daa03e9b08ccace4bc58ae899f63377f58977a309a17f723c3703dd58ddb6e"
+              },
+              "max_samples": 15000,
+              "max_pose_people": 80,
+              "head_down_enabled": true
+            }
+          },
+          "execution": {
+            "processor_version": "synthetic-worker-1",
+            "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "asr_model": null,
+            "parameters_sha256": "c7f4853c1497f8ccc4044998c70ac86845c01c19ccb940e84838f074ef613400"
+          },
+          "execution_deadline_at": "2026-10-02T13:00:00+08:00",
+          "rights_version": 1,
+          "storage_generation": 0
+        },
+        "duration_ms": 2000
+      }
+    },
+    {
+      "file": "invalid-visual-behavior.json",
+      "definition": "StageResult",
+      "valid": false
+    },
+    {
+      "file": "visual-summary.json",
+      "definition": "VisualSummary",
+      "valid": true
+    },
+    {
+      "file": "visual-persons-page.json",
+      "definition": "VisualPersonsPage",
+      "valid": true
+    },
+    {
+      "file": "visual-observations-page.json",
+      "definition": "VisualObservationsPage",
+      "valid": true
+    },
+    {
+      "file": "invalid-visual-page-limit.json",
+      "definition": "VisualPageQuery",
+      "valid": false
+    },
+    {
+      "file": "visual-page-query.json",
+      "definition": "VisualPageQuery",
+      "valid": true
+    },
+    {
+      "file": "claim-visual-request.json",
+      "definition": "ClaimRequest",
+      "valid": true
     }
   ],
   "case_sets": [
