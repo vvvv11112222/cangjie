@@ -9,6 +9,12 @@ export interface Classroom { id: string; code: string; name: string; capacity: n
 export interface Offering { id: string; org_unit_id: string; term_id: string; course_id: string; teacher_id: string; class_group_id: string; code: string; status: string }
 export interface Schedule { id: string; offering_id: string; classroom_id: string; starts_at: string; ends_at: string; status: string; teacher_id: string; class_group_id: string }
 export interface SourceRecord { id: string; session_id: string | null; source_type: string; title: string; attribution: string; source_url: string | null; authorization_note: string; requested_uses: string[]; external_processing_requested: boolean; rights_status: string; allowed_uses: string[]; external_processing_allowed: boolean; rights_version: number; verified_by: string | null; verified_at: string | null; allowed_actions: string[] }
+export type TermInput = Omit<Term, 'id'>;
+export type CourseInput = Omit<Course, 'id'>;
+export type ClassroomInput = Omit<Classroom, 'id'>;
+export type OfferingInput = Omit<Offering, 'id'>;
+export type ScheduleInput = Pick<Schedule, 'offering_id' | 'classroom_id' | 'starts_at' | 'ends_at' | 'status'>;
+export type ScheduleImportRow = Omit<ScheduleInput, 'status'>;
 
 function page<T>(value: unknown, path: string, parse: (value: unknown, path: string) => T): Page<T> {
   const record = asRecord(value, path);
@@ -29,6 +35,28 @@ export const listClassrooms = (cursor?: string) => list('/classrooms', classroom
 export const listOfferings = (cursor?: string) => list('/offerings', offering, cursor);
 export const listSchedules = (cursor?: string, range?: { from: string; to: string }) => list('/schedules', schedule, cursor, range);
 export const listSources = (sessionId: string) => list(`/sessions/${encodeURIComponent(sessionId)}/sources`, source);
-export async function createSchedule(input: Pick<Schedule, 'offering_id' | 'classroom_id' | 'starts_at' | 'ends_at' | 'status'>): Promise<Schedule> { const { data } = await requestJson<unknown>('/schedules', { method: 'POST', body: input, csrf: true }); return schedule(data, 'Schedule'); }
+
+async function write<T>(path: string, method: 'POST' | 'PATCH', input: unknown, parser: (value: unknown, path: string) => T, name: string): Promise<T> {
+  const { data } = await requestJson<unknown>(path, { method, body: input, csrf: true });
+  return parser(data, name);
+}
+
+export const createTerm = (input: TermInput) => write('/terms', 'POST', input, term, 'Term');
+export const patchTerm = (id: string, input: TermInput) => write(`/terms/${encodeURIComponent(id)}`, 'PATCH', input, term, 'Term');
+export const createCourse = (input: CourseInput) => write('/courses', 'POST', input, course, 'Course');
+export const patchCourse = (id: string, input: CourseInput) => write(`/courses/${encodeURIComponent(id)}`, 'PATCH', input, course, 'Course');
+export const createClassroom = (input: ClassroomInput) => write('/classrooms', 'POST', input, classroom, 'Classroom');
+export const patchClassroom = (id: string, input: ClassroomInput) => write(`/classrooms/${encodeURIComponent(id)}`, 'PATCH', input, classroom, 'Classroom');
+export const createOffering = (input: OfferingInput) => write('/offerings', 'POST', input, offering, 'Offering');
+export const patchOffering = (id: string, input: OfferingInput) => write(`/offerings/${encodeURIComponent(id)}`, 'PATCH', input, offering, 'Offering');
+export const createSchedule = (input: ScheduleInput) => write('/schedules', 'POST', input, schedule, 'Schedule');
+export const patchSchedule = (id: string, input: ScheduleInput) => write(`/schedules/${encodeURIComponent(id)}`, 'PATCH', input, schedule, 'Schedule');
+
+export async function importSchedules(rows: ScheduleImportRow[]): Promise<Schedule[]> {
+  const { data } = await requestJson<unknown>('/schedules/import', { method: 'POST', body: { rows }, csrf: true });
+  const result = asRecord(data, 'ImportResult');
+  return asArray(result.items, 'ImportResult.items').map((item, index) => schedule(item, `ImportResult.items[${index}]`));
+}
+
 export async function createSource(input: Record<string, unknown>): Promise<SourceRecord> { const { data } = await requestJson<unknown>('/sources', { method: 'POST', body: input, csrf: true }); return source(data, 'Source'); }
 export async function verifySource(id: string, input: Record<string, unknown>): Promise<SourceRecord> { const { data } = await requestJson<unknown>(`/sources/${encodeURIComponent(id)}/verify`, { method: 'POST', body: input, csrf: true }); return source(data, 'Source'); }

@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import { Card } from '../components/ui';
-import { IconCamera, IconChevronRight, IconInfo, IconReport, IconVideo } from '../components/icons';
+import { Card, EmptyState } from '../components/ui';
+import { IconCamera, IconChevronRight, IconInfo, IconReport, IconSettings, IconVideo } from '../components/icons';
 
 const CONNECTION_STEPS = [
   {
@@ -18,6 +18,13 @@ const CONNECTION_STEPS = [
     title: '停止后统一分析',
     text: '停止采集后，服务端将录像转成课堂媒体，继续沿用媒体检查、转写、证据和报告复核流程。',
   },
+] as const;
+
+const PLANNED_CAPABILITIES = [
+  { title: '设备资产目录', text: '按学院、教学楼和教室查看固定设备，展示设备编码与接入方式。', dependency: '需要设备目录查询接口' },
+  { title: 'RTSP 摄像头登记', text: '登记摄像头地址与归属课堂；凭据只交给 Go 服务保存，绝不进入浏览器列表。', dependency: '需要设备新增与修改接口' },
+  { title: '采集任务汇总', text: '集中查看各课堂采集状态、开始时间、持续时长及录像收尾结果。', dependency: '需要跨课堂采集列表接口' },
+  { title: '在线状态监控', text: '区分在线、断开、恢复中和未知状态，并显示服务端最后确认时间。', dependency: '需要统一设备状态接口' },
 ] as const;
 
 export function DevicesPage(): ReactElement {
@@ -66,6 +73,37 @@ export function DevicesPage(): ReactElement {
           </Card>
         ))}
       </div>
+
+      <Card title="固定设备与 RTSP 管理" subtitle="按照前端模板预留正式页面结构；当前契约没有设备目录端点，因此这里只展示规划空态。" icon={<IconSettings size={18} aria-hidden="true" />}>
+        <div className="device-planning-grid">
+          {PLANNED_CAPABILITIES.map((item) => (
+            <section className="device-planning-card" key={item.title}>
+              <span className="device-planning-state">等待接口</span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+              <small>{item.dependency}</small>
+            </section>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="设备与采集状态" subtitle="接口接入后，这里按学院、教室、协议和在线状态筛选；不会使用模板示例数据冒充真实设备。">
+        <div className="toolbar device-planning-toolbar">
+          <div className="filters">
+            <select className="m1-filter-control" aria-label="设备所属学院" disabled><option>全部学院</option></select>
+            <select className="m1-filter-control" aria-label="设备在线状态" disabled><option>全部状态</option></select>
+            <input className="m1-filter-control" aria-label="搜索设备" placeholder="搜索设备或教室" disabled />
+          </div>
+          <span className="muted small">尚无可查询的设备数据</span>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>设备 / 编码</th><th>学院 / 教室</th><th>接入协议</th><th>当前采集</th><th>在线状态</th></tr></thead>
+            <tbody />
+          </table>
+        </div>
+        <EmptyState text="后端提供设备目录、RTSP 登记和统一状态接口后，此处接入真实数据。" />
+      </Card>
 
       <Card title="当前能力边界" subtitle="页面只说明仓库里已经存在的真实能力。">
         <dl className="device-capability-list">

@@ -37,7 +37,8 @@ import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
 import { TasksPage } from './pages/TasksPage';
 import { SourcesPage } from './pages/SourcesPage';
-import { AcademicPage, DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
+import { DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
+import { AcademicPage } from './pages/AcademicPage';
 import {
   DEFAULT_ROUTE,
   isVisiblePath,

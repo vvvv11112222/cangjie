@@ -2328,6 +2328,58 @@ code {
   gap: 16px;
 }
 
+.device-planning-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.device-planning-card {
+  position: relative;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+.device-planning-card h3 {
+  margin: 6px 0 8px;
+  color: var(--ink);
+}
+
+.device-planning-card p {
+  margin: 0 0 12px;
+  color: var(--ink-body);
+  line-height: 1.7;
+}
+
+.device-planning-card small { color: var(--muted); }
+
+.device-planning-state {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.device-planning-toolbar { align-items: center; }
+.device-planning-toolbar .filters { flex-wrap: wrap; }
+.device-planning-toolbar .m1-filter-control:disabled { cursor: not-allowed; opacity: .72; }
+
+.academic-toolbar {
+  align-items: center;
+  gap: 16px;
+}
+
+.academic-toolbar .tabs {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .device-capability-list {
   display: grid;
   gap: 0;
@@ -2476,6 +2528,7 @@ code {
   .operations-grid,
   .operations-reconcile,
   .device-step-grid,
+  .device-planning-grid,
   .m1-form {
     grid-template-columns: 1fr;
   }
