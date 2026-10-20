@@ -7,6 +7,7 @@ import { ReportPage } from './ReportPage';
 import { TasksPage } from './TasksPage';
 import { SourcesPage } from './SourcesPage';
 import { DevicesPage } from './DevicesPage';
+import { PLANNED_PAGES, PlaceholderPage } from './PlaceholderPage';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from '../data/viewModel';
 import type { ReportView, SessionTaskView } from '../data/viewModel';
 import type { ReportAction, SessionAction } from '../types';
@@ -160,12 +161,24 @@ describe('M2 页面按模板展示真实链路边界', () => {
 });
 
 describe('设备接入页', () => {
-  it('展示真实手机采集入口，并明确没有独立设备目录', () => {
+  it('展示真实手机采集入口，并将固定设备标为规划中', () => {
     const html = renderToStaticMarkup(<DevicesPage />);
     expect(html).toContain('设备接入');
     expect(html).toContain('手机实时采集');
     expect(html).toContain('进入课堂档案');
-    expect(html).toContain('独立设备资产目录');
-    expect(html).not.toContain('页面尚未实现');
+    expect(html).toContain('固定设备接入');
+    expect(html).toContain('规划中');
+    for (const developerText of ['当前能力边界', '等待接口', '仓库', '契约', '模板示例', '后端提供']) {
+      expect(html).not.toContain(developerText);
+    }
+  });
+
+  it('操作记录使用产品空态，不向用户展示开发依赖', () => {
+    const html = renderToStaticMarkup(<PlaceholderPage page={PLANNED_PAGES['#/audit']!} />);
+    expect(html).toContain('操作记录查询暂未开放');
+    expect(html).toContain('暂无可查看的记录');
+    for (const developerText of ['页面尚未实现', '接口就绪', 'contracts', '系统草图', '依赖：']) {
+      expect(html).not.toContain(developerText);
+    }
   });
 });
