@@ -21,6 +21,8 @@ import { isApiMode } from '../data/sources';
 import { listClassGroups, listCourses, listOfferings, offeringLabel } from '../data/academicApi';
 import type { ClassGroup, Course, Offering } from '../data/academicApi';
 import { createSession, uploadSessionMedia } from '../data/sessionOps';
+import { UploadSourcePicker } from './UploadSourcePicker';
+import { isUuid } from '../data/ids';
 
 /**
  * 课堂档案（《系统草图.html》的 CLASSROOM ARCHIVE）。
@@ -86,6 +88,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [compose, setCompose] = useState<Compose>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const api = isApiMode();
 
   // 操作展示以各资源返回的 allowed_actions 为准（协议第 1.1 节：前端按 allowed_actions 展示，
@@ -122,7 +125,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
             <IconPlus size={15} />
             创建课堂
           </button>
-          <button type="button" className="btn btn-primary" disabled={!api} title={!api ? '接口模式下可上传课堂录像' : undefined} onClick={() => setCompose('upload')}>
+          <button type="button" className="btn btn-primary" disabled={!api} title={!api ? '接口模式下可上传课堂录像' : undefined} onClick={() => { setUploadNotice(null); setCompose('upload'); }}>
             <IconUpload size={15} />
             上传课堂录像
           </button>
@@ -152,6 +155,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {notes}
       {head}
 
+      {uploadNotice && <p className="notice-strip" role="status">{uploadNotice}</p>}
       {compose === 'create' ? (
         <CreateSessionForm
           onCancel={() => setCompose(null)}
@@ -167,6 +171,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
           onCancel={() => setCompose(null)}
           onUploaded={() => {
             setCompose(null);
+            setUploadNotice('录像已上传，可进入对应课堂继续进行举手与低头分析。');
             loaded.reload();
           }}
         />
@@ -485,11 +490,11 @@ function UploadMediaForm({
       setError('请选择要上传的录像文件。');
       return;
     }
-    if (sourceRecordId.trim() === '') {
-      setError('请填写已经登记并核验的来源编号。');
+    if (!isUuid(sourceRecordId.trim())) {
+      setError('请选择这节课堂已登记的录像来源；来源由系统生成，不能填写“1.2”等自编编号。');
       return;
     }
-    setBusy(true);
+    setBusy(true); setError(null);
     try {
       await uploadSessionMedia(sessionId, file, sourceRecordId.trim());
       onUploaded();
@@ -508,7 +513,7 @@ function UploadMediaForm({
         <form className="directory-form" onSubmit={submit}>
           <label className="account-field">
             <span>课堂</span>
-            <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} required>
+            <select value={sessionId} disabled={busy} onChange={(event) => { setSessionId(event.target.value); setSourceRecordId(''); setError(null); }} required>
               {uploadable.map((task) => (
                 <option key={task.session.id} value={task.session.id}>
                   {task.session.title}（{shortId(task.session.id)}）
@@ -516,16 +521,7 @@ function UploadMediaForm({
               ))}
             </select>
           </label>
-          <label className="account-field">
-            <span>来源编号</span>
-            <input
-              value={sourceRecordId}
-              onChange={(event) => setSourceRecordId(event.target.value)}
-              placeholder="source_record_id"
-              required
-            />
-            <small>录像必须先在“素材与来源”登记；后端会再次核验来源归属和许可。</small>
-          </label>
+          <UploadSourcePicker key={sessionId} sessionId={sessionId} value={sourceRecordId} onChange={setSourceRecordId} manualFallback={false} disabled={busy} />
           <label className="account-field">
             <span>录像文件</span>
             <input
