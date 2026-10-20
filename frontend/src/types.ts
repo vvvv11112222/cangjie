@@ -310,3 +310,66 @@ export interface ReportExport {
   download_url: string | null;
   expires_at: string;
 }
+
+/** M4 治理与运维 DTO：逐字段对应 Schema 的 Operations / ModelCall / Deletion。 */
+export type WorkerCapability = 'probe' | 'audio_analysis' | 'video_analysis';
+
+export interface OperationsWorker {
+  worker_id: string;
+  last_seen_at: string;
+  capabilities: WorkerCapability[];
+}
+
+export interface OperationsBudget {
+  currency: 'CNY';
+  billing_period: string;
+  limit: string;
+  charged: string;
+  reserved: string;
+  unknown: string;
+}
+
+export interface Operations {
+  workers: OperationsWorker[];
+  queued_jobs: number;
+  storage_free_bytes: number;
+  budget: OperationsBudget;
+}
+
+export type ModelCallStatus = 'reserved' | 'unknown' | 'succeeded' | 'failed';
+
+export interface ModelCall {
+  id: string;
+  status: ModelCallStatus;
+  reserved_cost: string;
+  actual_cost: string | null;
+  currency: 'CNY';
+  billing_period: string;
+  price_version: string | null;
+  lock_version: number;
+  dispatch_started_at: string | null;
+  settled_at: string | null;
+}
+
+export interface ModelCallPage {
+  items: ModelCall[];
+  next_cursor: string | null;
+}
+
+export interface ReconcileCall {
+  lock_version: number;
+  status: 'succeeded' | 'failed';
+  actual_cost: string;
+  provider_request_id: string | null;
+  reason: string;
+}
+
+export type DeletionStatus = 'requested' | 'processing' | 'blocked' | 'succeeded' | 'failed';
+
+export interface Deletion {
+  id: string;
+  session_id: string;
+  status: DeletionStatus;
+  error_code: string | null;
+  completed_at: string | null;
+}

@@ -144,7 +144,7 @@ report = analyze_local(source, empty_output_directory, config,
 
 ### 真实 Go、PostgreSQL 与视频 Worker
 
-[自动检查](../.github/workflows/vision-worker.yml)创建一次性 PostgreSQL 17.6，运行固定 Go 1.26.0、Python 3.12 和实际视频 Worker。后端使用两个固定提交：原 phase4 加修复 `8cf079e`，以及手机采集和 B0 已合入的 main `1af89a5`（001～009）；不会自动跟随队友移动的分支。最新后端另运行真实 Worker 清理回执检查，旧 phase4 仍验证原媒体流程兼容。
+[自动检查](../.github/workflows/vision-worker.yml)创建一次性 PostgreSQL 17.6，运行固定 Go 1.26.0、Python 3.12 和实际视频 Worker。后端使用两个固定提交：原 phase4 加修复 `8cf079e`，以及包含手机采集、正式视觉 API 和 PR30 治理修复的 `a394df8`（001～010）；不会自动跟随移动的分支。最新后端另运行真实 Worker 清理回执检查，旧 phase4 仍验证原媒体流程兼容。
 
 测试使用 FFmpeg 生成的 4 秒图案视频，覆盖普通/奇数宽度无音轨、横屏 H.264/Opus 和竖屏 H.264/AAC，检查上传、领取、心跳、下载校验、转码、产物上传、完成、授权 Range 回放、关键帧时间与清理。无音轨时还检查 Go 把每张关键帧建立为本批次画面证据。带音轨但没有 ASR Worker 时阶段如实排队，视频验收后通过正式取消接口收口，不伪造转写或六维报告。这些耗时属于 P0 媒体处理，不能代替密集课堂 P1 识别速度和准确率。
 

@@ -21,6 +21,7 @@ import {
   isRunActive,
   loadReportForSession,
   loadSessionDetail,
+  newSessionDetailSearch,
   loadTranscriptForSession,
 } from './loaders';
 import { FIXTURES, fixtureMediaFor, fixtures } from './samples';
@@ -441,7 +442,7 @@ export function useSessionDetail(sessionId: string | null, enabled = true): Sess
     sessionKey: sessionId === null ? sessionKey : `${sessionKey}:${sessionId}`,
     authStatus,
     initialData: initial,
-    newProgress: newSearch,
+    newProgress: newSessionDetailSearch,
     load: async (progress) => {
       const loaded = await loadSessionDetail(dataSource, sessionId as string, progress);
       return { session: loaded.session, run: loaded.run, runError: loaded.runError };

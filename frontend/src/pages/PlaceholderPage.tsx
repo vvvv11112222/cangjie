@@ -66,20 +66,6 @@ export function PlaceholderPage({ page }: { page: PlannedPage }): ReactElement {
  * 已经实现的页面不在这里（例如 #/organizations 已经由 OrganizationsPage 实现）。
  */
 export const PLANNED_PAGES: Record<string, PlannedPage> = {
-  '#/devices': {
-    kicker: 'DEVICE CONNECTION',
-    title: '设备接入',
-    description: '后续接入实时课堂，沿用现有分析和报告流程。',
-    dependency: 'planned',
-    dependencyDetail: 'FR-12 RTSP 与录像分段',
-  },
-  '#/settings': {
-    kicker: 'WORKSPACE SETTINGS',
-    title: '运行与设置',
-    description: '配置工作空间的资源预算与数据保留策略。',
-    dependency: 'available',
-    dependencyDetail: 'GET /operations、GET /model-calls',
-  },
   '#/audit': {
     kicker: 'ACTIVITY LOG',
     title: '操作记录',

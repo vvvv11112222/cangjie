@@ -53,6 +53,7 @@ import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
 import { PlaybackPanel } from './PlaybackPanel';
 import { LiveCapturePanel } from './LiveCapturePanel';
+import { DeletionPanel } from './DeletionPanel';
 import { VisualPanel } from './VisualPanel';
 import { UploadSourcePicker } from './UploadSourcePicker';
 
@@ -617,6 +618,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 {action.error === null ? null : <p className="load-note load-note-error">{action.error}</p>}
                 {action.note === null ? null : <p className="load-note">{action.note}</p>}
               </Card>
+              {session.allowed_actions.includes('delete') || session.status === 'deleting' || session.status === 'deleted' ? (
+                <DeletionPanel session={session} api={api} onSessionChanged={detail.reload} />
+              ) : null}
             </>
           ) : null}
 
