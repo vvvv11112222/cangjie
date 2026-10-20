@@ -1,0 +1,829 @@
+{
+  "asr_status": "complete",
+  "report_status": "ready",
+  "version": 2,
+  "input_revision_no": 1,
+  "report": {
+    "quality_audit": {
+      "version": "context-review-v2",
+      "status": "needs_review",
+      "message": "报告中有需要核对的分析或建议，请先查看标注原因；原文与原报告均保留。",
+      "checked_targets": [
+        "summary",
+        "dimension:content",
+        "dimension:pace",
+        "dimension:thinking",
+        "dimension:expression",
+        "dimension:management",
+        "dimension:technology",
+        "observation:1",
+        "observation:2",
+        "observation:3",
+        "observation:4"
+      ],
+      "findings": [
+        {
+          "target": "summary",
+          "fields": [
+            "summary"
+          ],
+          "kind": "context_conflict",
+          "reason": "报告称‘尚未回扣目标、检查学生对关键概念的理解或确认活动任务’，但在e-0005中教师提问‘can anyone think of what kinds of things would cause protein denaturation?’并回应‘Yes’，表明已通过提问尝试检查学生理解；该行为构成对理解的检查尝试，不能简单归为‘未检查’。",
+          "source_ids": [
+            "e-0005"
+          ],
+          "report_quotes": [
+            {
+              "field": "summary",
+              "text": "术语解释细致，但尚未回扣目标、检查学生对关键概念的理解或确认活动任务。"
+            }
+          ],
+          "source_quotes": [
+            {
+              "segment_id": "e-0005",
+              "text": "So can anyone think of what kinds of things would cause protein denaturation? Yes."
+            }
+          ]
+        },
+        {
+          "target": "dimension:thinking",
+          "fields": [
+            "limitation"
+          ],
+          "kind": "transcript_uncertainty",
+          "reason": "报告称‘转写未区分师生发言，不能确认学生是否作答或教师是否反馈’，但e-0005中‘Yes’出现在提问之后，属于教师对潜在回答的承接性回应，可能表示接收到了学生输入；仅凭转写无明确角色标签不能断定‘无反馈’，应说明不确定性而非直接判断缺失。",
+          "source_ids": [
+            "e-0005"
+          ],
+          "report_quotes": [
+            {
+              "field": "limitation",
+              "text": "转写未区分师生发言，不能确认学生是否作答或教师是否反馈；推理展示不等于学生已执行同类思维。"
+            }
+          ],
+          "source_quotes": [
+            {
+              "segment_id": "e-0005",
+              "text": "So can anyone think of what kinds of things would cause protein denaturation? Yes."
+            }
+          ]
+        },
+        {
+          "target": "dimension:management",
+          "fields": [
+            "limitation"
+          ],
+          "kind": "transcript_uncertainty",
+          "reason": "报告称‘原始转写中无明确指令学生开展活动、分组、产出或提交任务的语句’，此描述准确；但进一步推断‘课程介绍和概念讲解不构成活动组织证据’属于合理边界说明，不过将‘无明确指令’等同于‘无活动组织’存在逻辑跳跃，因活动组织需明确任务动词（如‘请讨论’），此处限制说明恰当，但措辞易误解为课堂完全无互动意图，建议更谨慎表述。",
+          "source_ids": [],
+          "report_quotes": [
+            {
+              "field": "limitation",
+              "text": "原始转写中无明确指令学生开展活动、分组、产出或提交任务的语句；课程介绍和概念讲解不构成活动组织证据。"
+            }
+          ]
+        },
+        {
+          "target": "observation:2",
+          "fields": [
+            "suggestion"
+          ],
+          "kind": "advice_quality",
+          "reason": "建议中‘若这段提问后尚未检查学生的理由，可请学生先回答本条原文中的问题……’隐含假设教师尚未检查，但报告本身无法确认是否后续有检查；该建议基于未证实的缺失前提，且‘抽取不同回答比较依据’等操作超出当前音频证据范围，可能虚构教学流程。",
+          "source_ids": [],
+          "report_quotes": [
+            {
+              "field": "suggestion",
+              "text": "若这段提问后尚未检查学生的理由，可请学生先回答本条原文中的问题，再指出本段哪句话或哪个例子支持自己的解释。抽取不同回答比较依据；说不清时回到原例补问，不额外要求本段尚未铺垫的专业知识。"
+            }
+          ]
+        },
+        {
+          "target": "observation:4",
+          "fields": [
+            "analysis"
+          ],
+          "kind": "subject_claim",
+          "reason": "分析称‘未说明该例的适用边界（如并非所有变性均不可逆）’，此为专业判断，需核实是否学科共识：事实上部分蛋白质变性可逆（如核糖核酸酶），但教师以煎蛋为例强调不可逆属合理举例，不等于宣称所有变性皆不可逆；报告将‘未说明边界’视为缺陷，实则涉及是否需在初讲时全面覆盖例外情况，属于教学设计选择，非必然错误。",
+          "source_ids": [
+            "e-0008"
+          ],
+          "report_quotes": [
+            {
+              "field": "analysis",
+              "text": "生活化类比降低认知门槛，且明确点出‘不可逆’这一关键属性，但未说明该例的适用边界（如并非所有变性均不可逆）。"
+            }
+          ],
+          "source_quotes": [
+            {
+              "segment_id": "e-0008",
+              "text": "Has ever scrambled an egg, knows that that is an irreversible process. You don't get to cram the egg back into the shell. It's not the same anymore because what you are doing when you are scrambling eggs is denaturing proteins."
+            }
+          ]
+        }
+      ],
+      "request": {
+        "request_id": "chatcmpl-20439da0-a91a-906f-8bbc-35443654f769",
+        "usage": {
+          "total_tokens": 6762,
+          "completion_tokens": 1236,
+          "prompt_tokens": 5526,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        }
+      },
+      "created_at": "2026-10-16T13:02:51.747665Z",
+      "raw_response": "{\n  \"checked_targets\": [\n    \"summary\",\n    \"dimension:content\",\n    \"dimension:pace\",\n    \"dimension:thinking\",\n    \"dimension:expression\",\n    \"dimension:management\",\n    \"dimension:technology\",\n    \"observation:1\",\n    \"observation:2\",\n    \"observation:3\",\n    \"observation:4\"\n  ],\n  \"findings\": [\n    {\n      \"target\": \"summary\",\n      \"fields\": [\"summary\"],\n      \"kind\": \"context_conflict\",\n      \"reason\": \"报告称‘尚未回扣目标、检查学生对关键概念的理解或确认活动任务’，但在e-0005中教师提问‘can anyone think of what kinds of things would cause protein denaturation?’并回应‘Yes’，表明已通过提问尝试检查学生理解；该行为构成对理解的检查尝试，不能简单归为‘未检查’。\",\n      \"source_ids\": [\"e-0005\"],\n      \"report_quotes\": [\n        {\n          \"field\": \"summary\",\n          \"text\": \"术语解释细致，但尚未回扣目标、检查学生对关键概念的理解或确认活动任务。\"\n        }\n      ],\n      \"source_quotes\": [\n        {\n          \"segment_id\": \"e-0005\",\n          \"text\": \"So can anyone think of what kinds of things would cause protein denaturation? Yes.\"\n        }\n      ]\n    },\n    {\n      \"target\": \"dimension:thinking\",\n      \"fields\": [\"limitation\"],\n      \"kind\": \"transcript_uncertainty\",\n      \"reason\": \"报告称‘转写未区分师生发言，不能确认学生是否作答或教师是否反馈’，但e-0005中‘Yes’出现在提问之后，属于教师对潜在回答的承接性回应，可能表示接收到了学生输入；仅凭转写无明确角色标签不能断定‘无反馈’，应说明不确定性而非直接判断缺失。\",\n      \"source_ids\": [\"e-0005\"],\n      \"report_quotes\": [\n        {\n          \"field\": \"limitation\",\n          \"text\": \"转写未区分师生发言，不能确认学生是否作答或教师是否反馈；推理展示不等于学生已执行同类思维。\"\n        }\n      ],\n      \"source_quotes\": [\n        {\n          \"segment_id\": \"e-0005\",\n          \"text\": \"So can anyone think of what kinds of things would cause protein denaturation? Yes.\"\n        }\n      ]\n    },\n    {\n      \"target\": \"dimension:management\",\n      \"fields\": [\"limitation\"],\n      \"kind\": \"transcript_uncertainty\",\n      \"reason\": \"报告称‘原始转写中无明确指令学生开展活动、分组、产出或提交任务的语句’，此描述准确；但进一步推断‘课程介绍和概念讲解不构成活动组织证据’属于合理边界说明，不过将‘无明确指令’等同于‘无活动组织’存在逻辑跳跃，因活动组织需明确任务动词（如‘请讨论’），此处限制说明恰当，但措辞易误解为课堂完全无互动意图，建议更谨慎表述。\",\n      \"source_ids\": [],\n      \"report_quotes\": [\n        {\n          \"field\": \"limitation\",\n          \"text\": \"原始转写中无明确指令学生开展活动、分组、产出或提交任务的语句；课程介绍和概念讲解不构成活动组织证据。\"\n        }\n      ],\n      \"source_quotes\": []\n    },\n    {\n      \"target\": \"observation:2\",\n      \"fields\": [\"suggestion\"],\n      \"kind\": \"advice_quality\",\n      \"reason\": \"建议中‘若这段提问后尚未检查学生的理由，可请学生先回答本条原文中的问题……’隐含假设教师尚未检查，但报告本身无法确认是否后续有检查；该建议基于未证实的缺失前提，且‘抽取不同回答比较依据’等操作超出当前音频证据范围，可能虚构教学流程。\",\n      \"source_ids\": [],\n      \"report_quotes\": [\n        {\n          \"field\": \"suggestion\",\n          \"text\": \"若这段提问后尚未检查学生的理由，可请学生先回答本条原文中的问题，再指出本段哪句话或哪个例子支持自己的解释。抽取不同回答比较依据；说不清时回到原例补问，不额外要求本段尚未铺垫的专业知识。\"\n        }\n      ],\n      \"source_quotes\": []\n    },\n    {\n      \"target\": \"observation:4\",\n      \"fields\": [\"analysis\"],\n      \"kind\": \"subject_claim\",\n      \"reason\": \"分析称‘未说明该例的适用边界（如并非所有变性均不可逆）’，此为专业判断，需核实是否学科共识：事实上部分蛋白质变性可逆（如核糖核酸酶），但教师以煎蛋为例强调不可逆属合理举例，不等于宣称所有变性皆不可逆；报告将‘未说明边界’视为缺陷，实则涉及是否需在初讲时全面覆盖例外情况，属于教学设计选择，非必然错误。\",\n      \"source_ids\": [\"e-0008\"],\n      \"report_quotes\": [\n        {\n          \"field\": \"analysis\",\n          \"text\": \"生活化类比降低认知门槛，且明确点出‘不可逆’这一关键属性，但未说明该例的适用边界（如并非所有变性均不可逆）。\"\n        }\n      ],\n      \"source_quotes\": [\n        {\n          \"segment_id\": \"e-0008\",\n          \"text\": \"Has ever scrambled an egg, knows that that is an irreversible process. You don't get to cram the egg back into the shell. It's not the same anymore because what you are doing when you are scrambling eggs is denaturing proteins.\"\n        }\n      ]\n    }\n  ]\n}"
+    },
+    "analysis_version": "six-dim-coaching-v2",
+    "summary": "教师清晰交代课程目标，系统讲解蛋白质结构层级与变性概念，通过多例说明变性因素，并在提问后自然承接学生回答。术语解释细致，但尚未回扣目标、检查学生对关键概念的理解或确认活动任务。",
+    "summary_evidence_ids": [
+      "e-0001",
+      "e-0002",
+      "e-0005",
+      "e-0008"
+    ],
+    "dimensions": [
+      {
+        "dimension_code": "content",
+        "coverage_status": "observed",
+        "summary": "以镰状细胞贫血为锚点展开内容，从一级序列到四级结构逐层定义，再聚焦变性概念及多因素例子，逻辑连贯。",
+        "limitation": "仅依据转写文本分析内容连接，未录到学生回应或后续回扣，不能判断知识是否统整或目标是否达成。",
+        "summary_evidence_ids": [
+          "e-0001",
+          "e-0002",
+          "e-0004",
+          "e-0005"
+        ]
+      },
+      {
+        "dimension_code": "pace",
+        "coverage_status": "observed",
+        "summary": "用‘briefly recap’预告回顾，再转入新内容，口头转场明确，环节推进可见。",
+        "limitation": "块级时间无法验证实际停顿或节奏快慢，仅反映文本中可识别的顺序安排。",
+        "summary_evidence_ids": [
+          "e-0001"
+        ]
+      },
+      {
+        "dimension_code": "thinking",
+        "coverage_status": "observed",
+        "summary": "提出开放性问题引导学生列举变性因素，并展示高温导致聚集的推理链条。",
+        "limitation": "转写未区分师生发言，不能确认学生是否作答或教师是否反馈；推理展示不等于学生已执行同类思维。",
+        "summary_evidence_ids": [
+          "e-0005",
+          "e-0007"
+        ]
+      },
+      {
+        "dimension_code": "expression",
+        "coverage_status": "observed",
+        "summary": "对初级序列、二级/三级相互作用、异源/同源二聚体、变性等术语均给出条件性解释。",
+        "limitation": "仅依据所选引文判断解释存在，不评估解释是否充分覆盖学科内涵或学生是否理解。",
+        "summary_evidence_ids": [
+          "e-0002",
+          "e-0003",
+          "e-0004",
+          "e-0005"
+        ]
+      },
+      {
+        "dimension_code": "management",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "原始转写中无明确指令学生开展活动、分组、产出或提交任务的语句；课程介绍和概念讲解不构成活动组织证据。",
+        "summary_evidence_ids": []
+      },
+      {
+        "dimension_code": "technology",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "全文未提及任何教学工具、软件、平台或技术设备的名称及用途说明。",
+        "summary_evidence_ids": []
+      }
+    ],
+    "observations": [
+      {
+        "advice_template": "none",
+        "title": "开篇明确本课目标与临床关联",
+        "analysis": "将抽象分子概念锚定真实病理，可能增强学习动机和意义感，但未在后续讲授中显性回扣该目标。",
+        "event_ids": [
+          "ev-001"
+        ],
+        "dimension_code": "content",
+        "observation_type": "highlight",
+        "observation_text": "教师用‘today we're going to continue with amino acids, peptides, and proteins’交代主题，并立即关联镰状细胞贫血这一具体疾病案例。",
+        "suggestion": "",
+        "evidence_ids": [
+          "e-0001"
+        ]
+      },
+      {
+        "advice_template": "answer_question",
+        "title": "提问激发已有经验，自然引出变性因素",
+        "analysis": "开放提问衔接定义与实例，为学生调用生活经验（如热、pH）提供入口，但转写未呈现学生回答内容及教师如何反馈。",
+        "verification": "看回答是否回应原问题、能否给出本段中的依据；区分答不出、理由不足和仍有分歧的情况，再决定是否补讲。",
+        "event_ids": [
+          "ev-013"
+        ],
+        "dimension_code": "thinking",
+        "observation_type": "highlight",
+        "observation_text": "在定义变性后，教师问‘can anyone think of what kinds of things would cause protein denaturation?’并即时回应‘Yes’。",
+        "suggestion": "若这段提问后尚未检查学生的理由，可请学生先回答本条原文中的问题，再指出本段哪句话或哪个例子支持自己的解释。抽取不同回答比较依据；说不清时回到原例补问，不额外要求本段尚未铺垫的专业知识。",
+        "evidence_ids": [
+          "e-0005"
+        ]
+      },
+      {
+        "advice_template": "none",
+        "title": "用操作性条件定义变性",
+        "analysis": "强调‘处理方式—破坏弱力—发生变性’的因果链，比单纯说‘结构破坏’更利于学生识别变性发生的条件。",
+        "event_ids": [
+          "ev-012"
+        ],
+        "dimension_code": "content",
+        "observation_type": "highlight",
+        "observation_text": "教师将变性明确定义为‘subject a protein to various treatments that may break up those weak forces’的过程。",
+        "suggestion": "",
+        "evidence_ids": [
+          "e-0005"
+        ]
+      },
+      {
+        "advice_template": "none",
+        "title": "用煎蛋例具象化变性不可逆性",
+        "analysis": "生活化类比降低认知门槛，且明确点出‘不可逆’这一关键属性，但未说明该例的适用边界（如并非所有变性均不可逆）。",
+        "event_ids": [
+          "ev-019"
+        ],
+        "dimension_code": "content",
+        "observation_type": "highlight",
+        "observation_text": "以‘scrambled an egg’为例，指出‘irreversible process’并联系‘denaturing proteins’。",
+        "suggestion": "",
+        "evidence_ids": [
+          "e-0008"
+        ]
+      }
+    ]
+  },
+  "segments": [
+    {
+      "id": "e-0001",
+      "start_ms": 0,
+      "end_ms": 40000,
+      "text": "So what are we going to do today? So today we're going to continue with amino acids, peptides, and proteins, and I'm going to talk about a different protein variant that is the causative, the cause of sickle cell anemia, and it's a very interesting structural issue. But let me very briefly recap what we did last time and then talk to you.",
+      "boundary_reason": "forced_limit"
+    },
+    {
+      "id": "e-0002",
+      "chunk_index": 1,
+      "start_ms": 40000,
+      "end_ms": 80000,
+      "text": "A little bit about a process known as denaturation. So last time we discussed how the primary sequence of a polypeptide chain defines its folded structure. The folded structure is put in place with secondary and tertiary interactions, non-covalent interactions. Secondary just between amongst backbone amides, tertiary sort of everything else, even including backbone amides, but either with water or a side chain and so on. And then there are some proteins that associate into quaternary structure.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0003",
+      "chunk_index": 2,
+      "start_ms": 80000,
+      "end_ms": 101825,
+      "text": "So these monomer subunits, as they would be called, and I'm going to depict this as like a closed circle or an open circle, may form dimers of some kind. The dimers may be heterodimers or they may be homodimers.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0004",
+      "chunk_index": 3,
+      "start_ms": 101825,
+      "end_ms": 125903,
+      "text": "Or you could form trimers, tetramers, and so on. And when we talk about hemoglobin, which is the protein that has a problem, is the cause of sickle cell anemia, you'll see that that is a heterotetrameric protein. So in this sort of rendition, you kind of draw it like this, where there are four subunits.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0005",
+      "chunk_index": 4,
+      "start_ms": 125903,
+      "end_ms": 154586,
+      "text": "Two are of one flavor and two are of the other, and that's the quaternary structure of hemoglobin. Now, proteins fold. There are weak forces that are holding them together, but there's a lot of weak forces. But if you subject a protein to various treatments that may break up those weak forces, the protein will undergo a process of denaturation. So can anyone think of what kinds of things would cause protein denaturation? Yes.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0006",
+      "chunk_index": 5,
+      "start_ms": 154586,
+      "end_ms": 186310,
+      "text": "Heat is a bad one, is a serious one, obviously. And heat, yes, I'll write them all down. What's here? PH, so PH, acidity, basicity, and we'll talk about why those things cause changes. Any other thoughts? Yes? Oh. Yeah, so for example, salt, organic solvents.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0007",
+      "chunk_index": 6,
+      "start_ms": 186310,
+      "end_ms": 226310,
+      "text": "A process that a lot of people don't necessarily think about, but as engineers, some of you will, is shear forces. So if you're shooting a protein through a very narrow tubing and there's high shear forces, those will also denature proteins. So with heat, it's very clear. You're going to break those weak bonds and then they can either reform or if you go to too high heat, the unfolded protein starts to form aggregates. And anyone who",
+      "boundary_reason": "forced_limit"
+    },
+    {
+      "id": "e-0008",
+      "chunk_index": 7,
+      "start_ms": 226310,
+      "end_ms": 240020,
+      "text": "Has ever scrambled an egg, knows that that is an irreversible process. You don't get to cram the egg back into the shell. It's not the same anymore because what you are doing when you are scrambling eggs is denaturing proteins.",
+      "boundary_reason": "end_of_audio"
+    }
+  ],
+  "reading": {
+    "status": "ready",
+    "message": "已按上下文整理跨段句子；字词保留原样。段落和标点仍需人工复核，回看按钮对应原始音频块。",
+    "boundaries": [
+      {
+        "left_id": "e-0001",
+        "right_id": "e-0002",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0002",
+        "right_id": "e-0003",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0003",
+        "right_id": "e-0004",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0004",
+        "right_id": "e-0005",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0005",
+        "right_id": "e-0006",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0006",
+        "right_id": "e-0007",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0007",
+        "right_id": "e-0008",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      }
+    ],
+    "edits": [
+      {
+        "id": "e-0001",
+        "text": "So what are we going to do today? So today we're going to continue with amino acids, peptides, and proteins, and I'm going to talk about a different protein variant that is the causative, the cause of sickle cell anemia, and it's a very interesting structural issue. But let me very briefly recap what we did last time and then talk to you",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0002",
+        "text": "A little bit about a process known as denaturation. So last time we discussed how the primary sequence of a polypeptide chain defines its folded structure. The folded structure is put in place with secondary and tertiary interactions, non-covalent interactions. Secondary just between amongst backbone amides, tertiary sort of everything else, even including backbone amides, but either with water or a side chain and so on. And then there are some proteins that associate into quaternary structure",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0003",
+        "text": "so these monomer subunits, as they would be called, and I'm going to depict this as like a closed circle or an open circle, may form dimers of some kind. The dimers may be heterodimers or they may be homodimers",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0004",
+        "text": "or you could form trimers, tetramers, and so on. And when we talk about hemoglobin, which is the protein that has a problem, is the cause of sickle cell anemia, you'll see that that is a heterotetrameric protein. So in this sort of rendition, you kind of draw it like this, where there are four subunits",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0005",
+        "text": "two are of one flavor and two are of the other, and that's the quaternary structure of hemoglobin. Now, proteins fold. There are weak forces that are holding them together, but there's a lot of weak forces. But if you subject a protein to various treatments that may break up those weak forces, the protein will undergo a process of denaturation. So can anyone think of what kinds of things would cause protein denaturation? Yes",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0006",
+        "text": "heat is a bad one, is a serious one, obviously. And heat, yes, I'll write them all down. What's here? PH, so PH, acidity, basicity, and we'll talk about why those things cause changes. Any other thoughts? Yes? Oh. Yeah, so for example, salt, organic solvents",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0007",
+        "text": "A process that a lot of people don't necessarily think about, but as engineers, some of you will, is shear forces. So if you're shooting a protein through a very narrow tubing and there's high shear forces, those will also denature proteins. So with heat, it's very clear. You're going to break those weak bonds and then they can either reform or if you go to too high heat, the unfolded protein starts to form aggregates. And anyone who",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0008",
+        "text": "has ever scrambled an egg, knows that that is an irreversible process. You don't get to cram the egg back into the shell. It's not the same anymore because what you are doing when you are scrambling eggs is denaturing proteins.",
+        "paragraph_end": true
+      }
+    ],
+    "paragraphs": [
+      {
+        "text": "So what are we going to do today? So today we're going to continue with amino acids, peptides, and proteins, and I'm going to talk about a different protein variant that is the causative, the cause of sickle cell anemia, and it's a very interesting structural issue. But let me very briefly recap what we did last time and then talk to you A little bit about a process known as denaturation. So last time we discussed how the primary sequence of a polypeptide chain defines its folded structure. The folded structure is put in place with secondary and tertiary interactions, non-covalent interactions. Secondary just between amongst backbone amides, tertiary sort of everything else, even including backbone amides, but either with water or a side chain and so on. And then there are some proteins that associate into quaternary structure so these monomer subunits, as they would be called, and I'm going to depict this as like a closed circle or an open circle, may form dimers of some kind. The dimers may be heterodimers or they may be homodimers or you could form trimers, tetramers, and so on. And when we talk about hemoglobin, which is the protein that has a problem, is the cause of sickle cell anemia, you'll see that that is a heterotetrameric protein. So in this sort of rendition, you kind of draw it like this, where there are four subunits two are of one flavor and two are of the other, and that's the quaternary structure of hemoglobin. Now, proteins fold. There are weak forces that are holding them together, but there's a lot of weak forces. But if you subject a protein to various treatments that may break up those weak forces, the protein will undergo a process of denaturation. So can anyone think of what kinds of things would cause protein denaturation? Yes heat is a bad one, is a serious one, obviously. And heat, yes, I'll write them all down. What's here? PH, so PH, acidity, basicity, and we'll talk about why those things cause changes. Any other thoughts? Yes? Oh. Yeah, so for example, salt, organic solvents A process that a lot of people don't necessarily think about, but as engineers, some of you will, is shear forces. So if you're shooting a protein through a very narrow tubing and there's high shear forces, those will also denature proteins. So with heat, it's very clear. You're going to break those weak bonds and then they can either reform or if you go to too high heat, the unfolded protein starts to form aggregates. And anyone who has ever scrambled an egg, knows that that is an irreversible process. You don't get to cram the egg back into the shell. It's not the same anymore because what you are doing when you are scrambling eggs is denaturing proteins.",
+        "source_ids": [
+          "e-0001",
+          "e-0002",
+          "e-0003",
+          "e-0004",
+          "e-0005",
+          "e-0006",
+          "e-0007",
+          "e-0008"
+        ]
+      }
+    ],
+    "request": {
+      "request_id": "chatcmpl-4aa6b0e5-d752-978c-8c91-cc75d4a8bdce",
+      "usage": {
+        "total_tokens": 1571,
+        "completion_tokens": 257,
+        "prompt_tokens": 1314,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ev-001",
+        "event_type": "goal",
+        "summary": "教师说明当天课程将继续讲解氨基酸、多肽和蛋白质，并介绍导致镰状细胞贫血的蛋白质变体",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0001-q02",
+            "segment_id": "e-0001",
+            "text": "So today we're going to continue with amino acids, peptides, and proteins, and I'm going to talk about a different protein variant that is the causative, the cause of sickle cell anemia, and it's a very interesting structural issue."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-002",
+        "event_type": "transition",
+        "summary": "教师预告将简要回顾上节课内容，然后继续讲解",
+        "dimension_codes": [
+          "pace"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0001-q03",
+            "segment_id": "e-0001",
+            "text": "But let me very briefly recap what we did last time and then talk to you."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-003",
+        "event_type": "term_explanation",
+        "summary": "教师解释多肽链的初级序列决定其折叠结构",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q02",
+            "segment_id": "e-0002",
+            "text": "So last time we discussed how the primary sequence of a polypeptide chain defines its folded structure."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-004",
+        "event_type": "term_explanation",
+        "summary": "教师解释折叠结构由二级和三级非共价相互作用形成",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q03",
+            "segment_id": "e-0002",
+            "text": "The folded structure is put in place with secondary and tertiary interactions, non-covalent interactions."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-005",
+        "event_type": "term_explanation",
+        "summary": "教师区分二级相互作用（主链酰胺之间）和三级相互作用（包括与水或侧链等）",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q04",
+            "segment_id": "e-0002",
+            "text": "Secondary just between amongst backbone amides, tertiary sort of everything else, even including backbone amides, but either with water or a side chain and so on."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-006",
+        "event_type": "term_explanation",
+        "summary": "教师指出某些蛋白质会形成四级结构",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q05",
+            "segment_id": "e-0002",
+            "text": "And then there are some proteins that associate into quaternary structure."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-007",
+        "event_type": "term_explanation",
+        "summary": "教师解释单体亚基可形成二聚体，并用闭合或开放圆圈表示",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q01",
+            "segment_id": "e-0003",
+            "text": "So these monomer subunits, as they would be called, and I'm going to depict this as like a closed circle or an open circle, may form dimers of some kind."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-008",
+        "event_type": "term_explanation",
+        "summary": "教师区分异源二聚体和同源二聚体",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q02",
+            "segment_id": "e-0003",
+            "text": "The dimers may be heterodimers or they may be homodimers."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-009",
+        "event_type": "term_explanation",
+        "summary": "教师说明还可形成三聚体、四聚体等寡聚体",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0004-q01",
+            "segment_id": "e-0004",
+            "text": "Or you could form trimers, tetramers, and so on."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-010",
+        "event_type": "example",
+        "summary": "教师以血红蛋白为例，说明其是导致镰状细胞贫血的蛋白质，且为异源四聚体",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0004-q02",
+            "segment_id": "e-0004",
+            "text": "And when we talk about hemoglobin, which is the protein that has a problem, is the cause of sickle cell anemia, you'll see that that is a heterotetrameric protein."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-011",
+        "event_type": "term_explanation",
+        "summary": "教师解释血红蛋白的四级结构包含两种类型的亚基各两个",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q01",
+            "segment_id": "e-0005",
+            "text": "Two are of one flavor and two are of the other, and that's the quaternary structure of hemoglobin."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-012",
+        "event_type": "definition",
+        "summary": "教师定义变性：当蛋白质受到破坏弱作用力的处理时，会发生变性过程",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q04",
+            "segment_id": "e-0005",
+            "text": "But if you subject a protein to various treatments that may break up those weak forces, the protein will undergo a process of denaturation."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-013",
+        "event_type": "question",
+        "summary": "教师提问学生哪些因素可能导致蛋白质变性",
+        "dimension_codes": [
+          "thinking"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q05",
+            "segment_id": "e-0005",
+            "text": "So can anyone think of what kinds of things would cause protein denaturation?"
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-014",
+        "event_type": "example",
+        "summary": "教师举例高温会导致蛋白质变性，并强调其严重性",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0006-q01",
+            "segment_id": "e-0006",
+            "text": "Heat is a bad one, is a serious one, obviously."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-015",
+        "event_type": "example",
+        "summary": "教师举例pH值（酸碱性）可引起蛋白质结构变化",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0006-q04",
+            "segment_id": "e-0006",
+            "text": "PH, so PH, acidity, basicity, and we'll talk about why those things cause changes."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-016",
+        "event_type": "example",
+        "summary": "教师举例盐和有机溶剂也可能导致蛋白质变性",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0006-q08",
+            "segment_id": "e-0006",
+            "text": "Yeah, so for example, salt, organic solvents."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-017",
+        "event_type": "example",
+        "summary": "教师举例剪切力（如通过窄管高速推动蛋白质）也会导致变性",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0007-q01",
+            "segment_id": "e-0007",
+            "text": "A process that a lot of people don't necessarily think about, but as engineers, some of you will, is shear forces."
+          },
+          {
+            "quote_id": "e-0007-q02",
+            "segment_id": "e-0007",
+            "text": "So if you're shooting a protein through a very narrow tubing and there's high shear forces, those will also denature proteins."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-018",
+        "event_type": "reasoning",
+        "summary": "教师解释高温会破坏弱键，可能导致蛋白质聚集且不可逆",
+        "dimension_codes": [
+          "thinking",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0007-q03",
+            "segment_id": "e-0007",
+            "text": "So with heat, it's very clear."
+          },
+          {
+            "quote_id": "e-0007-q04",
+            "segment_id": "e-0007",
+            "text": "You're going to break those weak bonds and then they can either reform or if you go to too high heat, the unfolded protein starts to form aggregates."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-019",
+        "event_type": "example",
+        "summary": "教师以煎鸡蛋为例说明蛋白质变性是不可逆过程",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0008-q01",
+            "segment_id": "e-0008",
+            "text": "Has ever scrambled an egg, knows that that is an irreversible process."
+          },
+          {
+            "quote_id": "e-0008-q02",
+            "segment_id": "e-0008",
+            "text": "You don't get to cram the egg back into the shell."
+          },
+          {
+            "quote_id": "e-0008-q03",
+            "segment_id": "e-0008",
+            "text": "It's not the same anymore because what you are doing when you are scrambling eggs is denaturing proteins."
+          }
+        ],
+        "uncertainty": ""
+      }
+    ]
+  },
+  "rubric_version": "six-dim-text-v1",
+  "event_request": {
+    "request_id": "chatcmpl-09b2a676-3549-9fea-8382-8a5f16e04117",
+    "usage": {
+      "total_tokens": 7581,
+      "completion_tokens": 1580,
+      "prompt_tokens": 6001,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  },
+  "text_request": {
+    "request_id": "chatcmpl-ce1b8094-83ff-922b-bf79-e45abb22b11d",
+    "usage": {
+      "total_tokens": 13874,
+      "completion_tokens": 1171,
+      "prompt_tokens": 12703,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  },
+  "created_at": "2026-10-16T13:03:12.8070374Z",
+  "job_id": "job-7b33d23c8ce0e4f1",
+  "report_version": 2
+}

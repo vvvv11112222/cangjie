@@ -1,0 +1,18 @@
+services:
+  demo:
+    build: .
+    env_file: .env
+    environment:
+      DEMO_HOST: 0.0.0.0
+      DEMO_DATA_DIR: /app/data
+      DEMO_PORT: 8090
+      FFMPEG_PATH: ffmpeg
+      FFPROBE_PATH: ffprobe
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - demo-data:/app/data
+    init: true
+    stop_grace_period: 30s
+volumes:
+  demo-data:

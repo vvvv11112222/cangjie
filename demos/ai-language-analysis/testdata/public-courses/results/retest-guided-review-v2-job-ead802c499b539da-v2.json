@@ -1,0 +1,941 @@
+{
+  "asr_status": "complete",
+  "report_status": "ready",
+  "version": 2,
+  "input_revision_no": 1,
+  "report": {
+    "quality_audit": {
+      "version": "context-review-v2",
+      "status": "needs_review",
+      "message": "报告中有需要核对的分析或建议，请先查看标注原因；原文与原报告均保留。",
+      "checked_targets": [
+        "summary",
+        "dimension:content",
+        "dimension:pace",
+        "dimension:thinking",
+        "dimension:expression",
+        "dimension:management",
+        "dimension:technology",
+        "observation:1",
+        "observation:2",
+        "observation:3"
+      ],
+      "findings": [
+        {
+          "target": "observation:2",
+          "fields": [
+            "verification"
+          ],
+          "kind": "advice_quality",
+          "reason": "verification建议检查学生回答是否回应原问题、能否给出本段中的依据，但报告未说明该活动已在课堂实施；转写中无学生回应记录，不能确认是否已进行检查，因此将此验证步骤作为已实施的推论不成立。",
+          "source_ids": [],
+          "report_quotes": [
+            {
+              "field": "verification",
+              "text": "看回答是否回应原问题、能否给出本段中的依据；区分答不出、理由不足和仍有分歧的情况，再决定是否补讲。"
+            }
+          ]
+        },
+        {
+          "target": "dimension:management",
+          "fields": [
+            "limitation"
+          ],
+          "kind": "unsupported_judgment",
+          "reason": "limitation称‘仅‘I want to make’属于教学意图陈述，非明确活动组织指令’，但未提供标准说明为何此类表达不算组织指令；教师明确列出两点要强调的内容，可能构成讲解结构安排，在无学生任务时不应默认其缺失即为局限。",
+          "source_ids": [],
+          "report_quotes": [
+            {
+              "field": "limitation",
+              "text": "仅‘I want to make’属于教学意图陈述，非明确活动组织指令；转写未体现任务分配或分组安排。"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "request_id": "chatcmpl-50aec568-c6d8-9697-8f5e-cbf61e9ef9b7",
+        "usage": {
+          "total_tokens": 6934,
+          "completion_tokens": 398,
+          "prompt_tokens": 6536,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        }
+      },
+      "created_at": "2026-10-16T13:01:49.0449983Z",
+      "raw_response": "{\n  \"checked_targets\": [\n    \"summary\",\n    \"dimension:content\",\n    \"dimension:pace\",\n    \"dimension:thinking\",\n    \"dimension:expression\",\n    \"dimension:management\",\n    \"dimension:technology\",\n    \"observation:1\",\n    \"observation:2\",\n    \"observation:3\"\n  ],\n  \"findings\": [\n    {\n      \"target\": \"observation:2\",\n      \"fields\": [\"verification\"],\n      \"kind\": \"advice_quality\",\n      \"reason\": \"verification建议检查学生回答是否回应原问题、能否给出本段中的依据，但报告未说明该活动已在课堂实施；转写中无学生回应记录，不能确认是否已进行检查，因此将此验证步骤作为已实施的推论不成立。\",\n      \"source_ids\": [],\n      \"report_quotes\": [\n        {\n          \"field\": \"verification\",\n          \"text\": \"看回答是否回应原问题、能否给出本段中的依据；区分答不出、理由不足和仍有分歧的情况，再决定是否补讲。\"\n        }\n      ],\n      \"source_quotes\": []\n    },\n    {\n      \"target\": \"dimension:management\",\n      \"fields\": [\"limitation\"],\n      \"kind\": \"unsupported_judgment\",\n      \"reason\": \"limitation称‘仅‘I want to make’属于教学意图陈述，非明确活动组织指令’，但未提供标准说明为何此类表达不算组织指令；教师明确列出两点要强调的内容，可能构成讲解结构安排，在无学生任务时不应默认其缺失即为局限。\",\n      \"source_ids\": [],\n      \"report_quotes\": [\n        {\n          \"field\": \"limitation\",\n          \"text\": \"仅‘I want to make’属于教学意图陈述，非明确活动组织指令；转写未体现任务分配或分组安排。\"\n        }\n      ],\n      \"source_quotes\": []\n    }\n  ]\n}"
+    },
+    "analysis_version": "six-dim-coaching-v2",
+    "summary": "教师系统讲解牛顿定律，明确定义核心概念（孤立物体、惯性系）、给出正反例、区分特例与一般形式，并多次展开逻辑推理。转写未区分师生发言，不能判断学生是否参与或理解；所有专业表述的准确性需结合教材复核。",
+    "summary_evidence_ids": [
+      "e-0001",
+      "e-0002",
+      "e-0003",
+      "e-0004",
+      "e-0005",
+      "e-0006",
+      "e-0007",
+      "e-0008"
+    ],
+    "dimensions": [
+      {
+        "dimension_code": "content",
+        "coverage_status": "observed",
+        "summary": "以孤立物体为起点，逐层构建牛顿第一、第二定律，引入惯性系定义并对比非惯性系，最后从F=ma过渡到动量形式，知识结构清晰。",
+        "limitation": "仅依据转写文本分析内容组织，不确认学生是否建立概念联系或识别适用条件。",
+        "summary_evidence_ids": [
+          "e-0001",
+          "e-0002",
+          "e-0003",
+          "e-0004",
+          "e-0005",
+          "e-0006",
+          "e-0007",
+          "e-0008"
+        ]
+      },
+      {
+        "dimension_code": "pace",
+        "coverage_status": "observed",
+        "summary": "通过‘Now it's worth pointing out’和‘However, in this course we will concentrate on’等明确转场，自然衔接惯性系与非惯性系、第一与第二定律的讨论。",
+        "limitation": "块级时间无法验证语速或停顿效果，仅能确认口头转换存在。",
+        "summary_evidence_ids": [
+          "e-0003",
+          "e-0004"
+        ]
+      },
+      {
+        "dimension_code": "thinking",
+        "coverage_status": "observed",
+        "summary": "提出‘What if the body is not isolated?’和‘So why do we talk about this as being the more general form?’等问题，并嵌入多处因果推理（如从第一定律推出无受力则无加速度），引导学生关注条件与结论关系。",
+        "limitation": "未录到学生回答，无法判断问题是否引发实际思考或推理是否被学生内化。",
+        "summary_evidence_ids": [
+          "e-0004",
+          "e-0006",
+          "e-0008"
+        ]
+      },
+      {
+        "dimension_code": "expression",
+        "coverage_status": "observed",
+        "summary": "对关键术语（如isolated body、inertial coordinate system、momentum）均给出明确定义或解释，并说明边界条件（如‘constant velocity might be zero’‘special case of constant point-like mass’）。",
+        "limitation": "不评价术语解释是否适配学生认知水平，也不认证物理表述的严谨性。",
+        "summary_evidence_ids": [
+          "e-0001",
+          "e-0002",
+          "e-0003",
+          "e-0004",
+          "e-0005",
+          "e-0006",
+          "e-0007",
+          "e-0008"
+        ]
+      },
+      {
+        "dimension_code": "management",
+        "coverage_status": "observed",
+        "summary": "明确提出‘two important points I want to make about Newton's second law’，隐含后续将围绕这两点展开，但未给出具体操作指令或产出要求。",
+        "limitation": "仅‘I want to make’属于教学意图陈述，非明确活动组织指令；转写未体现任务分配或分组安排。",
+        "summary_evidence_ids": [
+          "e-0005"
+        ]
+      },
+      {
+        "dimension_code": "technology",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "输入中未出现任何工具名称或用途说明，无法分析技术使用情况。",
+        "summary_evidence_ids": []
+      }
+    ],
+    "observations": [
+      {
+        "advice_template": "none",
+        "title": "提出开放性问题引导概念迁移",
+        "analysis": "该问题将学生注意力从理想条件转向现实情境，为后续引入力与加速度关系提供认知锚点；但未要求学生即时回应，无法确认是否触发思考。",
+        "event_ids": [
+          "ev-015"
+        ],
+        "dimension_code": "thinking",
+        "observation_type": "highlight",
+        "observation_text": "教师在讲完惯性系后提问‘What if the body is not isolated?’，自然引出牛顿第二定律的适用前提。",
+        "suggestion": "",
+        "evidence_ids": [
+          "e-0004"
+        ]
+      },
+      {
+        "advice_template": "answer_question",
+        "title": "用元问题揭示知识设计逻辑",
+        "analysis": "该问题聚焦物理理论的适用边界，有助于学生理解公式背后的建模意图；但仅提问未检查学生是否能自主归纳推广条件。",
+        "verification": "看回答是否回应原问题、能否给出本段中的依据；区分答不出、理由不足和仍有分歧的情况，再决定是否补讲。",
+        "event_ids": [
+          "ev-028"
+        ],
+        "dimension_code": "thinking",
+        "observation_type": "highlight",
+        "observation_text": "教师在介绍动量形式后提问‘So why do we talk about this as being the more general form?’，引出推广条件。",
+        "suggestion": "若这段提问后尚未检查学生的理由，可请学生先回答本条原文中的问题，再指出本段哪句话或哪个例子支持自己的解释。抽取不同回答比较依据；说不清时回到原例补问，不额外要求本段尚未铺垫的专业知识。",
+        "evidence_ids": [
+          "e-0008"
+        ]
+      },
+      {
+        "advice_template": "none",
+        "title": "在反例中嵌入关键推理步骤",
+        "analysis": "该推理将抽象定义（孤立物体运动特征）与具体非惯性系情境绑定，强化概念条件意识；但未邀请学生补全推理链。",
+        "event_ids": [
+          "ev-013"
+        ],
+        "dimension_code": "content",
+        "observation_type": "highlight",
+        "observation_text": "教师在电梯例子中直接陈述‘In that accelerated coordinate system, an isolated body would not move at constant velocity’。",
+        "suggestion": "",
+        "evidence_ids": [
+          "e-0003"
+        ]
+      }
+    ]
+  },
+  "segments": [
+    {
+      "id": "e-0001",
+      "start_ms": 0,
+      "end_ms": 27575,
+      "text": "Newton's first law tells us about the motion of isolated bodies. By an isolated body we mean one on which the net force is zero, one that's isolated from all interactions to as great a degree as possible. Newton's first law states that an isolated body moves in a straight line at constant velocity and will continue to do so as long as it remains undisturbed. Note that that constant velocity might be zero.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0002",
+      "chunk_index": 1,
+      "start_ms": 27575,
+      "end_ms": 57722,
+      "text": "So for example, a body at rest, an isolated body at rest, will remain at rest if left undisturbed. An isolated body moving at constant velocity will continue to move at constant velocity as long as it remains undisturbed. It turns out that it's always possible to define a coordinate system in which an isolated body moves at constant velocity, perhaps zero. Such a coordinate system is called an inertial coordinate system. So another way of stating Newton's first law is that inertial coordinate systems exist.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0003",
+      "chunk_index": 2,
+      "start_ms": 57722,
+      "end_ms": 87950,
+      "text": "Now it's worth pointing out that not all useful coordinate systems are inertial. The ones that aren't we call non-inertial coordinate systems. As an example, imagine that I'm standing in an elevator that's accelerating upward. If we defined a coordinate system that moves with the elevator, that coordinate system is accelerated with respect to an observer who is at rest. In that accelerated coordinate system, an isolated body would not move at constant velocity.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0004",
+      "chunk_index": 3,
+      "start_ms": 87950,
+      "end_ms": 118733,
+      "text": "So there are applications where using non-inertial coordinate systems is convenient. However, in this course we will concentrate on inertial coordinate systems in which isolated bodies move with constant velocity. What if the body is not isolated? If a force acts on a body, then it will accelerate in proportion to that force. In particular, for a point-like constant mass, Newton's second law tells us that.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0005",
+      "chunk_index": 4,
+      "start_ms": 118733,
+      "end_ms": 144871,
+      "text": "The vector force is equal to the mass times the vector acceleration. So in other words, the acceleration caused by a force is proportional to that force, and the constant of proportionality is the mass. Now there are two important points I want to make about Newton's second law. The first is that forces always involve real physical interactions; something must be acting on the object.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0006",
+      "chunk_index": 5,
+      "start_ms": 144871,
+      "end_ms": 177961,
+      "text": "If nothing is acting on the object, if the object is isolated, then we know from Newton's first law that an isolated body never accelerates in an inertial frame; it moves at constant velocity. So the only way to have an object move with a velocity that's changing, that is to have an acceleration, is to have a force acting on it, and Newton's second law tells us exactly how that works. The second point I want to make is that this statement of Newton's second law, F equals ma, is actually a special case. It's for the special case of a constant point-like mass.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0007",
+      "chunk_index": 6,
+      "start_ms": 177961,
+      "end_ms": 208223,
+      "text": "More generally, Newton's second law is written as the force is equal to the time derivative of the momentum p. Now we'll talk about momentum later in this course in more detail, but I'll just tell you that the momentum for a point-like mass is defined as the mass times the velocity. Now for a point mass that's constant.",
+      "boundary_reason": "silence"
+    },
+    {
+      "id": "e-0008",
+      "chunk_index": 7,
+      "start_ms": 208223,
+      "end_ms": 240000,
+      "text": "These two equations are exactly identical. If you take the derivative of m times v, where m is a constant, you just get m times the vector a, and you get the first equation back. So it's just a fancier way of writing the same thing. It doesn't convey any new information. So why do we talk about this as being the more general form? It's because this second form of Newton's second law can be generalized to a system of particles or a system where mass is flowing and the mass of something is changing. You can't describe that.",
+      "boundary_reason": "end_of_audio"
+    }
+  ],
+  "reading": {
+    "status": "ready",
+    "message": "已按上下文整理跨段句子；字词保留原样。段落和标点仍需人工复核，回看按钮对应原始音频块。",
+    "boundaries": [
+      {
+        "left_id": "e-0001",
+        "right_id": "e-0002",
+        "join_sentence": false,
+        "lowercase_next": false,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0002",
+        "right_id": "e-0003",
+        "join_sentence": false,
+        "lowercase_next": false,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0003",
+        "right_id": "e-0004",
+        "join_sentence": false,
+        "lowercase_next": false,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0004",
+        "right_id": "e-0005",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0005",
+        "right_id": "e-0006",
+        "join_sentence": false,
+        "lowercase_next": false,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0006",
+        "right_id": "e-0007",
+        "join_sentence": false,
+        "lowercase_next": false,
+        "paragraph_break": false,
+        "source": "model"
+      },
+      {
+        "left_id": "e-0007",
+        "right_id": "e-0008",
+        "join_sentence": true,
+        "lowercase_next": true,
+        "paragraph_break": false,
+        "source": "model"
+      }
+    ],
+    "edits": [
+      {
+        "id": "e-0001",
+        "text": "Newton's first law tells us about the motion of isolated bodies. By an isolated body we mean one on which the net force is zero, one that's isolated from all interactions to as great a degree as possible. Newton's first law states that an isolated body moves in a straight line at constant velocity and will continue to do so as long as it remains undisturbed. Note that that constant velocity might be zero.",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0002",
+        "text": "So for example, a body at rest, an isolated body at rest, will remain at rest if left undisturbed. An isolated body moving at constant velocity will continue to move at constant velocity as long as it remains undisturbed. It turns out that it's always possible to define a coordinate system in which an isolated body moves at constant velocity, perhaps zero. Such a coordinate system is called an inertial coordinate system. So another way of stating Newton's first law is that inertial coordinate systems exist.",
+        "paragraph_end": true
+      },
+      {
+        "id": "e-0003",
+        "text": "Now it's worth pointing out that not all useful coordinate systems are inertial. The ones that aren't we call non-inertial coordinate systems. As an example, imagine that I'm standing in an elevator that's accelerating upward. If we defined a coordinate system that moves with the elevator, that coordinate system is accelerated with respect to an observer who is at rest. In that accelerated coordinate system, an isolated body would not move at constant velocity.",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0004",
+        "text": "So there are applications where using non-inertial coordinate systems is convenient. However, in this course we will concentrate on inertial coordinate systems in which isolated bodies move with constant velocity. What if the body is not isolated? If a force acts on a body, then it will accelerate in proportion to that force. In particular, for a point-like constant mass, Newton's second law tells us that",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0005",
+        "text": "the vector force is equal to the mass times the vector acceleration. So in other words, the acceleration caused by a force is proportional to that force, and the constant of proportionality is the mass. Now there are two important points I want to make about Newton's second law. The first is that forces always involve real physical interactions; something must be acting on the object.",
+        "paragraph_end": true
+      },
+      {
+        "id": "e-0006",
+        "text": "If nothing is acting on the object, if the object is isolated, then we know from Newton's first law that an isolated body never accelerates in an inertial frame; it moves at constant velocity. So the only way to have an object move with a velocity that's changing, that is to have an acceleration, is to have a force acting on it, and Newton's second law tells us exactly how that works. The second point I want to make is that this statement of Newton's second law, F equals ma, is actually a special case. It's for the special case of a constant point-like mass.",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0007",
+        "text": "More generally, Newton's second law is written as the force is equal to the time derivative of the momentum p. Now we'll talk about momentum later in this course in more detail, but I'll just tell you that the momentum for a point-like mass is defined as the mass times the velocity. Now for a point mass that's constant",
+        "paragraph_end": false
+      },
+      {
+        "id": "e-0008",
+        "text": "these two equations are exactly identical. If you take the derivative of m times v, where m is a constant, you just get m times the vector a, and you get the first equation back. So it's just a fancier way of writing the same thing. It doesn't convey any new information. So why do we talk about this as being the more general form? It's because this second form of Newton's second law can be generalized to a system of particles or a system where mass is flowing and the mass of something is changing. You can't describe that.",
+        "paragraph_end": true
+      }
+    ],
+    "paragraphs": [
+      {
+        "text": "Newton's first law tells us about the motion of isolated bodies. By an isolated body we mean one on which the net force is zero, one that's isolated from all interactions to as great a degree as possible. Newton's first law states that an isolated body moves in a straight line at constant velocity and will continue to do so as long as it remains undisturbed. Note that that constant velocity might be zero. So for example, a body at rest, an isolated body at rest, will remain at rest if left undisturbed. An isolated body moving at constant velocity will continue to move at constant velocity as long as it remains undisturbed. It turns out that it's always possible to define a coordinate system in which an isolated body moves at constant velocity, perhaps zero. Such a coordinate system is called an inertial coordinate system. So another way of stating Newton's first law is that inertial coordinate systems exist.",
+        "source_ids": [
+          "e-0001",
+          "e-0002"
+        ]
+      },
+      {
+        "text": "Now it's worth pointing out that not all useful coordinate systems are inertial. The ones that aren't we call non-inertial coordinate systems. As an example, imagine that I'm standing in an elevator that's accelerating upward. If we defined a coordinate system that moves with the elevator, that coordinate system is accelerated with respect to an observer who is at rest. In that accelerated coordinate system, an isolated body would not move at constant velocity. So there are applications where using non-inertial coordinate systems is convenient. However, in this course we will concentrate on inertial coordinate systems in which isolated bodies move with constant velocity. What if the body is not isolated? If a force acts on a body, then it will accelerate in proportion to that force. In particular, for a point-like constant mass, Newton's second law tells us that the vector force is equal to the mass times the vector acceleration. So in other words, the acceleration caused by a force is proportional to that force, and the constant of proportionality is the mass. Now there are two important points I want to make about Newton's second law. The first is that forces always involve real physical interactions; something must be acting on the object.",
+        "source_ids": [
+          "e-0003",
+          "e-0004",
+          "e-0005"
+        ]
+      },
+      {
+        "text": "If nothing is acting on the object, if the object is isolated, then we know from Newton's first law that an isolated body never accelerates in an inertial frame; it moves at constant velocity. So the only way to have an object move with a velocity that's changing, that is to have an acceleration, is to have a force acting on it, and Newton's second law tells us exactly how that works. The second point I want to make is that this statement of Newton's second law, F equals ma, is actually a special case. It's for the special case of a constant point-like mass. More generally, Newton's second law is written as the force is equal to the time derivative of the momentum p. Now we'll talk about momentum later in this course in more detail, but I'll just tell you that the momentum for a point-like mass is defined as the mass times the velocity. Now for a point mass that's constant these two equations are exactly identical. If you take the derivative of m times v, where m is a constant, you just get m times the vector a, and you get the first equation back. So it's just a fancier way of writing the same thing. It doesn't convey any new information. So why do we talk about this as being the more general form? It's because this second form of Newton's second law can be generalized to a system of particles or a system where mass is flowing and the mass of something is changing. You can't describe that.",
+        "source_ids": [
+          "e-0006",
+          "e-0007",
+          "e-0008"
+        ]
+      }
+    ],
+    "request": {
+      "request_id": "chatcmpl-a55778d7-3d98-9970-9587-eb13c35cce01",
+      "usage": {
+        "total_tokens": 1698,
+        "completion_tokens": 257,
+        "prompt_tokens": 1441,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  },
+  "events": {
+    "events": [
+      {
+        "id": "ev-001",
+        "event_type": "definition",
+        "summary": "教师定义孤立物体为合外力为零的物体",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0001-q02",
+            "segment_id": "e-0001",
+            "text": "By an isolated body we mean one on which the net force is zero, one that's isolated from all interactions to as great a degree as possible."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-002",
+        "event_type": "definition",
+        "summary": "教师陈述牛顿第一定律：孤立物体以恒定速度沿直线运动",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0001-q03",
+            "segment_id": "e-0001",
+            "text": "Newton's first law states that an isolated body moves in a straight line at constant velocity and will continue to do so as long as it remains undisturbed."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-003",
+        "event_type": "term_explanation",
+        "summary": "教师解释恒定速度可能为零",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0001-q04",
+            "segment_id": "e-0001",
+            "text": "Note that that constant velocity might be zero."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-004",
+        "event_type": "example",
+        "summary": "教师举例静止的孤立物体将保持静止",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q01",
+            "segment_id": "e-0002",
+            "text": "So for example, a body at rest, an isolated body at rest, will remain at rest if left undisturbed."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-005",
+        "event_type": "example",
+        "summary": "教师举例运动的孤立物体将继续以恒定速度运动",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q02",
+            "segment_id": "e-0002",
+            "text": "An isolated body moving at constant velocity will continue to move at constant velocity as long as it remains undisturbed."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-006",
+        "event_type": "term_explanation",
+        "summary": "教师说明总可以定义一个坐标系使孤立物体以恒定速度运动",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q03",
+            "segment_id": "e-0002",
+            "text": "It turns out that it's always possible to define a coordinate system in which an isolated body moves at constant velocity, perhaps zero."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-007",
+        "event_type": "definition",
+        "summary": "教师定义此类坐标系为惯性坐标系",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q04",
+            "segment_id": "e-0002",
+            "text": "Such a coordinate system is called an inertial coordinate system."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-008",
+        "event_type": "definition",
+        "summary": "教师提出牛顿第一定律的另一种表述：惯性坐标系存在",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0002-q05",
+            "segment_id": "e-0002",
+            "text": "So another way of stating Newton's first law is that inertial coordinate systems exist."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-009",
+        "event_type": "transition",
+        "summary": "教师指出并非所有有用坐标系都是惯性的",
+        "dimension_codes": [
+          "pace"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q01",
+            "segment_id": "e-0003",
+            "text": "Now it's worth pointing out that not all useful coordinate systems are inertial."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-010",
+        "event_type": "term_explanation",
+        "summary": "教师将非惯性坐标系定义为非惯性参考系",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q02",
+            "segment_id": "e-0003",
+            "text": "The ones that aren't we call non-inertial coordinate systems."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-011",
+        "event_type": "example",
+        "summary": "教师以加速上升的电梯为例说明非惯性坐标系",
+        "dimension_codes": [
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q03",
+            "segment_id": "e-0003",
+            "text": "As an example, imagine that I'm standing in an elevator that's accelerating upward."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-012",
+        "event_type": "term_explanation",
+        "summary": "教师解释随电梯运动的坐标系相对于静止观察者是加速的",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q04",
+            "segment_id": "e-0003",
+            "text": "If we defined a coordinate system that moves with the elevator, that coordinate system is accelerated with respect to an observer who is at rest."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-013",
+        "event_type": "reasoning",
+        "summary": "教师推理在加速坐标系中孤立物体不会以恒定速度运动",
+        "dimension_codes": [
+          "thinking",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0003-q05",
+            "segment_id": "e-0003",
+            "text": "In that accelerated coordinate system, an isolated body would not move at constant velocity."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-014",
+        "event_type": "transition",
+        "summary": "教师过渡到课程重点：本课程将集中讨论惯性坐标系",
+        "dimension_codes": [
+          "pace"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0004-q02",
+            "segment_id": "e-0004",
+            "text": "However, in this course we will concentrate on inertial coordinate systems in which isolated bodies move with constant velocity."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-015",
+        "event_type": "question",
+        "summary": "教师提出问题：如果物体不是孤立的会怎样",
+        "dimension_codes": [
+          "thinking"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0004-q03",
+            "segment_id": "e-0004",
+            "text": "What if the body is not isolated?"
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-016",
+        "event_type": "definition",
+        "summary": "教师陈述当力作用于物体时，物体会按比例加速",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0004-q04",
+            "segment_id": "e-0004",
+            "text": "If a force acts on a body, then it will accelerate in proportion to that force."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-017",
+        "event_type": "definition",
+        "summary": "教师给出点质量恒定情况下的牛顿第二定律",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q01",
+            "segment_id": "e-0005",
+            "text": "The vector force is equal to the mass times the vector acceleration."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-018",
+        "event_type": "term_explanation",
+        "summary": "教师解释加速度与力成正比，质量是比例常数",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q02",
+            "segment_id": "e-0005",
+            "text": "So in other words, the acceleration caused by a force is proportional to that force, and the constant of proportionality is the mass."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-019",
+        "event_type": "organization",
+        "summary": "教师说明要强调关于牛顿第二定律的两点",
+        "dimension_codes": [
+          "management"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q03",
+            "segment_id": "e-0005",
+            "text": "Now there are two important points I want to make about Newton's second law."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-020",
+        "event_type": "term_explanation",
+        "summary": "教师指出力总是涉及真实的物理相互作用",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0005-q04",
+            "segment_id": "e-0005",
+            "text": "The first is that forces always involve real physical interactions; something must be acting on the object."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-021",
+        "event_type": "reasoning",
+        "summary": "教师从牛顿第一定律推理孤立物体在惯性系中不会加速",
+        "dimension_codes": [
+          "thinking",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0006-q01",
+            "segment_id": "e-0006",
+            "text": "If nothing is acting on the object, if the object is isolated, then we know from Newton's first law that an isolated body never accelerates in an inertial frame; it moves at constant velocity."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-022",
+        "event_type": "reasoning",
+        "summary": "教师推导只有受力才能产生加速度，并由牛顿第二定律描述",
+        "dimension_codes": [
+          "thinking",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0006-q02",
+            "segment_id": "e-0006",
+            "text": "So the only way to have an object move with a velocity that's changing, that is to have an acceleration, is to have a force acting on it, and Newton's second law tells us exactly how that works."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-023",
+        "event_type": "term_explanation",
+        "summary": "教师指出F=ma是恒定质点质量情况下的特例",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0006-q03",
+            "segment_id": "e-0006",
+            "text": "The second point I want to make is that this statement of Newton's second law, F equals ma, is actually a special case."
+          },
+          {
+            "quote_id": "e-0006-q04",
+            "segment_id": "e-0006",
+            "text": "It's for the special case of a constant point-like mass."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-024",
+        "event_type": "definition",
+        "summary": "教师给出更一般的牛顿第二定律形式：力等于动量对时间的导数",
+        "dimension_codes": [
+          "content",
+          "expression"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0007-q01",
+            "segment_id": "e-0007",
+            "text": "More generally, Newton's second law is written as the force is equal to the time derivative of the momentum p."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-025",
+        "event_type": "term_explanation",
+        "summary": "教师定义点质量的动量为质量乘以速度",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0007-q02",
+            "segment_id": "e-0007",
+            "text": "Now we'll talk about momentum later in this course in more detail, but I'll just tell you that the momentum for a point-like mass is defined as the mass times the velocity."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-026",
+        "event_type": "reasoning",
+        "summary": "教师推导当质量恒定时，动量导数形式等价于F=ma",
+        "dimension_codes": [
+          "thinking",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0008-q01",
+            "segment_id": "e-0008",
+            "text": "These two equations are exactly identical."
+          },
+          {
+            "quote_id": "e-0008-q02",
+            "segment_id": "e-0008",
+            "text": "If you take the derivative of m times v, where m is a constant, you just get m times the vector a, and you get the first equation back."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-027",
+        "event_type": "term_explanation",
+        "summary": "教师说明两种形式在恒定质量情况下完全相同",
+        "dimension_codes": [
+          "expression",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0008-q03",
+            "segment_id": "e-0008",
+            "text": "So it's just a fancier way of writing the same thing."
+          },
+          {
+            "quote_id": "e-0008-q04",
+            "segment_id": "e-0008",
+            "text": "It doesn't convey any new information."
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-028",
+        "event_type": "question",
+        "summary": "教师提问为何称动量形式为更普遍的形式",
+        "dimension_codes": [
+          "thinking"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0008-q05",
+            "segment_id": "e-0008",
+            "text": "So why do we talk about this as being the more general form?"
+          }
+        ],
+        "uncertainty": ""
+      },
+      {
+        "id": "ev-029",
+        "event_type": "reasoning",
+        "summary": "教师解释动量形式可推广到多粒子系统或质量变化的情况",
+        "dimension_codes": [
+          "thinking",
+          "content"
+        ],
+        "quotes": [
+          {
+            "quote_id": "e-0008-q06",
+            "segment_id": "e-0008",
+            "text": "It's because this second form of Newton's second law can be generalized to a system of particles or a system where mass is flowing and the mass of something is changing."
+          },
+          {
+            "quote_id": "e-0008-q07",
+            "segment_id": "e-0008",
+            "text": "You can't describe that."
+          }
+        ],
+        "uncertainty": ""
+      }
+    ]
+  },
+  "rubric_version": "six-dim-text-v1",
+  "event_request": {
+    "request_id": "chatcmpl-527d294d-28e1-9af7-944d-91811c416448",
+    "usage": {
+      "total_tokens": 8610,
+      "completion_tokens": 2300,
+      "prompt_tokens": 6310,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  },
+  "text_request": {
+    "request_id": "chatcmpl-504c463e-ead3-9fcb-8c4c-f1291a4a966a",
+    "usage": {
+      "total_tokens": 17784,
+      "completion_tokens": 1269,
+      "prompt_tokens": 16515,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    }
+  },
+  "created_at": "2026-10-16T13:01:57.5082606Z",
+  "job_id": "job-ead802c499b539da",
+  "report_version": 2
+}

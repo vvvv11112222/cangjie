@@ -30,6 +30,12 @@
 - [.env.example](.env.example)：配置模板，复制为本地 `.env` 后填写。
 - [frontend/UI约定.md](frontend/UI约定.md)：前端展示层约定——颜色变量、状态色调、新页面骨架与窄屏规则。
 
+## 六维语言分析独立演示
+
+⑥号成员的课堂语言分析交付位于 [demos/ai-language-analysis](demos/ai-language-analysis/README.md)，包括 ASR、连续阅读、六维反馈、证据回放、提示词、测试和参赛说明。该目录为独立 Go 模块；启动和测试须先进入该目录，不属于根目录 API 的已接入功能。
+
+已提供 [主项目候选转换与自动验收工具](demos/ai-language-analysis/integration/README.md)，使用服务端证据映射和最终模型输入清单，保留教师阅读所需的分析与建议扩展。主项目内部服务、数据库与 React 的正式接入尚未完成；真实中文质量、教师评价及 Linux/Docker 实际运行仍待验收。验证范围见 [模块测试报告](demos/ai-language-analysis/TEST-REPORT.md)，接入边界见 [交付说明](demos/ai-language-analysis/HANDOFF.md)。
+
 ## Python 视频模块
 
 视频模块已提供媒体检查、播放代理、关键帧及严格 1.1 Worker 回传代码，复用已有 vision-lab 0.4.3 的行为分析能力。Go 的内部任务接口已实现；Worker 经这些接口领取任务、读取媒体和回传产物。安装、启动、测试与结果边界见 [视频模块说明](workers/README.md)，队友接入与验证记录见 [交接说明](workers/HANDOFF.md)，提交清单见 [commits 报告](workers/COMMITS.md)。清理功能默认关闭，启用前须确认后端完整协议及 Worker 身份和暂存目录的独占归属。
