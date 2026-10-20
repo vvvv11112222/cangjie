@@ -12,7 +12,7 @@ const h = vi.hoisted(() => ({
   auth: {} as AuthContextValue, loaded: {} as SessionTasksResult,
   getRun: vi.fn(), listRuns: vi.fn(), listSources: vi.fn(), createSource: vi.fn(), verifySource: vi.fn(), upload: vi.fn(),
   users: vi.fn(), units: vi.fn(), createUser: vi.fn(), patchUser: vi.fn(), grant: vi.fn(),
-  m1: vi.fn(),
+  m1: vi.fn(), writeAcademic: vi.fn(), importAcademic: vi.fn(),
 }));
 vi.mock('../auth', () => ({ useAuth: () => h.auth }));
 vi.mock('../data/hooks', () => ({ useSessionTasks: () => h.loaded }));
@@ -21,6 +21,11 @@ vi.mock('../data/m2Api', () => ({ listSessionRuns: h.listRuns, listSessionSource
 vi.mock('../data/sessionOps', () => ({ uploadSessionMedia: h.upload }));
 vi.mock('../data/identityApi', async importOriginal => ({ ...await importOriginal<typeof import('../data/identityApi')>(), listUsers: h.users, createUser: h.createUser, patchUser: h.patchUser, createRoleBinding: h.grant }));
 vi.mock('../data/m1Api', async importOriginal => ({ ...await importOriginal<typeof import('../data/m1Api')>(),
+  createTerm: (input: unknown) => h.writeAcademic('term', input), patchTerm: (id: string, input: unknown) => h.writeAcademic('term', input, id),
+  createCourse: (input: unknown) => h.writeAcademic('course', input), patchCourse: (id: string, input: unknown) => h.writeAcademic('course', input, id),
+  createClassroom: (input: unknown) => h.writeAcademic('classroom', input), patchClassroom: (id: string, input: unknown) => h.writeAcademic('classroom', input, id),
+  createOffering: (input: unknown) => h.writeAcademic('offering', input), patchOffering: (id: string, input: unknown) => h.writeAcademic('offering', input, id),
+  patchSchedule: (id: string, input: unknown) => h.writeAcademic('schedule', input, id), importSchedules: h.importAcademic,
   listTerms: (cursor?: string) => h.m1('terms', cursor), listCourses: (cursor?: string) => h.m1('courses', cursor),
   listClassrooms: (cursor?: string) => h.m1('classrooms', cursor), listOfferings: (cursor?: string) => h.m1('offerings', cursor),
   listSchedules: (cursor?: string, range?: unknown) => h.m1('schedules', cursor, range),
@@ -32,6 +37,7 @@ import { TasksPage } from './TasksPage';
 import { SourcesPage } from './SourcesPage';
 import { AccountsPage } from './AccountsPage';
 import { App } from '../App';
+import { AcademicPage } from './AcademicPage';
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -60,6 +66,7 @@ beforeEach(() => {
   h.users.mockResolvedValue({ items: [user], nextCursor: null });
   h.createUser.mockResolvedValue(user); h.patchUser.mockResolvedValue(user); h.grant.mockResolvedValue({});
   h.m1.mockResolvedValue({ items: [], next_cursor: null });
+  h.writeAcademic.mockReset().mockResolvedValue({}); h.importAcademic.mockReset().mockResolvedValue([]);
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); });
@@ -151,6 +158,54 @@ it.each(['#/sources', '#/accounts'])('App remounts private page state on logout 
   await mount(<App/>); expect(container.textContent).not.toContain(privateText);
   h.auth = { ...h.auth, status: 'authenticated', sessionKey: 'other#2' };
   await mount(<App/>); expect(container.textContent).not.toContain(privateText);
+});
+
+it.each([
+  ['学期', '新增学期', 'term', { code: 'T1', name: '秋季', start_date: '2026-09-01', end_date: '2027-01-01' }],
+  ['课程', '新增课程', 'course', { org_unit_id: 'college', code: 'C1', name: '课程', description: '课程说明' }],
+  ['教室', '新增教室', 'classroom', { code: 'R1', name: '教室', capacity: 30 }],
+  ['开课实例', '新增开课实例', 'offering', { org_unit_id: 'college', term_id: 'term', course_id: 'course', teacher_id: 'teacher', class_group_id: 'group', code: 'O1', status: 'active' }],
+] as const)('creates %s through the real form submit boundary', async (tab, action, kind, input) => {
+  await mount(<AcademicPage/>); await click(tab); await click(action);
+  const Native = globalThis.FormData;
+  vi.stubGlobal('FormData', class extends Native { override get(key: string) { return String((input as Record<string, unknown>)[key] ?? ''); } });
+  try { await submit(); } finally { vi.unstubAllGlobals(); }
+  expect(h.writeAcademic).toHaveBeenCalledWith(kind, input);
+  expect(container.textContent).toContain('资料已保存');
+});
+
+it('requires confirmation before cancelling and preserves the schedule fields', async () => {
+  const row = { id: 's1', offering_id: 'o1', classroom_id: 'r1', starts_at: '2026-10-20T00:00:00Z', ends_at: '2026-10-20T01:00:00Z', status: 'active', class_group_id: 'g1', teacher_id: 'u1' };
+  h.m1.mockImplementation(async kind => ({ items: kind === 'schedules' ? [row] : [], next_cursor: null }));
+  await mount(<AcademicPage/>); await click('取消排课');
+  expect(h.writeAcademic).not.toHaveBeenCalled();
+  await click('确认取消排课');
+  expect(h.writeAcademic).toHaveBeenCalledWith('schedule', { offering_id: row.offering_id, classroom_id: row.classroom_id, starts_at: row.starts_at, ends_at: row.ends_at, status: 'cancelled' }, 's1');
+});
+
+it('keeps failed import input and displays the conflicting resource and row', async () => {
+  h.importAcademic.mockRejectedValue(new ApiError({ code: 'SCHEDULE_CONFLICT', status: 409, details: { resource_type: 'teacher', row_numbers: [2] } }));
+  await mount(<AcademicPage/>); await click('批量导入');
+  const textarea = container.querySelector('textarea')!;
+  textarea.value = 'o1,r1,2026-10-20T08:00:00+08:00,2026-10-20T09:00:00+08:00';
+  await submit();
+  expect(h.importAcademic).toHaveBeenCalledWith([{ offering_id: 'o1', classroom_id: 'r1', starts_at: '2026-10-20T00:00:00.000Z', ends_at: '2026-10-20T01:00:00.000Z' }]);
+  expect(container.textContent).toContain('冲突资源：教师'); expect(container.textContent).toContain('导入行：2');
+  expect(container.querySelector('textarea')?.value).toBe(textarea.value);
+});
+
+it('blocks reversed import intervals before making a request', async () => {
+  await mount(<AcademicPage/>); await click('批量导入');
+  container.querySelector('textarea')!.value = 'o1,r1,2026-10-20T09:00:00+08:00,2026-10-20T08:00:00+08:00';
+  await submit(); expect(h.importAcademic).not.toHaveBeenCalled(); expect(container.textContent).toContain('结束时间必须晚于开始时间');
+});
+
+it('does not offer school-wide term or classroom writes to academic admins', async () => {
+  h.auth.me!.roles = [{ id: 'binding', role_code: 'academic_admin', scope_org_id: 'college' }];
+  h.m1.mockImplementation(async kind => ({ items: kind === 'terms' ? [{ id: 't1', code: 'T1', name: '学期', start_date: '2026-09-01', end_date: '2027-01-01' }] : [], next_cursor: null }));
+  await mount(<AcademicPage/>); await click('学期');
+  expect(container.textContent).not.toContain('新增学期'); expect([...container.querySelectorAll('button')].some(b => b.textContent === '编辑')).toBe(false);
+  await click('课程'); expect(container.textContent).toContain('新增课程');
 });
 
 it('loads all academic pages, exports the final row, filters the week, and clears them on logout', async () => {

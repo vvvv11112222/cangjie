@@ -10,6 +10,7 @@ import type {
   JobStatus,
   MediaKind,
   MediaStatus,
+  ModelCallStatus,
   ObservationType,
   ReportAction,
   ReportStatus,
@@ -20,6 +21,8 @@ import type {
   RunStatus,
   SessionAction,
   SessionStatus,
+  DeletionStatus,
+  WorkerCapability,
 } from './types';
 import type { AccountAction, RoleCode } from './data/authApi';
 
@@ -189,6 +192,27 @@ const REPORT_STATUS: Record<ReportStatus, Badge> = {
   withdrawn: { label: '已撤回', tone: 'red' },
 };
 
+const MODEL_CALL_STATUS: Record<ModelCallStatus, Badge> = {
+  reserved: { label: '已预留', tone: 'gray' },
+  unknown: { label: '待人工核对', tone: 'amber' },
+  succeeded: { label: '已结算', tone: 'green' },
+  failed: { label: '调用失败', tone: 'red' },
+};
+
+const DELETION_STATUS: Record<DeletionStatus, Badge> = {
+  requested: { label: '已请求', tone: 'gray' },
+  processing: { label: '清理中', tone: 'teal' },
+  blocked: { label: '清理受阻', tone: 'amber' },
+  succeeded: { label: '清理完成', tone: 'green' },
+  failed: { label: '清理失败', tone: 'red' },
+};
+
+const WORKER_CAPABILITY: Record<WorkerCapability, string> = {
+  probe: '媒体检查',
+  audio_analysis: '音频转写',
+  video_analysis: '视频采样',
+};
+
 const EVIDENCE_KIND: Record<EvidenceKind, string> = {
   transcript: '转写',
   frame: '关键帧',
@@ -247,6 +271,9 @@ export const coverageStatusBadge = (value: CoverageStatus): Badge => COVERAGE_ST
 export const observationTypeBadge = (value: ObservationType): Badge => OBSERVATION_TYPE[value];
 export const reviewStatusBadge = (value: ReviewStatus): Badge => REVIEW_STATUS[value];
 export const reportStatusBadge = (value: ReportStatus): Badge => REPORT_STATUS[value];
+export const modelCallStatusBadge = (value: ModelCallStatus): Badge => MODEL_CALL_STATUS[value];
+export const deletionStatusBadge = (value: DeletionStatus): Badge => DELETION_STATUS[value];
+export const workerCapabilityLabel = (value: WorkerCapability): string => WORKER_CAPABILITY[value];
 export const evidenceKindLabel = (value: EvidenceKind): string => EVIDENCE_KIND[value];
 export const evidenceAvailabilityBadge = (value: EvidenceAvailability): Badge =>
   EVIDENCE_AVAILABILITY[value];

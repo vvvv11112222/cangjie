@@ -30,6 +30,14 @@ export type ApiErrorCode =
   | 'EVIDENCE_UNAVAILABLE'
   | 'TOO_MANY_REQUESTS'
   | 'SERVICE_UNAVAILABLE'
+  // 协议第 1.2 节及 M4 故障验收中的异步错误码
+  | 'BUDGET_EXHAUSTED'
+  | 'MODEL_TIMEOUT'
+  | 'MODEL_RESULT_UNKNOWN'
+  | 'NO_AUDIO'
+  | 'NO_SPEECH'
+  | 'JOB_TIMEOUT'
+  | 'CONFIG_MISMATCH'
   // 前端自己产生的两类：请求根本没到服务端，或响应不符合协议
   | 'NETWORK_ERROR'
   | 'MALFORMED_RESPONSE';
@@ -90,6 +98,13 @@ const CODE_TEXT: Partial<Record<ApiErrorCode, string>> = {
   EVIDENCE_UNAVAILABLE: '引用的证据已不可用。',
   TOO_MANY_REQUESTS: '请求过于频繁，请稍后再试。',
   SERVICE_UNAVAILABLE: '服务暂时不可用，请稍后再试。',
+  BUDGET_EXHAUSTED: '本月模型预算不足，已有分析结果仍可查看，报告阶段不会继续调用模型。',
+  MODEL_TIMEOUT: '报告模型调用超时，本批次不会自动重复发起收费请求。',
+  MODEL_RESULT_UNKNOWN: '模型调用结果与费用状态不确定，请先由管理员核对账目，不要直接重试。',
+  NO_AUDIO: '录像没有可用音轨，系统保留其他有效结果。',
+  NO_SPEECH: '音轨中没有检测到可用语音，系统不会生成空转写。',
+  JOB_TIMEOUT: '任务超过执行期限，租约已由服务端回收。',
+  CONFIG_MISMATCH: 'Worker 执行版本与批次固定配置不一致，结果未被接收。',
   NETWORK_ERROR: '连接不上服务端，请确认接口服务已启动、地址正确后重试。',
   MALFORMED_RESPONSE: '返回的数据不符合协议，无法解析。',
 };

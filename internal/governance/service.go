@@ -102,7 +102,7 @@ type WorkerCleanup struct {
 	StorageGeneration int64    `json:"storage_generation"`
 	JobIDs            []string `json:"job_ids"`
 }
-type Budget struct{ Currency, BillingPeriod, Limit, Charged, Reserved string }
+type Budget struct{ Currency, BillingPeriod, Limit, Charged, Reserved, Unknown string }
 
 func (b Budget) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
@@ -111,7 +111,8 @@ func (b Budget) MarshalJSON() ([]byte, error) {
 		Limit         string `json:"limit"`
 		Charged       string `json:"charged"`
 		Reserved      string `json:"reserved"`
-	}{b.Currency, b.BillingPeriod, b.Limit, b.Charged, b.Reserved})
+		Unknown       string `json:"unknown"`
+	}{b.Currency, b.BillingPeriod, b.Limit, b.Charged, b.Reserved, b.Unknown})
 }
 
 type Operations struct {
@@ -1105,12 +1106,12 @@ func (s *Service) GetOperations(ctx context.Context, p identity.Principal) (Oper
 	}
 	local := s.now().In(time.FixedZone("Asia/Shanghai", 8*3600))
 	period := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, local.Location()).Format("2006-01-02")
-	var charged, reserved int64
-	err = s.pool.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN status IN('succeeded','failed') THEN round(actual_cost*1000000)::bigint ELSE 0 END),0),COALESCE(sum(CASE WHEN status IN('reserved','unknown') THEN round(reserved_cost*1000000)::bigint ELSE 0 END),0) FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date`, s.cfg.BudgetCurrency, period).Scan(&charged, &reserved)
+	var charged, reserved, unknown int64
+	err = s.pool.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN status IN('succeeded','failed') THEN round(actual_cost*1000000)::bigint ELSE 0 END),0),COALESCE(sum(CASE WHEN status='reserved' THEN round(reserved_cost*1000000)::bigint ELSE 0 END),0),COALESCE(sum(CASE WHEN status='unknown' THEN round(reserved_cost*1000000)::bigint ELSE 0 END),0) FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date`, s.cfg.BudgetCurrency, period).Scan(&charged, &reserved, &unknown)
 	if err != nil {
 		return out, err
 	}
-	out.Budget = Budget{s.cfg.BudgetCurrency, period, money(s.cfg.BudgetMonthlyMicros), money(charged), money(reserved)}
+	out.Budget = Budget{s.cfg.BudgetCurrency, period, money(s.cfg.BudgetMonthlyMicros), money(charged), money(reserved), money(unknown)}
 	capacity, ok := s.store.(interface{ FreeBytes() (int64, error) })
 	if !ok {
 		return out, fmt.Errorf("storage backend does not expose capacity")

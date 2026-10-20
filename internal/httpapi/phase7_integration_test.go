@@ -185,6 +185,9 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	}
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusForbidden)
 	operations := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusOK)
+	if operations["budget"].(map[string]any)["unknown"] != "0.000000" {
+		t.Fatalf("reserved cost must not also be unknown: %#v", operations)
+	}
 	if operations["budget"].(map[string]any)["limit"] != "10.000000" || operations["budget"].(map[string]any)["charged"] != "0.000000" || operations["budget"].(map[string]any)["reserved"] != "1.000000" || len(operations["workers"].([]any)) != 2 || operations["storage_free_bytes"].(float64) <= 0 {
 		t.Fatalf("operations=%#v", operations)
 	}
@@ -213,6 +216,10 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	var inFlightStatus string
 	if err = pool.QueryRow(ctx, `SELECT status FROM teaching.model_calls WHERE id=$1`, modelCallID).Scan(&inFlightStatus); err != nil || inFlightStatus != "unknown" {
 		t.Fatalf("in-flight model call was not transferred to recovery: status=%s err=%v", inFlightStatus, err)
+	}
+	uncertainBudget := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusOK)["budget"].(map[string]any)
+	if uncertainBudget["reserved"] != "0.000000" || uncertainBudget["unknown"] != "1.000000" || uncertainBudget["charged"] != "0.000000" {
+		t.Fatalf("unknown budget must be separate from reserved: %#v", uncertainBudget)
 	}
 	pendingCleanup, err := gov.PendingWorkerCleanup(ctx, "worker-01")
 	if err != nil || pendingCleanup == nil || pendingCleanup.DeletionRequestID != deletionID {
@@ -297,6 +304,10 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	reconciled := requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/model-calls/"+modelCallID+"/reconcile", map[string]any{"lock_version": modelCallLock, "status": "failed", "actual_cost": "0.250000", "provider_request_id": "deletion-late-bill", "reason": "删除后核对迟到费用"}, adminCSRF, http.StatusOK)
 	if reconciled["status"] != "failed" || reconciled["actual_cost"] != "0.250000" {
 		t.Fatalf("deleted classroom model call could not be reconciled: %#v", reconciled)
+	}
+	settledBudget := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/operations", nil, "", http.StatusOK)["budget"].(map[string]any)
+	if settledBudget["charged"] != "0.250000" || settledBudget["reserved"] != "0.000000" || settledBudget["unknown"] != "0.000000" {
+		t.Fatalf("settlement must release the unknown reservation: %#v", settledBudget)
 	}
 	failingSession := queryID(t, pool, `INSERT INTO teaching.lesson_sessions(offering_id,title,planned_start_at,planned_end_at,created_by,status) VALUES('`+offering+`','Deletion retry target',now()+interval '4 hours',now()+interval '5 hours','`+teacherID+`','ready') RETURNING id::text`)
 	failingSource := queryID(t, pool, `INSERT INTO teaching.source_records(session_id,source_type,title,attribution,rights_status,allowed_uses,registered_by,verified_by,verified_at) VALUES('`+failingSession+`','self_recorded','retry source','team','verified','["playback"]','`+teacherID+`','`+adminID+`',now()) RETURNING id::text`)
