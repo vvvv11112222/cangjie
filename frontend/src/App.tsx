@@ -93,7 +93,6 @@ const IMPLEMENTED_PAGES: Record<string, () => ReactElement> = {
   '#/reports': () => <ReportPage />,
 };
 
-/** 模板里有、前端还没实现的页面，统一渲染占位页（依赖口径见 PlaceholderPage.tsx）。 */
 const PLANNED_RENDERERS = Object.fromEntries(
   Object.entries(PLANNED_PAGES).map(([path, page]): [string, () => ReactElement] => [
     path,
@@ -291,9 +290,9 @@ export function App(): ReactElement {
             <SessionDetailPage key={detailId} sessionId={detailId} />
           ) : render === undefined ? (
             <PageNotice
-              eyebrow="页面还没有实现"
-              title="页面尚未实现"
-              message="这个地址属于模板里的页面，但前端还没开发。"
+              eyebrow="页面不可用"
+              title="无法打开此页面"
+              message="请从侧栏选择当前可用的功能。"
             />
           ) : (
             render()
