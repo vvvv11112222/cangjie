@@ -81,7 +81,7 @@ jobs:
           - backend: phase4
             ref: 8cf079edb58d8684e293519db682fd952c592d71
           - backend: latest-media
-            ref: fe03d472fbfd2ec1e15fb868ff0b953795525953
+            ref: a394df868cd2bb8068f14aaade9f4832810e2dc9
     services:
       postgres:
         image: postgres:17.6
