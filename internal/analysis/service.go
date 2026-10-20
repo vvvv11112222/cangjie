@@ -147,6 +147,9 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 		return Run{}, false, err
 	}
 	if in.Mode == "full" || in.Mode == "report_only" {
+		if err := ValidateReportPrompt(s.cfg.ReportEnabled, s.cfg.ReportPromptVersion, s.cfg.ReportPromptSHA256); err != nil {
+			return Run{}, false, state(err.Error())
+		}
 		var unresolved bool
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls mc JOIN teaching.analysis_runs r ON r.id=mc.run_id
 			WHERE r.session_id=$1 AND mc.dispatch_started_at IS NOT NULL AND mc.status IN('reserved','unknown'))`, sessionID).Scan(&unresolved); err != nil {
@@ -1516,11 +1519,12 @@ func (s *Service) newSnapshot(mode string) snapshot {
 	} else if mode == "visual_only" {
 		plan = []string{"probe", "video_analysis"}
 	}
+	systemPrompt, _, _ := ReportPrompt(s.cfg.ReportPromptVersion) // validated before creating a report run
 	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
 		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},
 		Report: reportSnapshot{Enabled: s.cfg.ReportEnabled, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision},
 			PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion,
-			SystemPrompt: reportSystemPrompt, MaxInputTokens: s.cfg.ReportMaxInputTokens, MaxOutputTokens: s.cfg.ReportMaxOutputTokens,
+			SystemPrompt: systemPrompt, MaxInputTokens: s.cfg.ReportMaxInputTokens, MaxOutputTokens: s.cfg.ReportMaxOutputTokens,
 			PriceVersion: s.cfg.ReportPriceVersion, Currency: s.cfg.ReportBudgetCurrency,
 			InputPriceMicros: s.cfg.ReportInputPriceMicros, OutputPriceMicros: s.cfg.ReportOutputPriceMicros}}
 }
@@ -1536,6 +1540,9 @@ func (s *Service) reportConfigForRun(ctx context.Context, runID string) (reportS
 	}
 	if snap.Report.Enabled && (snap.Report.Model.Name == "" || snap.Report.Model.Revision == "" || snap.Report.SystemPrompt == "" || snap.Report.MaxInputTokens <= 0 || snap.Report.MaxOutputTokens <= 0) {
 		return reportSnapshot{}, fmt.Errorf("analysis run is missing pinned report configuration")
+	}
+	if snap.Report.Enabled && snap.Report.PromptVersion == TeacherPromptVersion && digestBytes([]byte(snap.Report.SystemPrompt)) != snap.Report.PromptSHA256 {
+		return reportSnapshot{}, fmt.Errorf("analysis run report prompt digest does not match its pinned text")
 	}
 	return snap.Report, nil
 }

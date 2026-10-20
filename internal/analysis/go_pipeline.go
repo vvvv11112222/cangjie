@@ -924,6 +924,9 @@ func validateCandidate(c ReportCandidate, input modelInput) error {
 		if err := check(o.EvidenceIDs); err != nil {
 			return err
 		}
+		if input.PromptVersion == TeacherPromptVersion && o.ObservationType == "issue" && strings.TrimSpace(o.Suggestion) == "" {
+			return fmt.Errorf("teacher report issue requires an actionable suggestion")
+		}
 	}
 	return nil
 }

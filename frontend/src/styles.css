@@ -2567,6 +2567,30 @@ code {
 }
 
 /* Visual observation tab extends the existing cards and controls. */
+/* Report dimensions reuse the application shell; only the report body switches. */
+.report-analysis { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 24px; align-items: start; }
+.report-dimension-nav { position: sticky; top: 16px; }
+.report-dimension-nav [role="tablist"] { display: grid; gap: 6px; }
+.report-dimension-nav [role="tab"] { display: grid; gap: 7px; text-align: left; padding: 12px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-control); cursor: pointer; }
+.report-dimension-nav [role="tab"] > span:not(.pill) { color: var(--ink-body); font-size: 12px; line-height: 1.6; }
+.report-dimension-nav [role="tab"][aria-selected="true"] { border-color: var(--accent); border-left-width: 4px; }
+.report-dimension-nav [role="tab"]:hover { background: var(--surface-hover); }
+.report-dimension-body { min-width: 0; }
+.report-dimension-body h3 { margin-top: 0; }
+.report-dimension-body h4 { margin: 22px 0 8px; font-size: 15px; }
+.report-prose { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.95; color: var(--ink-body); margin: 8px 0 16px; font-size: 15px; }
+.report-dimension-body .observation { background: var(--card); border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 22px 0; }
+.report-dimension-body .observation h4:first-of-type { margin-top: 14px; }
+.report-citations { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.report-citation { max-width: 100%; white-space: normal; text-align: left; height: auto; min-height: 35px; overflow-wrap: anywhere; line-height: 1.6; }
+.report-evidence { background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--radius-control); padding: 20px; }
+.report-evidence h3 { margin: 0; }
+@media (max-width: 900px) {
+  .report-analysis { grid-template-columns: 1fr; gap: 20px; }
+  .report-dimension-nav { position: static; }
+  .report-dimension-nav [role="tablist"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .visual-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .visual-metrics > div { display: flex; flex-direction: column; padding: 16px; background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--radius-control); }
 .visual-metrics strong { font-size: 28px; color: var(--accent-deep); }

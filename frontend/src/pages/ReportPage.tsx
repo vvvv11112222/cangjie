@@ -1,52 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence } from '../types';
 import { useReportData } from '../data/hooks';
 import type { ReportView } from '../data/viewModel';
 import {
-  coverageStatusBadge,
-  dimensionLabel,
   formatDateTime,
   formatIntervals,
-  observationTypeBadge,
   reportActionLabel,
   reportStatusBadge,
-  reviewStatusBadge,
-  shortId,
 } from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill, TechDetails } from '../components/ui';
+import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, LoadControls, LoadStateNote, Pill, TechDetails } from '../components/ui';
 import { dataSource, isApiMode } from '../data/sources';
 import { loadReportContext } from '../data/loaders';
 import { describeError } from '../data/errors';
+import { sameId } from '../data/ids';
 import { ReportWorkflowPanel } from './ReportWorkflowPanel';
-
-function CitedEvidence({
-  ids,
-  evidenceById,
-}: {
-  ids: string[];
-  evidenceById: Map<string, Evidence>;
-}): ReactElement {
-  if (ids.length === 0) {
-    return <span className="muted">空摘要引用（无证据支撑）</span>;
-  }
-  return (
-    <span className="pill-row">
-      {ids.map((id) => {
-        const evidence = evidenceById.get(id) ?? null;
-        return (
-          <span
-            key={id}
-            className={`cite ${evidence === null ? 'cite-missing' : ''}`}
-            title={evidence === null ? '样例中找不到该证据' : evidence.description}
-          >
-            {evidence === null ? `缺证据 ${shortId(id)}` : `${shortId(id)} · ${evidence.description}`}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
+import { CitedEvidence, ReportAnalysis, ReportEvidence, reportLimitation } from './ReportAnalysis';
 
 export function ReportPage({
   view: injectedView,
@@ -81,8 +50,22 @@ export function ReportPage({
   }, [report, session, currentReportId, usesIncomingContext, contextRetry]);
   const context = !isApiMode() || usesIncomingContext ? view
     : selectedContext?.report === report && selectedContext.currentId === currentReportId ? selectedContext.view : null;
-  const { run, evidenceById, disclosures } = context ?? { run: null, evidenceById: new Map<string, Evidence>(), disclosures: [] };
+  const { run, evidenceById: contextEvidence, disclosures } = context ?? { run: null, evidenceById: new Map<string, Evidence>(), disclosures: [] };
+  const evidenceById = useMemo(() => new Map([...contextEvidence].filter(([, evidence]) =>
+    sameId(evidence.run_id, report.run_id) && sameId(evidence.session_id, report.session_id)
+    && (report.provenance === null || sameId(evidence.media_asset_id, report.provenance.media_asset_id)))), [contextEvidence, report]);
   const published = currentReportId === report.id;
+  const [selectedEvidence, setSelectedEvidence] = useState<{ report: typeof report; context: ReportView | null; evidence: Evidence } | null>(null);
+  const evidencePanel = useRef<HTMLDivElement>(null);
+  const evidenceTrigger = useRef<HTMLElement | null>(null);
+  // A changed report/context invalidates the old selection immediately, before effects run.
+  const activeEvidence = selectedEvidence?.report === report && selectedEvidence.context === context
+    ? evidenceById.get(selectedEvidence.evidence.id) ?? null : null;
+  function selectEvidence(evidence: Evidence): void {
+    evidenceTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSelectedEvidence({ report, context, evidence });
+  }
+  useEffect(() => { if (activeEvidence !== null) evidencePanel.current?.focus(); }, [activeEvidence, selectedEvidence]);
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空报告假装"确实没有内容"。
   const ready = injectedView !== undefined || loaded.hasData;
@@ -92,7 +75,7 @@ export function ReportPage({
         <p className="eyebrow">教学观察报告</p>
         <h1>报告</h1>
         <p className="muted">
-          六维固定齐全，事实性摘要必须引用同批次证据；证据不足的维度保留原因，不生成结论。
+          先看课堂主线，再按维度查看课堂分析、问题和实施建议。每条依据都可核对原录像时间。
         </p>
       </div>
       {ready ? <BadgeTag badge={reportStatusBadge(report.status)} /> : null}
@@ -121,11 +104,9 @@ export function ReportPage({
       {embedded ? null : head}
       {embedded ? null : notes}
 
-      <Card title="报告状态" subtitle="版本与内容摘要用于并发检查和复核追溯。">
+      <Card title="报告状态" subtitle="AI 分析用于教学复盘；草稿经人工复核后才能发布。">
         <div className="field-grid">
-          <Field label="报告 ID">
-            <IdChip id={report.id} />
-          </Field>
+          <Field label="报告版本">第 {report.revision} 版</Field>
           <Field label="状态">
             <BadgeTag badge={reportStatusBadge(report.status)} />
           </Field>
@@ -133,18 +114,15 @@ export function ReportPage({
             {published ? (
               <Pill label="是" tone="green" />
             ) : (
-              <span className="muted">否（课堂 current_report_id 为 null）</span>
+              <span className="muted">当前查看的不是发布版</span>
             )}
           </Field>
-          <Field label="复核人 / 时间">
+          <Field label="复核记录">
             {report.reviewed_by === null
-              ? 'null'
-              : `${shortId(report.reviewed_by)} · ${report.reviewed_at === null ? 'null' : formatDateTime(report.reviewed_at)}`}
+              ? '尚未完成复核'
+              : `已由授权复核者确认${report.reviewed_at === null ? '' : ` · ${formatDateTime(report.reviewed_at)}`}`}
           </Field>
-          <Field label="关联课堂 / 批次">
-            <IdChip id={report.session_id} label="课堂" /> <IdChip id={report.run_id} label="批次" />
-          </Field>
-          <Field label="allowed_actions">
+          <Field label="可执行操作">
             {report.allowed_actions.length === 0
               ? '无（只读）'
               : report.allowed_actions.map(reportActionLabel).join('、')}
@@ -153,6 +131,10 @@ export function ReportPage({
         {/* 版本号与内容摘要属于并发校验用的字段，收进折叠区，不占业务视线。 */}
         <TechDetails>
           <ul className="tech-list">
+            <li className="mono">report.id = {report.id}</li>
+            <li className="mono">report.session_id = {report.session_id}</li>
+            <li className="mono">report.run_id = {report.run_id}</li>
+            <li className="mono">report.reviewed_by = {report.reviewed_by ?? 'null'}</li>
             <li className="mono">report.revision = v{report.revision}</li>
             <li className="mono">report.lock_version = v{report.lock_version}</li>
             <li className="mono">report.content_sha256 = {report.content_sha256 ?? 'null'}</li>
@@ -176,73 +158,26 @@ export function ReportPage({
         {contextError === null ? null : <button type="button" className="btn btn-secondary" onClick={() => setContextRetry((value) => value + 1)}>重新加载报告证据</button>}
       </Card> : <>
 
-      <Card title="总摘要" subtitle="总摘要中的事实也须引用证据。">
+      <Card title="课堂概览" subtitle="概括本次可见的教学主线和最值得复盘的内容。">
+        {report.provenance?.limitations.length ? <p className="notice-strip">分析范围说明：{report.provenance.limitations.map(reportLimitation).join('；')}</p> : null}
         <p className="summary-text">{report.summary === '' ? '（空）' : report.summary}</p>
         <div className="cite-row">
           <span className="field-label">引用证据</span>
-          <CitedEvidence ids={report.summary_evidence_ids} evidenceById={evidenceById} />
+          <CitedEvidence ids={report.summary_evidence_ids} evidenceById={evidenceById} onSelect={selectEvidence} />
         </div>
       </Card>
 
-      <Card title="六维观察" subtitle={`固定 6 个维度，当前 ${report.dimensions.length} 个`}>
-        <div className="dimension-grid">
-          {report.dimensions.map((dimension) => (
-            <article
-              key={dimension.dimension_code}
-              className={`dimension${dimension.coverage_status === 'observed' ? '' : ' dimension-muted'}`}
-            >
-              <header className="dimension-head">
-                <h3>{dimensionLabel(dimension.dimension_code)}</h3>
-                <BadgeTag badge={coverageStatusBadge(dimension.coverage_status)} />
-              </header>
-              {dimension.coverage_status === 'observed' ? (
-                <p className="dimension-summary">{dimension.summary === '' ? '（空摘要）' : dimension.summary}</p>
-              ) : (
-                <p className="dimension-limit">限制：{dimension.limitation}</p>
-              )}
-              <div className="dimension-meta">
-                <span className="field-label">覆盖区间</span>
-                <span className="mono small">{formatIntervals(dimension.coverage)}</span>
-              </div>
-              <div className="dimension-meta">
-                <span className="field-label">摘要证据</span>
-                <CitedEvidence ids={dimension.summary_evidence_ids} evidenceById={evidenceById} />
-              </div>
-            </article>
-          ))}
-        </div>
+      <Card title="六维分析" subtitle="选择左侧维度，查看课堂分析与对应建议；重要内容直接展示。">
+        <ReportAnalysis key={report.id} report={report} evidenceById={evidenceById} onSelect={selectEvidence} />
       </Card>
 
-      <Card title="观察条目" subtitle="复核状态由后端维护，前端不写入 review_status 等只读字段。">
-        {report.observations.length === 0 ? (
-          <p className="empty">observations 为空数组。</p>
-        ) : (
-          <ul className="observation-list">
-            {report.observations.map((observation) => (
-              <li key={observation.id} className="observation">
-                <div className="observation-head">
-                  <BadgeTag badge={observationTypeBadge(observation.observation_type)} />
-                  <Pill label={dimensionLabel(observation.dimension_code)} tone="blue" />
-                  <BadgeTag badge={reviewStatusBadge(observation.review_status)} />
-                  <IdChip id={observation.id} />
-                </div>
-                <p className="observation-text">{observation.observation_text}</p>
-                {observation.suggestion === '' ? null : (
-                  <p className="observation-suggestion">建议：{observation.suggestion}</p>
-                )}
-                <div className="cite-row">
-                  <span className="field-label">证据</span>
-                  <CitedEvidence ids={observation.evidence_ids} evidenceById={evidenceById} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {activeEvidence === null ? null : <div ref={evidencePanel} tabIndex={-1} role="region" aria-label="所选课堂依据">
+        <ReportEvidence key={activeEvidence.id} evidence={activeEvidence} onClose={() => { setSelectedEvidence(null); evidenceTrigger.current?.focus(); }} />
+      </div>}
 
       <Card title="溯源与限制" subtitle="记录模型版本、提示词摘要、输入清单摘要、覆盖和来源。">
         {report.provenance === null ? (
-          <p className="empty">provenance 为 null；旧版无法补证的字段应保持 null 并标记为历史记录。</p>
+          <p className="empty">这份历史报告缺少完整的生成记录，无法补证，请结合原始课堂核对。</p>
         ) : (
           <>
             <div className="field-grid">
@@ -250,16 +185,6 @@ export function ReportPage({
               {report.provenance.model.name} · {report.provenance.model.revision}
             </Field>
             <Field label="提示词版本">{report.provenance.prompt_version}</Field>
-            <Field label="输入转写修订">
-              {report.provenance.transcript_revision_id === null ? (
-                <span className="muted">null</span>
-              ) : (
-                <IdChip id={report.provenance.transcript_revision_id} />
-              )}
-            </Field>
-            <Field label="媒体资产">
-              <IdChip id={report.provenance.media_asset_id} />
-            </Field>
             <Field label="模型输入覆盖">
               <span className="mono">{formatIntervals(report.provenance.coverage)}</span>
             </Field>
@@ -269,7 +194,7 @@ export function ReportPage({
             </Field>
             <Field label="来源链接">
               {report.provenance.source.source_url === null ? (
-                <span className="muted">null</span>
+                <span className="muted">未提供来源链接</span>
               ) : (
                 <a href={report.provenance.source.source_url}>{report.provenance.source.source_url}</a>
               )}
@@ -277,10 +202,7 @@ export function ReportPage({
             <Field label="溯源限制">
               {report.provenance.limitations.length === 0
                 ? '无'
-                : report.provenance.limitations.join('；')}
-            </Field>
-            <Field label="批次样例">
-              {run === null ? '报告 run_id 没有对应批次数据' : `run.status=${run.status}`}
+                : report.provenance.limitations.map(reportLimitation).join('；')}
             </Field>
             </div>
             {/* 各类 sha256 是追溯用的校验值，完整值放进折叠区，页面上只留模型与来源。 */}
@@ -293,6 +215,8 @@ export function ReportPage({
                   provenance.transcript_revision_id = {report.provenance.transcript_revision_id ?? 'null'}
                 </li>
                 <li className="mono">provenance.media_asset_id = {report.provenance.media_asset_id}</li>
+                <li className="mono">run.status = {run?.status ?? 'unavailable'}</li>
+                <li className="mono">provenance.limitations = {JSON.stringify(report.provenance.limitations)}</li>
               </ul>
             </TechDetails>
           </>
