@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { useAuth } from '../auth';
 import { cancelRun, createRun, uploadMedia } from '../data/actions';
 import { describeError } from '../data/errors';
+import { isUuid } from '../data/ids';
 import {
   fixtureSession,
   useRunPolling,
@@ -266,6 +267,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
         ...base,
         error: '请选择录像文件，并填写已登记来源的 source_record_id。',
       }));
+      return;
+    }
+    if (!isUuid(action.sourceRecordId.trim())) {
+      write(fromScope, base => ({ ...base, error: '来源编号格式不正确。请选择已登记的录像来源，不能填写“1.2”等自编编号。' }));
       return;
     }
     write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
