@@ -48,13 +48,17 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 	course := queryID(t,pool,`INSERT INTO teaching.courses(org_unit_id,code,name) VALUES('`+college+`','REAL-C','Real') RETURNING id::text`)
 	group := queryID(t,pool,`INSERT INTO teaching.class_groups(org_unit_id,code,name,enrollment_year) VALUES('`+college+`','REAL-G','Real',2026) RETURNING id::text`)
 	offering := queryID(t,pool,`INSERT INTO teaching.course_offerings(org_unit_id,code,term_id,course_id,teacher_id,class_group_id) VALUES('`+college+`','REAL-O','`+term+`','`+course+`','`+teacherID+`','`+group+`') RETURNING id::text`)
-	for _, odd := range []bool{false,true} {
-		name := "even"
-		if odd { name = "odd" }
+	for _, sample := range []struct{name string; odd,portrait bool; audio string}{
+		{"even",false,false,""}, {"odd",true,false,""},
+		{"phone-h264-opus",false,false,"opus"}, {"phone-portrait-aac",false,true,"aac"},
+	} {
+		name,odd,withAudio := sample.name,sample.odd,sample.audio!=""
 		t.Run(name,func(t *testing.T) {
 			tmp := t.TempDir()
 			args := []string{"prepare","--output",filepath.Join(tmp,"generated")}
 			if odd { args = append(args,"--odd") }
+			if sample.portrait { args = append(args,"--portrait") }
+			if withAudio { args = append(args,"--audio-codec",sample.audio) }
 			meta := realWorkerBridge(t,"",args...)
 			video, err := os.ReadFile(meta["video"].(string))
 			if err != nil { t.Fatal(err) }
@@ -86,7 +90,7 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 			if err := pool.QueryRow(ctx,`SELECT metadata->'result' FROM teaching.job_artifacts WHERE job_id=$1 AND artifact_key='__result/probe'`,prepareResult["job_id"]).Scan(&raw); err != nil { t.Fatal(err) }
 			var probe map[string]any
 			if err := json.Unmarshal(raw,&probe); err != nil { t.Fatal(err) }
-			if probe["duration_ms"] != meta["duration_ms"] || probe["width"] != meta["width"] || probe["height"] != meta["height"] || probe["has_audio"] != false { t.Fatalf("probe metadata = %v",probe) }
+			if probe["duration_ms"] != meta["duration_ms"] || probe["width"] != meta["width"] || probe["height"] != meta["height"] || probe["has_audio"] != withAudio { t.Fatalf("probe metadata = %v",probe) }
 			proxyID := probe["playback_asset_id"].(string)
 			var proxyKey,proxySHA string
 			if err := pool.QueryRow(ctx,`SELECT object_key,sha256 FROM teaching.media_assets WHERE id=$1 AND status='ready'`,proxyID).Scan(&proxyKey,&proxySHA); err != nil { t.Fatal(err) }
@@ -107,11 +111,15 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 				}
 			}
 			finished := requestJSON(t,teacher,http.MethodGet,server.URL+"/api/v1/analysis-runs/"+fullID,nil,"",http.StatusOK)
-			if finished["status"] != "partial" { t.Fatalf("phase4 full status = %v",finished["status"]) }
+			wantStatus := "partial"
+			if withAudio { wantStatus = "running" }
+			if finished["status"] != wantStatus { t.Fatalf("full status = %v want %s",finished["status"],wantStatus) }
 			for _, job := range finished["jobs"].([]any) {
 				j := job.(map[string]any)
-				if j["stage"] == "audio_analysis" && (j["status"] != "skipped" || j["error_code"] != "NO_AUDIO") { t.Fatalf("no-audio stage = %v",j) }
-				if j["status"] == "running" || j["status"] == "queued" { t.Fatalf("unfinished job = %v",j) }
+				if j["stage"] == "audio_analysis" {
+					if withAudio && j["status"] != "queued" { t.Fatalf("ASR must remain honestly queued: %v",j) }
+					if !withAudio && (j["status"] != "skipped" || j["error_code"] != "NO_AUDIO") { t.Fatalf("no-audio stage = %v",j) }
+				} else if j["status"] == "running" || j["status"] == "queued" { t.Fatalf("unfinished job = %v",j) }
 			}
 			results := requestJSON(t,teacher,http.MethodGet,server.URL+"/api/v1/analysis-runs/"+fullID+"/results",nil,"",http.StatusOK)
 			frames := results["frames"].([]any)
@@ -125,7 +133,7 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 				if kind != "keyframe" || size <= 0 { t.Fatalf("invalid frame artifact: %s %d",kind,size) }
 			}
 			evidenceCount:=len(results["evidence"].([]any))
-			if hasGoPipeline {
+			if hasGoPipeline && !withAudio {
 				if evidenceCount!=len(frames) || finished["report_id"]!=nil || finished["error_code"]!="NO_TRANSCRIPT" { t.Fatalf("no-audio evidence pipeline = %v %v",finished,results) }
 				for _,item:=range results["evidence"].([]any) {
 					e:=item.(map[string]any)
@@ -139,7 +147,11 @@ func TestRealVideoWorkerIntegration(t *testing.T) {
 			}
 			markers,_ := filepath.Glob(filepath.Join(tmp,"scratch","*","*","lease.deadline"))
 			if len(markers) != 0 { t.Fatal("Worker did not clean up its lease directory") }
-			summary,_ := json.Marshal(map[string]any{"case":name,"media_prepare":prepareResult,"full_probe":fullProbe,"video_analysis":videoResult,"frames":len(frames),"evidence_count":evidenceCount,"real_go_integration":true,"go_evidence_exercised":hasGoPipeline,"asr_and_model_report_exercised":false})
+			if withAudio {
+				cancelled := requestJSON(t,teacher,http.MethodPost,server.URL+"/api/v1/analysis-runs/"+fullID+"/cancel",map[string]any{},csrf,http.StatusOK)
+				if cancelled["status"] != "cancelled" || finished["report_id"] != nil || len(results["events"].([]any)) != 0 { t.Fatal("unexpected ASR/report/behavior completion") }
+			}
+			summary,_ := json.Marshal(map[string]any{"case":name,"media_prepare":prepareResult,"full_probe":fullProbe,"video_analysis":videoResult,"frames":len(frames),"evidence_count":evidenceCount,"real_go_integration":true,"go_evidence_exercised":hasGoPipeline&&!withAudio,"asr_and_model_report_exercised":false,"audio_present":withAudio,"unavailable_asr_left_queued_then_cancelled":withAudio})
 			t.Log(string(summary))
 		})
 	}

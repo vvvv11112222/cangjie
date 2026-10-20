@@ -3,6 +3,11 @@
   "synthetic": true,
   "examples": [
     {
+      "file": "operations.json",
+      "definition": "Operations",
+      "valid": true
+    },
+    {
       "file": "create-full-run.json",
       "definition": "CreateRun",
       "valid": true

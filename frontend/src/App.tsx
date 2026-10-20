@@ -28,14 +28,17 @@ import { isApiMode } from './data/sources';
 import { roleLabel } from './format';
 import { PLANNED_PAGES, PlaceholderPage } from './pages/PlaceholderPage';
 import { AccountsPage } from './pages/AccountsPage';
+import { DevicesPage } from './pages/DevicesPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
+import { OperationsPage } from './pages/OperationsPage';
 import { ReportPage } from './pages/ReportPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
 import { TranscriptPage } from './pages/TranscriptPage';
 import { TasksPage } from './pages/TasksPage';
 import { SourcesPage } from './pages/SourcesPage';
-import { AcademicPage, DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
+import { DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
+import { AcademicPage } from './pages/AcademicPage';
 import {
   DEFAULT_ROUTE,
   isVisiblePath,
@@ -81,9 +84,11 @@ const IMPLEMENTED_PAGES: Record<string, () => ReactElement> = {
   '#/academic': () => <AcademicPage />,
   '#/tasks': () => <TasksPage />,
   '#/sources': () => <SourcesPage />,
+  '#/devices': () => <DevicesPage />,
   [SESSIONS_PATH]: () => <SessionListPage />,
   '#/accounts': () => <AccountsPage />,
   '#/organizations': () => <OrganizationsPage />,
+  '#/settings': () => <OperationsPage />,
   '#/transcript': () => <TranscriptPage />,
   '#/reports': () => <ReportPage />,
 };

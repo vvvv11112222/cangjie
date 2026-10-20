@@ -7,6 +7,7 @@ import {
   loadReportForSession,
   loadReportView,
   loadSessionDetail,
+  newSessionDetailSearch,
   loadSessionTasks,
   loadTranscriptForSession,
   loadTranscriptView,
@@ -263,9 +264,29 @@ describe('指定课堂的详情取数（评审意见：真实导航）', () => {
   });
 
   it('id 不在可见范围时返回 NOT_FOUND', async () => {
-    stubRoutes(defaultRoutes());
+    stubRoutes([...defaultRoutes(), ...['archived', 'deleting', 'deleted'].map(status => route(`/api/v1/sessions?status=${status}`, { items: [], next_cursor: null }))]);
     const error = (await loadSessionDetail(apiSource, '不存在的课堂').catch((reason: unknown) => reason)) as ApiError;
     expect(error.code).toBe('NOT_FOUND');
+  });
+
+  it.each(['archived', 'deleting', 'deleted'] as const)('详情在默认列表外仍能读取 %s 课堂', async (status) => {
+    const session = { ...BASE_SESSION, status, latest_run_id: null };
+    stubRoutes([(url) => url.startsWith('/api/v1/sessions') ? json(200, { items: url.includes(`status=${status}`) ? [session] : [], next_cursor: null }) : undefined]);
+    expect((await loadSessionDetail(apiSource, session.id)).session.status).toBe(status);
+  });
+
+  it('清理中课堂翻页暂停后延续原游标，不重扫默认列表', async () => {
+    const checkpoint = newSessionDetailSearch();
+    const urls = stubRoutes([(url) => {
+      if (!url.includes('status=deleting')) return json(200, { items: [], next_cursor: null });
+      const cursor = new URL(url, 'https://synthetic.test').searchParams.get('cursor');
+      const index = Number(cursor ?? '0');
+      return json(200, { items: index === 10 ? [{ ...BASE_SESSION, status: 'deleting', latest_run_id: null }] : [], next_cursor: String(index + 1) });
+    }]);
+    await expect(loadSessionDetail(apiSource, BASE_SESSION.id, checkpoint)).rejects.toBeInstanceOf(SearchPaused);
+    expect((await loadSessionDetail(apiSource, BASE_SESSION.id, checkpoint)).session.status).toBe('deleting');
+    expect(urls.filter(url => !url.includes('status=deleting'))).toHaveLength(2);
+    expect(urls.at(-1)).toContain('cursor=10');
   });
 
   it('批次读取失败时保留原因，不伪装成“没有批次”（评审意见 F06）', async () => {

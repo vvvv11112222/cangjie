@@ -6,6 +6,7 @@ import { TranscriptPage } from './TranscriptPage';
 import { ReportPage } from './ReportPage';
 import { TasksPage } from './TasksPage';
 import { SourcesPage } from './SourcesPage';
+import { DevicesPage } from './DevicesPage';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from '../data/viewModel';
 import type { ReportView, SessionTaskView } from '../data/viewModel';
 import type { ReportAction, SessionAction } from '../types';
@@ -155,5 +156,16 @@ describe('M2 页面按模板展示真实链路边界', () => {
     expect(html).toContain('固定样例不伪造来源记录');
     expect(html).toContain('选择课堂');
     expect(html).not.toContain('登记新素材');
+  });
+});
+
+describe('设备接入页', () => {
+  it('展示真实手机采集入口，并明确没有独立设备目录', () => {
+    const html = renderToStaticMarkup(<DevicesPage />);
+    expect(html).toContain('设备接入');
+    expect(html).toContain('手机实时采集');
+    expect(html).toContain('进入课堂档案');
+    expect(html).toContain('独立设备资产目录');
+    expect(html).not.toContain('页面尚未实现');
   });
 });
