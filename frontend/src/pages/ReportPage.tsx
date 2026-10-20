@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence } from '../types';
 import { useReportData } from '../data/hooks';
@@ -14,6 +15,10 @@ import {
   shortId,
 } from '../format';
 import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, Pill, TechDetails } from '../components/ui';
+import { dataSource, isApiMode } from '../data/sources';
+import { loadReportContext } from '../data/loaders';
+import { describeError } from '../data/errors';
+import { ReportWorkflowPanel } from './ReportWorkflowPanel';
 
 function CitedEvidence({
   ids,
@@ -46,16 +51,38 @@ function CitedEvidence({
 export function ReportPage({
   view: injectedView,
   embedded = false,
+  onPublicationChanged,
 }: {
   view?: ReportView;
   /** 嵌入课堂详情页时隐藏页头与数据来源说明，只保留正文卡片。 */
   embedded?: boolean;
+  onPublicationChanged?(): void;
 } = {}): ReactElement {
   const loaded = useReportData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
-  const { report, session, run, evidenceById, disclosures } = view;
-  const published = session !== null && session.current_report_id === report.id;
+  const { report: incomingReport, session } = view;
+  const [report, setReport] = useState(incomingReport);
+  const [currentReportId, setCurrentReportId] = useState(session?.current_report_id ?? null);
+  useEffect(() => setReport(incomingReport), [incomingReport]);
+  useEffect(() => setCurrentReportId(session?.current_report_id ?? null), [session?.current_report_id]);
+  const [selectedContext, setSelectedContext] = useState<{ report: typeof report; currentId: string | null; view: ReportView } | null>(null);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const [contextRetry, setContextRetry] = useState(0);
+  const usesIncomingContext = report === incomingReport && currentReportId === (session?.current_report_id ?? null);
+  useEffect(() => {
+    if (!isApiMode() || session === null || usesIncomingContext) return;
+    let active = true;
+    setSelectedContext(null); setContextError(null);
+    void loadReportContext(dataSource, report, { ...session, current_report_id: currentReportId })
+      .then((next) => { if (active) setSelectedContext({ report, currentId: currentReportId, view: next }); })
+      .catch((error: unknown) => { if (active) setContextError(describeError(error)); });
+    return () => { active = false; };
+  }, [report, session, currentReportId, usesIncomingContext, contextRetry]);
+  const context = !isApiMode() || usesIncomingContext ? view
+    : selectedContext?.report === report && selectedContext.currentId === currentReportId ? selectedContext.view : null;
+  const { run, evidenceById, disclosures } = context ?? { run: null, evidenceById: new Map<string, Evidence>(), disclosures: [] };
+  const published = currentReportId === report.id;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空报告假装"确实没有内容"。
   const ready = injectedView !== undefined || loaded.hasData;
@@ -139,6 +166,15 @@ export function ReportPage({
           </ul>
         </TechDetails>
       </Card>
+
+      {isApiMode() && session !== null ? <ReportWorkflowPanel session={session} initial={report}
+        contextReady={context !== null} onChange={setReport}
+        onPublicationChanged={(id) => { setCurrentReportId(id); onPublicationChanged?.(); }} /> : null}
+
+      {context === null ? <Card title="报告证据加载">
+        <p className={contextError === null ? 'notice-strip' : 'notice-strip load-note-error'}>{contextError ?? '正在加载所选报告的批次和证据…'}</p>
+        {contextError === null ? null : <button type="button" className="btn btn-secondary" onClick={() => setContextRetry((value) => value + 1)}>重新加载报告证据</button>}
+      </Card> : <>
 
       <Card title="总摘要" subtitle="总摘要中的事实也须引用证据。">
         <p className="summary-text">{report.summary === '' ? '（空）' : report.summary}</p>
@@ -267,6 +303,7 @@ export function ReportPage({
       <TechDetails summary="样例数据核对">
         <DisclosureList items={disclosures} />
       </TechDetails>
+      </>}
     </div>
   );
 }
