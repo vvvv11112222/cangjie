@@ -1,0 +1,55 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import summary from '../../../contracts/examples/visual-summary.json';
+import sampleRun from '../../../contracts/examples/run-partial.json';
+import { parseRun } from '../data/samples';
+import { VisualPanel } from './VisualPanel';
+const api = vi.hoisted(() => ({ summary: vi.fn(), people: vi.fn(), observations: vi.fn(), runs: vi.fn(), media: vi.fn() }));
+vi.mock('../data/hooks', () => ({ useRunPolling: () => ({ run: null, error: null }) }));
+vi.mock('../data/m2Api', () => ({ listSessionRuns: (...args: unknown[]) => api.runs(...args) }));
+vi.mock('../data/sources', () => ({ isApiMode: () => true, getMedia: (...args: unknown[]) => api.media(...args) }));
+vi.mock('../data/visualApi', async importOriginal => ({ ...(await importOriginal<typeof import('../data/visualApi')>()),
+  getVisualSummary: (...args: unknown[]) => api.summary(...args), getVisualPeople: (...args: unknown[]) => api.people(...args),
+  getVisualObservations: (...args: unknown[]) => api.observations(...args) }));
+let root: Root; let container: HTMLDivElement;
+const run = { ...parseRun(sampleRun), id: summary.run_id, media_asset_id: summary.media_asset_id, mode: 'visual_only' as const, status: 'succeeded' as const, report_id: null };
+const row = { timestamp_ms: 0, bbox: [10, 10, 40, 50], behaviors: { hand_raise: true, head_down: null, leave_seat: false, possible_phone: null }, frame_asset_id: null };
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+  api.runs.mockResolvedValue({ items: [run], next_cursor: null }); api.summary.mockResolvedValue(summary);
+  api.people.mockResolvedValue({ items: [{ track_id: 'T0001', sample_count: 1 }, { track_id: 'T0002', sample_count: 1 }], next_cursor: null });
+  api.observations.mockImplementation(async (_run, track) => ({ items: [{ ...row, behaviors: { ...row.behaviors, hand_raise: track === 'T0001' } }], next_cursor: null }));
+  api.media.mockResolvedValue({ id: run.media_asset_id, playback_url: `/api/v1/media/${run.media_asset_id}/content` });
+  container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+});
+afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
+async function mount(): Promise<void> { await act(async () => { root.render(<VisualPanel sessionId={run.session_id} currentRun={run} />); }); }
+describe('视觉观察页面', () => {
+  it('展示右侧人物与三态记录，切换人物不改变原始结果', async () => {
+    await mount();
+    expect(container.textContent).toContain('看不清'); expect(container.textContent).toContain('T0001 的画面记录');
+    expect(container.querySelector('.visual-overlay rect')?.getAttribute('stroke')).toBe('var(--danger)');
+    const person = [...container.querySelectorAll<HTMLButtonElement>('.visual-person')].find(button => button.textContent?.includes('T0002'))!;
+    await act(async () => person.click());
+    expect(container.textContent).toContain('T0002 的画面记录');
+    expect(container.querySelector('.visual-overlay rect')?.getAttribute('stroke')).toBe('var(--muted)');
+  });
+  it('新人物尚在读取时不显示上一个人的观察', async () => {
+    await mount(); api.observations.mockReturnValue(new Promise(() => undefined));
+    const person = [...container.querySelectorAll<HTMLButtonElement>('.visual-person')].find(button => button.textContent?.includes('T0002'))!;
+    await act(async () => person.click());
+    expect(container.querySelector('.visual-overlay rect')).toBeNull();
+    expect(container.textContent).toContain('这个时刻没有已加载的观察');
+  });
+  it('结果接口出错时显示失败，不伪装成没有动作', async () => {
+    api.summary.mockRejectedValue(new Error('暂时不可读取'));
+    await mount(); expect(container.querySelector('[role=alert]')).not.toBeNull();
+    expect(container.querySelector('.visual-metrics')).toBeNull();
+  });
+});

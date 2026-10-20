@@ -13,6 +13,8 @@ const SchemaVersion = "1.1"
 var mediaStages = map[string]bool{"probe": true, "audio_analysis": true, "video_analysis": true}
 
 type Config struct {
+	VisionEnabled                                    bool
+	VisionModelRevision                              string
 	Lease, ProbeTimeout, ASRTimeout, VideoTimeout    time.Duration
 	MediaJobAttempts                                 int
 	ProcessorVersion, FFmpegSHA256                   string
@@ -73,8 +75,9 @@ type Run struct {
 }
 
 type ClaimRequest struct {
-	WorkerID     string   `json:"worker_id"`
-	Capabilities []string `json:"capabilities"`
+	VisualEnabled bool     `json:"visual_enabled,omitempty"`
+	WorkerID      string   `json:"worker_id"`
+	Capabilities  []string `json:"capabilities"`
 }
 
 type Model struct {
@@ -90,10 +93,11 @@ type Execution struct {
 }
 
 type Parameters struct {
-	ConfigProfile      string `json:"config_profile"`
-	KeyframeIntervalMS int    `json:"keyframe_interval_ms"`
-	MaxKeyframes       int    `json:"max_keyframes"`
-	ASRDevice          string `json:"asr_device"`
+	Visual             *VisualParameters `json:"visual,omitempty"`
+	ConfigProfile      string            `json:"config_profile"`
+	KeyframeIntervalMS int               `json:"keyframe_interval_ms"`
+	MaxKeyframes       int               `json:"max_keyframes"`
+	ASRDevice          string            `json:"asr_device"`
 }
 
 type Claim struct {
@@ -205,7 +209,8 @@ type VideoResult struct {
 	resultEnvelope
 	Frames   []Frame           `json:"frames"`
 	Events   []json.RawMessage `json:"events"`
-	Model    any               `json:"model"`
+	Model    *Model            `json:"model"`
+	Visual   *VisualData       `json:"visual,omitempty"`
 	Sampling struct {
 		IntervalMS int `json:"interval_ms"`
 		MaxFrames  int `json:"max_frames"`

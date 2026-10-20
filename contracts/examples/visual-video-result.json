@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.1",
+  "job_id": "00000000-0000-4000-8000-000000000004",
+  "run_id": "00000000-0000-4000-8000-000000000003",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "media_asset_id": "00000000-0000-4000-8000-000000000002",
+  "stage": "video_analysis",
+  "execution": {
+    "processor_version": "synthetic-worker-1",
+    "ffmpeg_build_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "asr_model": null,
+    "parameters_sha256": "c7f4853c1497f8ccc4044998c70ac86845c01c19ccb940e84838f074ef613400"
+  },
+  "frames": [
+    {
+      "asset_id": "a0000000-0000-4000-8000-000000000001",
+      "timestamp_ms": 0
+    }
+  ],
+  "events": [
+    {
+      "event_type": "hand_raise",
+      "track_id": "T0001",
+      "start_ms": 0,
+      "end_ms": 1000,
+      "confidence": 0.9,
+      "frame_asset_ids": [
+        "a0000000-0000-4000-8000-000000000001"
+      ]
+    }
+  ],
+  "model": {
+    "name": "classroom-vision",
+    "revision": "28daa03e9b08ccace4bc58ae899f63377f58977a309a17f723c3703dd58ddb6e"
+  },
+  "sampling": {
+    "interval_ms": 500,
+    "max_frames": 240
+  },
+  "coverage": [
+    {
+      "start_ms": 0,
+      "end_ms": 2000
+    }
+  ],
+  "limitations": [
+    "匿名轨迹，自动识别结果需要核对；看不清不等于没有动作。"
+  ],
+  "visual": {
+    "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "width": 160,
+    "height": 120,
+    "counts": [
+      {
+        "timestamp_ms": 0,
+        "visible_count": 1,
+        "hand_raise_count": 1,
+        "head_down_count": null
+      }
+    ],
+    "persons": [
+      {
+        "track_id": "T0001",
+        "observations": [
+          {
+            "timestamp_ms": 0,
+            "bbox": [
+              10,
+              10,
+              40,
+              50
+            ],
+            "behaviors": {
+              "hand_raise": true,
+              "head_down": null,
+              "leave_seat": false,
+              "possible_phone": null
+            },
+            "frame_asset_id": "a0000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    ]
+  }
+}

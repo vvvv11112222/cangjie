@@ -67,6 +67,7 @@ func run() error {
 		return schemaErr
 	}
 	analysisService := analysis.NewService(pool.Pool, mediaStore, analysis.Config{
+		VisionEnabled: cfg.VisionEnabled, VisionModelRevision: cfg.VisionModelRevision,
 		Lease: cfg.JobLease, ProbeTimeout: cfg.ProbeTimeout, ASRTimeout: cfg.ASRTimeout, VideoTimeout: cfg.VideoTimeout,
 		MediaJobAttempts: cfg.MediaJobAttempts, ProcessorVersion: cfg.ProcessorVersion, FFmpegSHA256: cfg.FFmpegSHA256,
 		ASRModelName: cfg.ASRModelName, ASRModelRevision: cfg.ASRModelRevision, ASRDevice: cfg.ASRDevice,
