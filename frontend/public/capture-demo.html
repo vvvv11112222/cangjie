@@ -7,30 +7,59 @@
 <h1>课堂采集联调</h1>
 <p id="intro">电脑端先在系统登录，再填写课堂与已核验来源。手机端打开配对链接并点击开始。</p>
 <section id="desktop">
+<p id="account-status" role="status">正在检查当前地址的登录状态…</p>
+<form id="login-form" hidden>
+<p>请使用系统现有账号登录。更换电脑地址后需要重新登录。</p>
+<label>用户名<input id="login-username" name="username" autocomplete="username" required></label>
+<label>密码<input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+<button id="login" type="submit">登录</button>
+</form>
 <label>课堂 ID<input id="session" autocomplete="off"></label>
 <label>来源 ID<input id="source" autocomplete="off"></label>
-<button id="create">创建采集并取得手机链接</button>
-<button id="recover">恢复当前活动采集</button>
+<button id="create" disabled>创建采集并取得手机链接</button>
+<button id="recover" disabled>恢复当前活动采集</button>
 <p><a id="pair" target="_blank" rel="noreferrer"></a></p>
 <label>采集 ID（可粘贴已有 ID）<input id="capture" autocomplete="off"></label>
-<button id="watch">观看实时画面</button>
+<button id="watch" disabled>观看实时画面</button>
 </section>
-<button id="start" hidden>开始手机采集</button><button id="stop">停止录制</button>
+<button id="start" hidden>开始手机采集</button><button id="stop" disabled>停止录制</button>
 <button id="sound">开启声音</button>
 <video id="video" autoplay playsinline muted controls></video>
 <p id="notice" role="status"></p><pre id="status"></pre>
 <script type="module">
 const $=id=>document.getElementById(id);
-let captureID='',controlToken='',pc=null,local=null,resource=null,mediaToken='',csrf='',poll=null;
+let captureID='',controlToken='',pc=null,local=null,resource=null,mediaToken='',csrf='',poll=null,authenticated=false,busy=false;
 const fragment=new URLSearchParams(location.hash.slice(1));let pairing=fragment.get('pairing_token');
 if(pairing){history.replaceState(null,'',location.pathname);$('desktop').hidden=true;location.replace('/capture-phone.html#pairing_token='+encodeURIComponent(pairing));}
 function note(text){$('notice').textContent=text;}
+function account(me){
+ authenticated=!!me;
+ $('login-form').hidden=authenticated;
+ $('account-status').textContent=me?'已登录：'+me.display_name:'尚未登录当前地址，请先使用系统账号登录。';
+ for(const id of ['create','recover','watch','stop'])$(id).disabled=!authenticated||busy;
+ if(!me){csrf='';clearInterval(poll);poll=null;}
+}
+function unauthorized(){account(null);return Error('登录未完成或已失效，请先在本页登录，再创建采集。');}
+async function checkAccount(){
+ try{const response=await fetch('/api/v1/auth/me',{credentials:'same-origin',cache:'no-store'});
+ if(response.status===401){account(null);return;}
+ const result=await response.json();if(!response.ok)throw Error('登录状态检查失败，请刷新或检查服务。');account(result.data);
+ }catch(e){account(null);note(e.message);}
+}
+$('login-form').onsubmit=async event=>{
+ event.preventDefault();if($('login').disabled)return;$('login').disabled=true;
+ try{
+ csrf='';const result=await api('auth/login',{username:$('login-username').value.trim(),password:$('login-password').value});
+ csrf=result.csrf_token;await checkAccount();if(authenticated)note('登录成功，可创建或恢复采集。');
+ }catch(e){note(e.message);}finally{$('login-password').value='';$('login').disabled=false;}
+};
+if(!pairing){void checkAccount();window.addEventListener('focus',()=>{if(!busy)void checkAccount();});}
 async function api(path,body,token=''){
  const headers={};if(body!==undefined)headers['Content-Type']='application/json';
  if(token)headers.Authorization='Bearer '+token;
  else if(body!==undefined){if(!csrf){const r=await fetch('/api/v1/auth/csrf',{credentials:'same-origin'});const j=await r.json();csrf=j.data.csrf_token;}headers['X-CSRF-Token']=csrf;}
  const r=await fetch('/api/v1/'+path,{method:body===undefined?'GET':'POST',headers,credentials:'same-origin',...(body!==undefined?{body:JSON.stringify(body)}:{})});
- const j=await r.json();if(!r.ok)throw Error(j.error?.message||`请求失败 ${r.status}`);return j.data;
+ const j=await r.json();if(r.status===401){if(path==='auth/login'){account(null);throw Error('登录失败，请核对用户名和密码。');}throw unauthorized();}if(!r.ok)throw Error(j.error?.message||`请求失败 ${r.status}`);return j.data;
 }
 async function startPoll(){clearInterval(poll);const update=async()=>{
  try{const v=await api('live-captures/'+captureID,undefined,controlToken);$('status').textContent=JSON.stringify(v,null,2);
@@ -54,11 +83,11 @@ async function connect(url,token,stream){
  const loc=r.headers.get('Location');resource=loc?new URL(loc,url).href:null;
  await pc.setRemoteDescription({type:'answer',sdp:await r.text()});
 }
-async function action(fn){try{await fn()}catch(e){note(e.message);if(local){local.getTracks().forEach(t=>t.stop());local=null;}if(pc){pc.close();pc=null;}}}
+async function action(fn){if(busy)return;if(!authenticated){note('请先在本页登录，再操作采集。');return;}busy=true;for(const id of ['create','recover','watch','stop'])$(id).disabled=true;try{await fn()}catch(e){note(e.message);if(local){local.getTracks().forEach(t=>t.stop());local=null;}if(pc){pc.close();pc=null;}}finally{busy=false;for(const id of ['create','recover','watch','stop'])$(id).disabled=!authenticated;}}
 $('create').onclick=()=>action(async()=>{
  const r=await fetch('/api/v1/auth/csrf',{credentials:'same-origin'});csrf=(await r.json()).data.csrf_token;
  const res=await fetch('/api/v1/sessions/'+$('session').value.trim()+'/live-captures',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({source_record_id:$('source').value.trim(),config_profile:'phone-demo-v1'})});
- const j=await res.json();if(!res.ok)throw Error(j.error?.message||'创建失败');captureID=j.data.id;$('capture').value=captureID;
+ const j=await res.json();if(res.status===401)throw unauthorized();if(!res.ok)throw Error(j.error?.message||'创建失败');captureID=j.data.id;$('capture').value=captureID;
  const pair=await api('live-captures/'+captureID+'/pairings',{});$('pair').href=pair.phone_url;$('pair').textContent=pair.phone_url;note('将配对链接发到同一 Wi-Fi 的手机打开，勿分享给其他人。');await startPoll();
 });
 $('recover').onclick=()=>action(async()=>{
