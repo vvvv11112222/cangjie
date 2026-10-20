@@ -24,6 +24,7 @@ class Settings:
     probe_timeout: int = 1800
     video_timeout: int = 3600
     lease_seconds: int = 120
+    vision_enabled: bool = False
     cleanup_enabled: bool = False
     cleanup_contract_path: Path | None = None
 
@@ -42,6 +43,8 @@ class Settings:
             raise ValueError("心跳及文件上限必须为正数")
         if len(self.ffmpeg_sha256) != 64 or self.ffmpeg_sha256 != digest_file(ffmpeg_executable()):
             raise ValueError("FFMPEG_BUILD_SHA256 与实际二进制不一致；先运行 runtime-info")
+        if type(self.vision_enabled) is not bool:
+            raise ValueError("vision_enabled 必须是布尔值")
         if type(self.cleanup_enabled) is not bool:
             raise ValueError("cleanup_enabled 必须是布尔值")
         if self.cleanup_enabled:
@@ -52,6 +55,9 @@ class Settings:
     def from_env(cls):
         if os.environ.get("WORKER_CONCURRENCY", "1") != "1":
             raise ValueError("本视频入口一次执行一个任务；可使用不同 worker_id 启动多个进程")
+        vision_flag = os.environ.get("VISION_ANALYSIS_ENABLED", "0")
+        if vision_flag not in ("0", "1"):
+            raise ValueError("VISION_ANALYSIS_ENABLED 必须为 0 或 1")
         cleanup_flag = os.environ.get("WORKER_CLEANUP_ENABLED", "0")
         if cleanup_flag not in ("0", "1"):
             raise ValueError("WORKER_CLEANUP_ENABLED 必须为 0 或 1")
@@ -70,6 +76,7 @@ class Settings:
             probe_timeout=int(os.environ.get("PROBE_TIMEOUT_SECONDS", "1800")),
             video_timeout=int(os.environ.get("VIDEO_TIMEOUT_SECONDS", "3600")),
             lease_seconds=int(os.environ.get("JOB_LEASE_SECONDS", "120")),
+            vision_enabled=vision_flag == "1",
             cleanup_enabled=cleanup_flag == "1",
             cleanup_contract_path=(Path(os.environ["WORKER_CLEANUP_CONTRACT_PATH"]).resolve()
                                    if os.environ.get("WORKER_CLEANUP_CONTRACT_PATH") else None),

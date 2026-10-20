@@ -30,7 +30,8 @@ def main():
         handoff.add_argument("--" + key)
     args = parser.parse_args()
     if args.command == "runtime-info":
-        print(json.dumps({"processor_version": PROCESSOR_VERSION, "ffmpeg_binary": ffmpeg_executable(),
+        from workers.video.visual import model_identity
+        print(json.dumps({"processor_version": PROCESSOR_VERSION, "visual_model": model_identity(), "ffmpeg_binary": ffmpeg_executable(),
                           "ffmpeg_build_sha256": digest_file(ffmpeg_executable())}, ensure_ascii=False, indent=2))
     elif args.command == "prepare-models":
         registry = json.loads((Path(__file__).parent / "config/models.manifest.json").read_text(encoding="utf-8"))

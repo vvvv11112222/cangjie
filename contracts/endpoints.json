@@ -1023,6 +1023,39 @@
       "success_statuses": [
         204
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analysis-runs/{id}/visual",
+      "request": null,
+      "response": "VisualSummary",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analysis-runs/{id}/visual/persons",
+      "request": null,
+      "response": "VisualPersonsPage",
+      "transport": "json",
+      "query": "VisualPageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analysis-runs/{id}/visual/persons/{track_id}",
+      "request": null,
+      "response": "VisualObservationsPage",
+      "transport": "json",
+      "query": "VisualPageQuery",
+      "success_statuses": [
+        200
+      ]
     }
   ]
 }

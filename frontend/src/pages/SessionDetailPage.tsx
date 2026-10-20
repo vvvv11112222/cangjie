@@ -52,14 +52,19 @@ import { pendingIntent } from './pendingIntent';
 import { ReportPage } from './ReportPage';
 import { TranscriptPage } from './TranscriptPage';
 import { PlaybackPanel } from './PlaybackPanel';
+import { LiveCapturePanel } from './LiveCapturePanel';
+import { VisualPanel } from './VisualPanel';
+import { UploadSourcePicker } from './UploadSourcePicker';
 
-type Tab = 'run' | 'transcript' | 'report' | 'playback';
+type Tab = 'run' | 'live' | 'transcript' | 'report' | 'playback' | 'visual';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'run', label: '批次与操作' },
+  { key: 'live', label: '实时课堂' },
   { key: 'transcript', label: '转写' },
   { key: 'report', label: '报告' },
   { key: 'playback', label: '回放' },
+  { key: 'visual', label: '视觉观察' },
 ];
 
 function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
@@ -67,7 +72,7 @@ function analyzeInput(mediaAssetId: string, mode: RunMode): CreateRun {
     media_asset_id: mediaAssetId,
     mode,
     input_transcript_revision_id: null,
-    config_profile: 'p0-v1',
+    config_profile: mode === 'visual_only' ? 'vision-v1' : 'p0-v1',
   };
 }
 
@@ -119,7 +124,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const transcript = useSessionTranscript(session, tab === 'transcript' || tab === 'playback');
   const report = useSessionReport(session, baseRun, tab === 'report');
   // 回放要用媒体列表挑出可播放的目标（没有主媒体时退回到列表里的原媒体），因此也在这里加载。
-  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'playback'));
+  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'live' || tab === 'playback'));
   const playbackMediaId = session === null ? null : pickPlaybackMediaId(session, media.data.items);
   const playback = useMediaDetail(playbackMediaId, tab === 'playback');
 
@@ -170,6 +175,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     }));
     try {
       const run = await createRun(session.id, input, key);
+      if (mode === 'visual_only') setTab('visual');
       // 服务端已受理：清除未确定意图，下一次提交才算新的分析。
       pendingIntent.resolve(accountScope, session.id, key);
       write(fromScope, (base) => ({
@@ -219,7 +225,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       media_asset_id: shownRun.media_asset_id,
       mode: shownRun.mode,
       input_transcript_revision_id: shownRun.input_transcript_revision_id,
-      config_profile: 'p0-v1',
+      config_profile: shownRun.mode === 'visual_only' ? 'vision-v1' : 'p0-v1',
     };
     const signature = intentSignature(session.id, input);
     const key = pendingIntent.keyFor(accountScope, session.id, signature);
@@ -492,6 +498,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       提交分析
                     </button>
                   ) : null}
+                  {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={analyzeDisabled || (shownRun !== null && isRunActive(shownRun))} onClick={() => void submitAnalyze('visual_only')}>举手与低头分析</button> : null}
                   {canCancel ? (
                     <button type="button" className="btn btn-danger" disabled={!api || action.busy} onClick={() => void submitCancel()}>
                       取消批次
@@ -559,7 +566,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     {targetMedia !== null && targetMedia.status !== 'ready' ? (
                       <p className="load-note">
                         处理目标状态为 {targetMedia.status}
-                        {targetMedia.status === 'pending' ? '，可先做媒体准备（probe 允许对 pending 原媒体执行）。' : '，暂不能提交。'}
+                        {targetMedia.status === 'pending' ? '，可直接点击“举手与低头分析”，系统会先准备录像。' : '，暂不能提交。'}
                       </p>
                     ) : null}
                     {showRetry && retryDisabled && retryMedia === null ? (
@@ -582,6 +589,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                         }
                       />
                     </label>
+                    <UploadSourcePicker key={scope} sessionId={session.id} value={action.sourceRecordId} onChange={value => write(scope, base => ({ ...base, sourceRecordId: value }))} />
                     <label className="account-field">
                       <span>来源编号（必填）</span>
                       <input
@@ -614,7 +622,15 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
           {tab === 'transcript' ? (
             transcript.status === 'ready' ? (
-              <TranscriptPage embedded view={transcript.data} />
+              <TranscriptPage
+                embedded
+                view={transcript.data}
+                session={session}
+                onRunCreated={(run) => {
+                  write(scope, (base) => ({ ...base, run, note: `报告重跑 ${shortId(run.id)} 已创建。` }));
+                  setTab('run');
+                }}
+              />
             ) : (
               <>
                 <LoadStateNote status={transcript.status} error={transcript.error} />
@@ -623,9 +639,27 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
             )
           ) : null}
 
+          {tab === 'live' ? (
+            api ? (
+              <LiveCapturePanel
+                session={session}
+                enabled
+                onUseMedia={(mediaId) => {
+                  write(scope, (base) => ({ ...base, mediaChoice: { kind: 'asset', mediaId } }));
+                  media.reload();
+                  setTab('run');
+                }}
+              />
+            ) : (
+              <Card title="实时课堂" subtitle="该能力只连接真实 Go API 与媒体服务。">
+                <p className="empty">固定样例模式不伪造实时画面。切换到接口模式后可创建手机采集。</p>
+              </Card>
+            )
+          ) : null}
+
           {tab === 'report' ? (
             report.status === 'ready' ? (
-              <ReportPage embedded view={report.data} />
+              <ReportPage embedded view={report.data} onPublicationChanged={detail.reload} />
             ) : (
               <>
                 <LoadStateNote status={report.status} error={report.error} />
@@ -633,6 +667,8 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
               </>
             )
           ) : null}
+
+          {tab === 'visual' ? api ? <VisualPanel key={scope} sessionId={session.id} currentRun={shownRun} /> : <Card title="视觉观察"><p className="empty">当前是固定样例模式，请连接团队后端后上传录像进行视觉分析。</p></Card> : null}
 
           {tab === 'playback' ? (
                 <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList={session.primary_media_asset_id === null} />

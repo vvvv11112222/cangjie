@@ -87,7 +87,7 @@ def export_handoff(report_path, output, *, binding=None, include_images=True,
                     if source.is_symlink() or not source.resolve().is_relative_to(root):
                         raise ValueError('证据路径超出报告证据目录')
                     size = source.stat().st_size
-                    if size > 10 * 1024**2 or total_bytes + size > max_image_bytes:
+                    if size > 10 * 1024**2:
                         raise ValueError('证据大小超过导出上限')
                     with source.open('rb') as file:
                         data = file.read(10 * 1024**2 + 1)
@@ -97,6 +97,8 @@ def export_handoff(report_path, output, *, binding=None, include_images=True,
                         raise ValueError('需要现有报告生成的完整 JPEG 证据')
                     digest = hashlib.sha256(data).hexdigest()
                     if digest not in blobs:
+                        if total_bytes + len(data) > max_image_bytes:
+                            raise ValueError('证据大小超过导出上限')
                         blobs[digest] = data
                         total_bytes += len(data)
                     entry.update(availability='included', path=f'evidence/{digest}.jpg',
@@ -163,7 +165,7 @@ def export_handoff(report_path, output, *, binding=None, include_images=True,
                     'image_file_count': len(blobs), 'image_bytes': total_bytes},
         'acceptance_passed': False,
         'limitations': list(report['limitations']) + [
-            '本包用于联合接入，不是正式 StageResult；现有 Go 完成接口不接受非空行为结果。',
+            '本包用于联合接入，不是正式 StageResult；正式 visual_only 任务须使用该模式的结果协议，不能直接提交本包。',
             '编号只属于此段录像，不是学生身份；记录张数不等于举手次数，低头不等于走神。',
             '机器原值和本地复核记录分别保留；本地复核不能替代团队登录授权的正式复核。',
             '缺失证据保持为空；not_included 表示导出时未包含图片，不能当作可用画面证据。',

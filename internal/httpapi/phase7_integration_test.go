@@ -113,6 +113,32 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	adminCSRF := loginTestUser(t, admin, server.URL, "admin")
 	supervisor := newTestClient(t)
 	_ = loginTestUser(t, supervisor, server.URL, "supervisor")
+	hasExportAction := func(value map[string]any) bool {
+		for _, action := range value["allowed_actions"].([]any) {
+			if action == "export" {
+				return true
+			}
+		}
+		return false
+	}
+	assertExportAction := func(client *http.Client, want bool) {
+		t.Helper()
+		value := requestJSON(t, client, http.MethodGet, server.URL+"/api/v1/reports/"+reportID, nil, "", http.StatusOK)
+		found := hasExportAction(value)
+		if found != want {
+			t.Fatalf("report export action=%v, want %v; actions=%v", found, want, value["allowed_actions"])
+		}
+	}
+	assertExportAction(teacher, true)
+	assertExportAction(supervisor, true)
+	assertExportAction(admin, true)
+	academicClient := newTestClient(t)
+	_ = loginTestUser(t, academicClient, server.URL, "academic")
+	requestJSON(t, academicClient, http.MethodGet, server.URL+"/api/v1/reports/"+reportID, nil, "", http.StatusNotFound)
+	reportPage := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/sessions/"+sessionID+"/reports", nil, "", http.StatusOK)
+	if !hasExportAction(reportPage["items"].([]any)[0].(map[string]any)) {
+		t.Fatal("report list does not expose export permission")
+	}
 	exported := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+reportID+"/exports", map[string]any{"format": "json"}, teacherCSRF, map[string]string{"Idempotency-Key": "export-1"}, http.StatusAccepted)
 	exportID := exported["id"].(string)
 	replayed := requestWithHeaders(t, teacher, http.MethodPost, server.URL+"/api/v1/reports/"+reportID+"/exports", map[string]any{"format": "json"}, teacherCSRF, map[string]string{"Idempotency-Key": "export-1"}, http.StatusOK)
@@ -153,6 +179,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/exports/"+exportID+"/content", nil, "", http.StatusGone)
+	assertExportAction(teacher, false)
 	if _, err = pool.Exec(ctx, `UPDATE teaching.source_records SET allowed_uses='["playback","analysis","export"]',rights_version=rights_version+1 WHERE id=$1`, sourceID); err != nil {
 		t.Fatal(err)
 	}

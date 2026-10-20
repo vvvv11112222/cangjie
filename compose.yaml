@@ -31,8 +31,10 @@ services:
       WORKER_TOKEN: ${WORKER_TOKEN:-development-worker-token-change-me}
       WORKER_ID: worker-01
       WORKER_CAPABILITIES: probe,audio_analysis,video_analysis
-      WORKER_PROCESSOR_VERSION: fixed-json-v1
-      FFMPEG_BUILD_SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      WORKER_PROCESSOR_VERSION: ${WORKER_PROCESSOR_VERSION:-fixed-json-v1}
+      FFMPEG_BUILD_SHA256: ${FFMPEG_BUILD_SHA256:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      VISION_ANALYSIS_ENABLED: ${VISION_ANALYSIS_ENABLED:-0}
+      VISION_MODEL_REVISION: ${VISION_MODEL_REVISION:-}
       ASR_MODEL_NAME: fixed-json-asr
       ASR_MODEL_REVISION: p0-v1
       REPORT_API_BASE: ${REPORT_API_BASE:-}

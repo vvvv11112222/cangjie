@@ -128,3 +128,43 @@ def test_sustained_event_preserves_times_and_links_same_evidence(report_file, tm
 def test_images_budget_is_enforced(report_file, tmp_path):
     with pytest.raises(ValueError, match='大小超过'):
         export_handoff(report_file, tmp_path / 'export', max_image_bytes=10)
+
+
+@pytest.mark.parametrize('duplicate', ['other_file', 'other_time', 'annotated'])
+def test_image_budget_counts_unique_bytes_after_deduplication(report_file, tmp_path, duplicate):
+    report = json.loads(report_file.read_text(encoding='utf-8'))
+    image = report_file.parent / 'evidence/frame.jpg'
+    observations = report['persons'][0]['observations']
+    if duplicate == 'other_file':
+        (image.parent / 'same-content.jpg').write_bytes(image.read_bytes())
+        observations[1]['original_file'] = 'same-content.jpg'
+    elif duplicate == 'other_time':
+        observations[1]['original_file'] = image.name
+    else:
+        observations[0]['annotated_file'] = image.name
+    report_file.write_text(json.dumps(report), encoding='utf-8')
+    result, output, summary = load_export(report_file, tmp_path, max_image_bytes=image.stat().st_size)
+    assert summary['image_file_count'] == 1
+    assert summary['image_bytes'] == image.stat().st_size
+    assert len(result['images']) == 2
+    assert len(list((output / 'evidence').iterdir())) == 1
+
+
+def test_total_unique_budget_still_rejects_different_images(report_file, tmp_path):
+    report = json.loads(report_file.read_text(encoding='utf-8'))
+    image = report_file.parent / 'evidence/frame.jpg'
+    _, other = cv2.imencode('.jpg', np.full((8, 8, 3), 255, dtype=np.uint8))
+    (image.parent / 'different.jpg').write_bytes(other.tobytes())
+    report['persons'][0]['observations'][1]['original_file'] = 'different.jpg'
+    report_file.write_text(json.dumps(report), encoding='utf-8')
+    with pytest.raises(ValueError, match='大小超过'):
+        export_handoff(report_file, tmp_path / 'export', max_image_bytes=image.stat().st_size)
+    assert not (tmp_path / 'export').exists()
+
+
+def test_single_image_limit_applies_before_deduplication(report_file, tmp_path):
+    image = report_file.parent / 'evidence/frame.jpg'
+    image.write_bytes(b'\xff\xd8' + b'0' * (10 * 1024**2) + b'\xff\xd9')
+    with pytest.raises(ValueError, match='大小超过'):
+        export_handoff(report_file, tmp_path / 'export')
+    assert not (tmp_path / 'export').exists()

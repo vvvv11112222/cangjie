@@ -134,6 +134,35 @@ function capture(init?: RequestInit): void {
 }
 
 describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
+  it('课堂详情同时保留实时课堂与视觉观察，切换后仍绑定当前课堂', async () => {
+    const reads: string[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = String(input);
+      reads.push(url);
+      if (url.includes('/sources')) {
+        return new Response(JSON.stringify({ data: { items: [], next_cursor: null }, request_id: 'sources' }), { status: 200 });
+      }
+      if (url.includes('/analysis-runs')) {
+        return new Response(JSON.stringify({ data: { items: [], next_cursor: null }, request_id: 'visual-history' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: { code: 'NOT_FOUND', message: '没有活动采集', details: {} }, request_id: 'active' }), { status: 404 });
+    });
+    await renderAndSettle();
+    await act(async () => {
+      buttonWithExactText('实时课堂')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('手机发布音视频，电脑实时观看');
+    expect(buttonWithExactText('创建实时采集')).not.toBeNull();
+    expect(container.textContent).toContain('没有可用来源');
+    await act(async () => buttonWithExactText('视觉观察')!.click());
+    expect(container.textContent).toContain('还没有视觉分析记录');
+    expect(reads.some(url => url.includes(`/sessions/${SESSION.id}/analysis-runs`))).toBe(true);
+    await act(async () => buttonWithExactText('实时课堂')!.click());
+    expect(buttonWithExactText('创建实时采集')).not.toBeNull();
+  });
+
   it('账号切换后仍然能打开上传表单（新 scope 可写）', async () => {
     await renderAndSettle();
 

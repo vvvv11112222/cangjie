@@ -16,6 +16,9 @@ import (
 )
 
 func (s *server) registerAnalysisRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/analysis-runs/{id}/visual", s.getVisual)
+	mux.HandleFunc("GET /api/v1/analysis-runs/{id}/visual/persons", s.getVisual)
+	mux.HandleFunc("GET /api/v1/analysis-runs/{id}/visual/persons/{track_id}", s.getVisual)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/analysis-runs", s.createAnalysisRun)
 	mux.HandleFunc("GET /api/v1/sessions/{id}/analysis-runs", s.listAnalysisRuns)
 	mux.HandleFunc("GET /api/v1/analysis-runs/{id}", s.getAnalysisRun)
@@ -463,7 +466,7 @@ func (s *server) claimJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	claim, err := s.analysis.Claim(r.Context(), in.WorkerID, in.Capabilities)
+	claim, err := s.analysis.Claim(r.Context(), in.WorkerID, in.Capabilities, in.VisualEnabled)
 	if err != nil {
 		s.writeServiceError(w, r, err)
 		return
@@ -615,7 +618,7 @@ func (s *server) completeJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "Content-Type must be application/json", map[string]any{})
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "request body is invalid", map[string]any{})
@@ -699,4 +702,51 @@ func writeRangedContent(s *server, w http.ResponseWriter, r *http.Request, file 
 	if _, err = io.CopyN(w, file, length); err != nil {
 		s.logger.Warn("worker input response interrupted", "request_id", requestID(r.Context()), "error", err)
 	}
+}
+
+// Pagination applies to people or observations; the summary has no people array.
+func (s *server) getVisual(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	for key, values := range r.URL.Query() {
+		if (key != "cursor" && key != "limit") || len(values) != 1 || strings.HasSuffix(r.URL.Path, "/visual") {
+			writeError(w, r, 400, "INVALID_ARGUMENT", "invalid visual query", map[string]any{})
+			return
+		}
+	}
+	offset, limit := 0, 100
+	var err error
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		offset, err = strconv.Atoi(raw)
+		if err != nil || offset < 0 || offset > 100000 {
+			writeError(w, r, 400, "INVALID_ARGUMENT", "invalid cursor", map[string]any{})
+			return
+		}
+	}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		limit, err = strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > 200 {
+			writeError(w, r, 400, "INVALID_ARGUMENT", "limit must be 1..200", map[string]any{})
+			return
+		}
+	}
+	section := "summary"
+	if strings.HasSuffix(r.URL.Path, "/persons") {
+		section = "persons"
+	}
+	if r.PathValue("track_id") != "" {
+		section = "observations"
+	}
+	value, err := s.analysis.Visual(r.Context(), p, id, section, r.PathValue("track_id"), offset, limit)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, 200, value)
 }

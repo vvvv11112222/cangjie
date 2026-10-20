@@ -18,6 +18,10 @@
 
 本模块复用 vision-lab 0.4.3 的检测、姿态、头姿、追踪、座位和行为规则。核心来源及摘要见 [source-port.json](source-port.json)，模型来源、版本、许可证说明及摘要见 [models.manifest.json](config/models.manifest.json)。没有重新训练模型或改变识别门槛。
 
+## 2026-10-19 正式视觉分析后端
+
+新增显式启用的 `visual_only` / `vision-v1`：上传录像后，经 Go 正式任务调用现有模型，保存并查询人数、举手/低头和逐人观察，不等待语音与报告模型。[接入、部署、分页接口与验收限制](VISUAL_BACKEND.md)。Worker 版本1.0.7；前端只扩展任务枚举，页面入口尚待成员接入。下文的 `events=[]`、`model=null` 继续适用于 `p0-v1`，不适用于新视觉模式。
+
 ## 交付范围
 
 | 工作 | 当前入口 | 输出与边界 |

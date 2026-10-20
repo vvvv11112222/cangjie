@@ -1,4 +1,4 @@
-"""Validate public DTOs against the team's unmodified strict schema."""
+"""Validate public DTOs against the team's strict schema."""
 import hashlib
 import json
 from functools import lru_cache

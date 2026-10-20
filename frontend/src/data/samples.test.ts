@@ -6,6 +6,7 @@ import {
   fixtureMediaFor,
   parseMedia,
   parseReport,
+  parseRun,
   parseSessionPage,
   playbackMedia,
   report,
@@ -18,6 +19,12 @@ import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewM
 import reportDraft from '../../../contracts/examples/report-draft.json';
 
 describe('固定样例解析', () => {
+  it('支持独立视觉任务而不要求教学报告', () => {
+    const visual = parseRun({ ...run, mode: 'visual_only', stage_plan: ['probe', 'video_analysis'],
+      jobs: run.jobs.filter(job => ['probe', 'video_analysis'].includes(job.stage)), report_id: null });
+    expect(visual.mode).toBe('visual_only');
+    expect(visual.report_id).toBeNull();
+  });
   it('读取到三页需要的样例', () => {
     expect(sessionPage.items).toHaveLength(1);
     expect(run.stage_plan).toHaveLength(6);
