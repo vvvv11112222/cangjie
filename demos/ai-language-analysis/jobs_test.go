@@ -379,13 +379,15 @@ func TestHealthIdentifiesRunningReportRulesWithoutChangingTasks(t *testing.T) {
 	before, _ := s.get("sample")
 	w := httptest.NewRecorder()
 	newDemoMux(testManager(s), s.root).ServeHTTP(w, httptest.NewRequest("GET", "/api/health", nil))
-	var got map[string]string
+	var got map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"status": "ok", "rubric_version": rubricVersion, "analysis_version": analysisVersion,
+	want := map[string]any{"status": "ok", "rubric_version": rubricVersion, "analysis_version": analysisVersion,
 		"narrative_protocol": narrativeProtocol, "advice_protocol": adviceProtocol,
-		"audit_version": reportAuditVersion, "semantic_protocol": semanticProtocol}
+		"audit_version": reportAuditVersion, "semantic_protocol": semanticProtocol,
+		"media_pipeline_version": mediaPipelineVersion, "max_duration_seconds": float64(maxMediaSeconds),
+		"max_upload_bytes": float64(maxUploadBytes)}
 	after, _ := s.get("sample")
 	if !reflect.DeepEqual(got, want) || w.Header().Get("Cache-Control") != "no-store" || !reflect.DeepEqual(before, after) {
 		t.Fatal("runtime rules must reflect this binary, bypass cache, and leave saved tasks unchanged", got)

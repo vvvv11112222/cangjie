@@ -61,6 +61,7 @@ func main() {
 	mux := newDemoMux(jobs, env("DEMO_DATA_DIR", "data"))
 	log.Print("http://" + addr)
 	log.Printf("报告程序：%s；正文规则：%s；全文复核：%s", analysisVersion, narrativeProtocol, reportAuditVersion)
+	log.Printf("媒体流程：%s；上传上限60分钟/2GB；长课按窗口分析", mediaPipelineVersion)
 	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	stopSignal := make(chan os.Signal, 1)
 	signal.Notify(stopSignal, os.Interrupt, syscall.SIGTERM)
@@ -113,6 +114,7 @@ func newDemoMux(manager *jobManager, root string) *http.ServeMux {
 		w.Header().Set("Cache-Control", "no-store")
 		writeJobJSON(w, 200, map[string]any{"status": "ok", "rubric_version": rubricVersion,
 			"analysis_version": analysisVersion, "narrative_protocol": narrativeProtocol,
+			"media_pipeline_version": mediaPipelineVersion, "max_duration_seconds": maxMediaSeconds, "max_upload_bytes": maxUploadBytes,
 			"advice_protocol": adviceProtocol, "audit_version": reportAuditVersion,
 			"semantic_protocol": semanticProtocol})
 	})
@@ -148,9 +150,12 @@ func run(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "已有任务运行", 409)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 256<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadRequestBytes)
 	if e := r.ParseMultipartForm(8 << 20); e != nil {
-		http.Error(w, "上传失败或超过256MB", 400)
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+		http.Error(w, "上传失败或超过2GB", 400)
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
@@ -163,12 +168,16 @@ func run(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "请确认云端处理授权和可能费用", 422)
 		return
 	}
-	f, _, err := r.FormFile("video")
+	f, header, err := r.FormFile("video")
 	if err != nil {
 		http.Error(w, "请选择视频", 400)
 		return
 	}
 	defer f.Close()
+	if header.Size > maxUploadBytes {
+		http.Error(w, "文件超过2GB，请压缩视频后上传", http.StatusRequestEntityTooLarge)
+		return
+	}
 	dir, err := os.MkdirTemp("", "classroom-demo-")
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -187,7 +196,7 @@ func run(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "文件保存失败", 500)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(r.Context(), jobTimeout)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -203,8 +212,8 @@ func run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	if err != nil || !(seconds > 0 && seconds <= 600) {
-		fail(fmt.Errorf("仅接受10分钟以内视频"))
+	if err != nil || validateMediaDuration(seconds) != nil {
+		fail(fmt.Errorf("视频时长无效或超过60分钟"))
 		return
 	}
 	audio := filepath.Join(dir, "audio.wav")
@@ -222,8 +231,8 @@ func run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seconds, err = strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	if err != nil || !(seconds > 0 && seconds <= 600) {
-		fail(fmt.Errorf("音频时长无效或超过10分钟"))
+	if err != nil || validateMediaDuration(seconds) != nil {
+		fail(fmt.Errorf("音频时长无效或超过60分钟"))
 		return
 	}
 	duration := int64(math.Round(seconds * 1000))

@@ -50,7 +50,10 @@ async function smoke(binary) {
     }
     assert.equal(health?.status, 'ok', 'backend health timeout');
     assert.equal(health.analysis_version, 'six-dim-coaching-v8');
-    const index = await get('/'); assert.equal(index.status, 200); assert.match(await index.text(), /<html/i);
+    assert.equal(health.media_pipeline_version, 'long-lesson-v1');
+    assert.equal(health.max_duration_seconds, 3600);
+    assert.equal(health.max_upload_bytes, 2 * 1024 ** 3);
+    const index = await get('/'); assert.equal(index.status, 200); const html = await index.text(); assert.match(html, /<html/i); assert.match(html, /60 分钟、2GB/);
     for (const route of ['/report.css', '/analysis.js', '/jobs.js', '/transcript.js', '/recovery.js', '/events.js']) {
       const response = await get(route); assert.equal(response.status, 200, route); assert.ok((await response.text()).length > 100, route);
     }
@@ -59,7 +62,9 @@ async function smoke(binary) {
     assert.ok(Array.isArray(listing.jobs) && listing.jobs.length === 0, 'isolated store must have no jobs');
     const missing = await get('/does-not-exist'); assert.equal(missing.status, 404);
     const result = { status: 'passed', platform: process.platform, arch: process.arch,
-      analysis_version: health.analysis_version, checks: ['isolated-start', 'health', 'embedded-web-assets', 'empty-job-store', '404', 'ffmpeg-generated-audio', 'ffprobe-16khz-mono'],
+      analysis_version: health.analysis_version, media_pipeline_version: health.media_pipeline_version,
+      max_duration_seconds: health.max_duration_seconds, max_upload_bytes: health.max_upload_bytes,
+      checks: ['isolated-start', 'health-and-upload-limits', 'embedded-web-assets', 'empty-job-store', '404', 'ffmpeg-generated-audio', 'ffprobe-16khz-mono'],
       real_model_calls: 0, real_classroom_acceptance: false, work };
     fs.writeFileSync(path.join(work, 'result.json'), JSON.stringify(result, null, 2) + '\n', { flag: 'wx' });
     return result;

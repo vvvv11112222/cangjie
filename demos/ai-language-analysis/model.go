@@ -163,8 +163,9 @@ type Completion struct {
 	Error json.RawMessage `json:"error"`
 }
 type ModelMeta struct {
-	ID    string          `json:"request_id"`
-	Usage json.RawMessage `json:"usage"`
+	ID       string          `json:"request_id"`
+	Usage    json.RawMessage `json:"usage"`
+	Requests []ModelMeta     `json:"requests,omitempty"`
 }
 
 // Each request is dispatched once. A timeout does not imply the provider did not bill it.
@@ -200,7 +201,7 @@ func callModel(ctx context.Context, base, key string, body any, stream bool) (st
 	if len(c.Choices) != 1 || c.Choices[0].Finish != "stop" {
 		return "", ModelMeta{}, errors.New("ASR completion missing or truncated")
 	}
-	return c.Choices[0].Message.Content, ModelMeta{c.ID, c.Usage}, nil
+	return c.Choices[0].Message.Content, ModelMeta{ID: c.ID, Usage: c.Usage}, nil
 }
 func readStream(r io.Reader) (string, ModelMeta, error) {
 	scanner := bufio.NewScanner(r)

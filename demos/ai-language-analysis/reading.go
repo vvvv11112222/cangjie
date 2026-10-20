@@ -179,11 +179,9 @@ func buildReading(segments []Segment, boundaries []BoundaryDecision, status, cod
 	return result
 }
 
-func organizeReading(ctx context.Context, base, key string, segments []Segment) ReadingResult {
+func organizeReadingWindow(ctx context.Context, base, key string, segments []Segment) ReadingResult {
 	prompt, _ := assets.ReadFile("reading_prompt.txt")
-	input, _ := json.Marshal(segments)
-	body := map[string]any{"model": env("BAILIAN_TEXT_MODEL", "qwen-plus"), "stream": true, "stream_options": map[string]bool{"include_usage": true}, "enable_thinking": false, "response_format": map[string]string{"type": "json_object"}, "messages": []map[string]string{{"role": "system", "content": string(prompt)}, {"role": "user", "content": string(input)}}}
-	raw, meta, err := callModel(ctx, base, key, body, true)
+	raw, meta, err := textTask(ctx, base, key, string(prompt), segments)
 	decisions := []BoundaryDecision{}
 	if err == nil {
 		decisions, err = parseReadingDecisions(raw, segments)

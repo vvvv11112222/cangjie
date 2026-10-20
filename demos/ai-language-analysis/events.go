@@ -360,14 +360,21 @@ func normalizeReportCoverage(report *Report, events []TeachingEvent) {
 	}
 }
 func textTask(ctx context.Context, base, key, prompt string, input any) (string, ModelMeta, error) {
+	if err := textRequestBudget(prompt, input); err != nil {
+		return "", ModelMeta{}, err
+	}
 	raw, _ := json.Marshal(input)
 	return callModel(ctx, base, key, map[string]any{"model": env("BAILIAN_TEXT_MODEL", "qwen-plus"), "stream": true, "stream_options": map[string]bool{"include_usage": true}, "enable_thinking": false, "response_format": map[string]string{"type": "json_object"}, "messages": []map[string]string{{"role": "system", "content": prompt}, {"role": "user", "content": string(raw)}}}, true)
 }
-func extractEvents(ctx context.Context, base, key string, segments []Segment) (EventSet, ModelMeta, error) {
+func extractEventsWindow(ctx context.Context, base, key string, segments []Segment) (EventSet, ModelMeta, error) {
 	p, _ := assets.ReadFile("events_prompt.txt")
 	r, _ := assets.ReadFile("rubric.md")
 	catalog := evidenceCatalog(segments)
 	input := map[string]any{"original_segments": segments, "evidence_catalog": catalog, "semantic_protocol": semanticProtocol}
+	if scope, ok := ctx.Value(eventWindowKey{}).(eventWindowScope); ok {
+		input["window_scope"] = scope
+		p = append(p, []byte("\n【分段分析】本次只是长课堂的一个窗口。遵守window_scope.max_events上限；提取代表性的完整教学动作，不用局部未提到判断整堂缺失，保留原始来源编号和时间。")...)
+	}
 	if feedback := reportFeedback(ctx); feedback != nil {
 		input["previous_validation_feedback"] = feedback
 	}

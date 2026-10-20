@@ -80,7 +80,7 @@ func (m *jobManager) stop() {
 	})
 }
 func (m *jobManager) run(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
 	m.mu.Lock()
 	m.active[id] = cancel
 	select {
@@ -106,6 +106,7 @@ func (m *jobManager) run(id string) {
 		j.Events = EventSet{}
 		j.Reading = ReadingResult{}
 		j.EventRequest, j.ReportRequest = ModelMeta{}, ModelMeta{}
+		j.Coverage = nil
 		j.Stage = "starting"
 		j.Message = "任务已开始"
 		j.Retryable = false
@@ -178,6 +179,7 @@ func (m *jobManager) run(id string) {
 		_ = m.store.update(id, func(j *Job) error {
 			j.FailureStage = j.Stage
 			j.EventRequest, j.ReportRequest = output.EventRequest, output.ReportRequest
+			j.Coverage = output.Coverage
 			if j.Stage == "reading" || j.Stage == "events" || j.Stage == "report" || j.Stage == "audit" {
 				j.ReportStatus = reportFailed
 			}
@@ -258,6 +260,7 @@ func (m *jobManager) run(id string) {
 		j.Reading = output.Reading
 		j.Events = output.Events
 		j.Report = output.Report
+		j.Coverage = output.Coverage
 		j.ReportStatus = output.ReportStatus
 		j.EventRequest, j.ReportRequest = output.EventRequest, output.ReportRequest
 		j.FailureStage = output.FailureStage
@@ -288,7 +291,7 @@ func (m *jobManager) run(id string) {
 			j.InputRevision = 1
 		}
 		if output.ReportStatus == reportReady {
-			j.ReportVersions = append(j.ReportVersions, ReportVersion{Version: len(j.ReportVersions) + 1, InputRevision: j.InputRevision, ASRStatus: j.ASRStatus, ReportStatus: reportReady, Report: output.Report, Segments: output.Segments, Reading: output.Reading, Events: output.Events, RubricVersion: rubricVersion, EventRequest: output.EventRequest, ReportRequest: output.ReportRequest, Warnings: output.Warnings, CreatedAt: now})
+			j.ReportVersions = append(j.ReportVersions, ReportVersion{Coverage: output.Coverage, Version: len(j.ReportVersions) + 1, InputRevision: j.InputRevision, ASRStatus: j.ASRStatus, ReportStatus: reportReady, Report: output.Report, Segments: output.Segments, Reading: output.Reading, Events: output.Events, RubricVersion: rubricVersion, EventRequest: output.EventRequest, ReportRequest: output.ReportRequest, Warnings: output.Warnings, CreatedAt: now})
 		}
 		return nil
 	})
@@ -354,6 +357,7 @@ func resetAnalysisForQueue(j *Job, message string) {
 	j.ReportStatus = reportPending
 	j.Report, j.Events, j.Reading = Report{}, EventSet{}, ReadingResult{}
 	j.EventRequest, j.ReportRequest = ModelMeta{}, ModelMeta{}
+	j.Coverage = nil
 	j.Warnings = transcriptWarnings(j.Warnings)
 }
 
@@ -428,6 +432,10 @@ func decodeJSON(r *http.Request, target any) error {
 	return nil
 }
 func saveUpload(f multipart.File, name, root string) (string, error) {
+	return saveUploadLimit(f, name, root, maxUploadBytes)
+}
+
+func saveUploadLimit(f multipart.File, name, root string, limit int64) (string, error) {
 	if root == "" {
 		root = "data"
 	}
@@ -448,11 +456,11 @@ func saveUpload(f multipart.File, name, root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	n, copyErr := io.Copy(dst, io.LimitReader(f, 256<<20+1))
+	n, copyErr := io.Copy(dst, io.LimitReader(f, limit+1))
 	closeErr := dst.Close()
-	if n > 256<<20 {
+	if n > limit {
 		_ = os.Remove(path)
-		return "", errors.New("文件超过256MB")
+		return "", errors.New("文件超过2GB，请压缩视频后上传")
 	}
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(path)
@@ -468,7 +476,10 @@ func (m *jobManager) createUpload(r *http.Request, root string) (Job, error) {
 		return Job{}, err
 	}
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		return Job{}, fmt.Errorf("上传失败或超过256MB")
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+		return Job{}, fmt.Errorf("上传失败或超过2GB")
 	}
 	defer r.MultipartForm.RemoveAll()
 	if r.FormValue("consent") != "yes" {
@@ -479,6 +490,9 @@ func (m *jobManager) createUpload(r *http.Request, root string) (Job, error) {
 		return Job{}, fmt.Errorf("请选择视频")
 	}
 	defer f.Close()
+	if h.Size > maxUploadBytes {
+		return Job{}, fmt.Errorf("文件超过2GB，请压缩视频后上传")
+	}
 	path, err := saveUpload(f, h.Filename, root)
 	if err != nil {
 		return Job{}, err
@@ -573,7 +587,11 @@ func (m *jobManager) registerRoutes(mux *http.ServeMux, root string) {
 		if !sameOrigin(w, r) {
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 257<<20)
+		if r.ContentLength > maxUploadRequestBytes {
+			writeJobJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "文件超过2GB，请压缩视频后上传"})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadRequestBytes)
 		job, err := m.createUpload(r, root)
 		if err != nil {
 			writeJobJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error()})

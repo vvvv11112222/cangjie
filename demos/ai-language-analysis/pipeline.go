@@ -16,6 +16,7 @@ import (
 )
 
 type AnalysisOutput struct {
+	Coverage           *LessonCoverage   `json:"lesson_coverage,omitempty"`
 	ReportStatus       string            `json:"report_status"`
 	FailureStage       string            `json:"failure_stage,omitempty"`
 	FailureMessage     string            `json:"failure_message,omitempty"`
@@ -41,8 +42,11 @@ func probeDuration(ctx context.Context, path string) (float64, error) {
 		return 0, err
 	}
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	if err != nil || !(seconds > 0 && seconds <= 600) {
-		return 0, fmt.Errorf("仅接受10分钟以内视频或音频")
+	if err != nil {
+		return 0, fmt.Errorf("媒体时长无效")
+	}
+	if err := validateMediaDuration(seconds); err != nil {
+		return 0, err
 	}
 	return seconds, nil
 }
@@ -51,9 +55,11 @@ func analyzeSegments(ctx context.Context, base, key string, segments []Segment, 
 	if len(segments) == 0 {
 		return AnalysisOutput{}, fmt.Errorf("未识别到文本")
 	}
+	ctx = withAnalysisProgress(ctx, progress)
 	progress("reading", "结合上下文整理跨段语句（保留原始转写）", 55)
 	reading := organizeReading(ctx, base, key, segments)
 	out := AnalysisOutput{ReportStatus: reportPending, Segments: segments, Reading: reading, TimestampPrecision: "按停顿弹性切分的音频块（最长40秒），并非句子或词级对齐"}
+	out.Coverage = &LessonCoverage{Version: mediaPipelineVersion, Windows: lessonWindows(segments), SourceCount: len(segments), Scope: "覆盖本次上传素材中全部非空转写块；不代表整节课完整、说话人已区分或音视频精确对齐"}
 	if ctx.Err() != nil {
 		return out, ctx.Err()
 	}
@@ -82,12 +88,18 @@ func analyzeSegments(ctx context.Context, base, key string, segments []Segment, 
 				out.ReportDiagnostic = failedReportDiagnostic(rejected.raw, nil, "event_contract", err, segments, events, eventMeta)
 			}
 			out.Events = EventSet{Events: []TeachingEvent{}}
+			var windowFailure *lessonWindowError
+			if errors.As(err, &windowFailure) && validateEvents(events, segments) == nil {
+				out.Events = events
+				out.Coverage.EventWindowsCompleted = windowFailure.completed
+			}
 			out.Report = insufficientReport("教学事件未完成，六维结论暂时没有可验证的事件证据")
 			out.ReportStatus, out.FailureStage, out.FailureMessage = reportFailed, "events", out.Warnings[len(out.Warnings)-1]
 			return out, nil
 		}
 	}
 	out.Events, out.EventRequest = events, eventMeta
+	out.Coverage.EventWindowsCompleted = len(out.Coverage.Windows)
 	progress("report", "基于教学事件生成六维报告", 78)
 	raw, meta, err := requestSixDimReport(ctx, base, key, segments, reading, events)
 	out.ReportRequest = meta

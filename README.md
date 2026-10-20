@@ -32,7 +32,7 @@
 
 ## 六维语言分析独立演示
 
-⑥号成员的课堂语言分析交付位于 [demos/ai-language-analysis](demos/ai-language-analysis/README.md)，包括 ASR、连续阅读、六维反馈、证据回放、提示词、测试和参赛说明。该目录为独立 Go 模块；启动和测试须先进入该目录，不属于根目录 API 的已接入功能。
+⑥号成员的课堂语言分析交付位于 [demos/ai-language-analysis](demos/ai-language-analysis/README.md)，包括 ASR、连续阅读、六维反馈、证据回放、提示词、测试和参赛说明。上传上限为 60 分钟/2 GiB，长课分窗提取依据，报告与复核接收完整转写；已验证合成 45 分钟媒体流程及中断续跑，真实长课质量和费用仍待验收。该目录为独立 Go 模块；启动和测试须先进入该目录，不属于根目录 API 的已接入功能。
 
 已提供 [主项目候选转换与自动验收工具](demos/ai-language-analysis/integration/README.md)，使用服务端证据映射和最终模型输入清单，保留教师阅读所需的分析与建议扩展。主项目内部服务、数据库与 React 的正式接入尚未完成；真实中文质量、教师评价及 Linux/Docker 实际运行仍待验收。验证范围见 [模块测试报告](demos/ai-language-analysis/TEST-REPORT.md)，接入边界见 [交付说明](demos/ai-language-analysis/HANDOFF.md)。
 
