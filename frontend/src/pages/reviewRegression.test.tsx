@@ -137,6 +137,22 @@ it.each([['teacher', null], ['supervisor', 'college'], ['academic_admin', 'colle
   await click('编辑权限'); await submit(); expect(h.grant).toHaveBeenCalledTimes(1);
 });
 
+it('centers the account empty state inside the table card', async () => {
+  h.users.mockResolvedValue({ items: [], nextCursor: null });
+  await mount(<AccountsPage/>);
+  const empty = container.querySelector('.accounts-empty-state');
+  expect(empty).not.toBeNull();
+  expect(empty?.textContent).toContain('没有符合条件的账号');
+});
+
+it('centers empty states across every academic table', async () => {
+  await mount(<AcademicPage/>);
+  for (const tab of ['本周课表', '开课实例', '课程', '学期', '教室']) {
+    await click(tab);
+    expect(container.querySelector('.academic-empty-state')).not.toBeNull();
+  }
+});
+
 it('retries only the role grant after account creation succeeds', async () => {
   h.users.mockResolvedValue({ items: [], nextCursor: null }); h.grant.mockRejectedValueOnce(new Error('temporary failure'));
   await mount(<AccountsPage/>); await click('新增账号');

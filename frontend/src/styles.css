@@ -1145,6 +1145,10 @@ code {
 .accounts-table-card { overflow: hidden; }
 .accounts-table td { vertical-align: middle; }
 .accounts-table .permission-cell { min-width: 280px; max-width: 390px; white-space: normal; line-height: 1.8; }
+.accounts-empty-state,
+.academic-empty-state { min-height: 132px; display: grid; place-items: center; padding: 24px; text-align: center; }
+.accounts-empty-state .empty,
+.academic-empty-state .empty { margin: 0; }
 .accounts-row-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .accounts-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .badge-gray { background: var(--neutral-soft); color: var(--muted); }
