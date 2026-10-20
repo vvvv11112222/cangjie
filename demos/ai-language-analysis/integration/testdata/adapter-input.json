@@ -1,0 +1,141 @@
+{
+  "synthetic": true,
+  "notice": "Invented interface fixture. Not a real lecture, teacher review or quality acceptance.",
+  "report": {
+    "summary": "教师通过比较结构层次引出温度影响。",
+    "summary_evidence_ids": [
+      "seg-001"
+    ],
+    "dimensions": [
+      {
+        "dimension_code": "content",
+        "coverage_status": "observed",
+        "summary": "先比较结构，再解释变化。",
+        "limitation": "",
+        "summary_evidence_ids": [
+          "seg-001"
+        ]
+      },
+      {
+        "dimension_code": "pace",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "合成文本不足以判断该维度。",
+        "summary_evidence_ids": []
+      },
+      {
+        "dimension_code": "thinking",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "合成文本不足以判断该维度。",
+        "summary_evidence_ids": []
+      },
+      {
+        "dimension_code": "expression",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "合成文本不足以判断该维度。",
+        "summary_evidence_ids": []
+      },
+      {
+        "dimension_code": "management",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "合成文本不足以判断该维度。",
+        "summary_evidence_ids": []
+      },
+      {
+        "dimension_code": "technology",
+        "coverage_status": "insufficient",
+        "summary": "",
+        "limitation": "合成文本不足以判断该维度。",
+        "summary_evidence_ids": []
+      }
+    ],
+    "observations": [
+      {
+        "dimension_code": "content",
+        "observation_type": "highlight",
+        "observation_text": "教师先安排结构比较，再引入温度影响。",
+        "suggestion": "比较时让学生分别写出结构层次和维持作用，再用温度变化解释其中一项。",
+        "evidence_ids": [
+          "seg-001"
+        ],
+        "title": "用结构比较引入变化原因",
+        "analysis": "帮助学生把变化原因对应到具体结构，实际理解效果仍需学生回答验证。",
+        "verification": "查看学生能否区分肽键断裂与空间结构改变。",
+        "event_ids": [
+          "ev-001"
+        ]
+      }
+    ],
+    "analysis_version": "six-dim-coaching-v8",
+    "quality_audit": {
+      "status": "synthetic_fixture",
+      "human_verified": false
+    }
+  },
+  "model_input": {
+    "schema_version": "1.1",
+    "run_id": "10000000-0000-4000-8000-000000000001",
+    "session_id": "10000000-0000-4000-8000-000000000002",
+    "media_asset_id": "10000000-0000-4000-8000-000000000003",
+    "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "transcript_revision_id": "10000000-0000-4000-8000-000000000004",
+    "model": {
+      "name": "offline-fixture",
+      "revision": "1"
+    },
+    "prompt_version": "fixture-1",
+    "prompt_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "selection_version": "fixture-1",
+    "course_context": {
+      "course_name": "合成生物样例",
+      "session_title": "接口检查"
+    },
+    "coverage": [
+      {
+        "start_ms": 0,
+        "end_ms": 10000
+      },
+      {
+        "start_ms": 20000,
+        "end_ms": 30000
+      }
+    ],
+    "limitations": [],
+    "evidence": [
+      {
+        "id": "10000000-0000-4000-8000-000000000005",
+        "kind": "transcript",
+        "start_ms": 1000,
+        "end_ms": 6000,
+        "text_content": "先比较蛋白质结构，再解释温度改变如何影响结构。",
+        "text_sha256": "COMPUTE_FROM_FIXTURE_TEXT"
+      }
+    ]
+  },
+  "context": {
+    "run_id": "10000000-0000-4000-8000-000000000001",
+    "session_id": "10000000-0000-4000-8000-000000000002",
+    "media_asset_id": "10000000-0000-4000-8000-000000000003",
+    "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest_sha256": "COMPUTE_FROM_FINAL_MODEL_INPUT_BYTES",
+    "transcript_revision_id": "10000000-0000-4000-8000-000000000004",
+    "duration_ms": 30000,
+    "source_timeline_confirmed": true,
+    "bindings": [
+      {
+        "segment_id": "seg-001",
+        "evidence_id": "10000000-0000-4000-8000-000000000005",
+        "run_id": "10000000-0000-4000-8000-000000000001",
+        "session_id": "10000000-0000-4000-8000-000000000002",
+        "media_asset_id": "10000000-0000-4000-8000-000000000003",
+        "availability": "available",
+        "start_ms": 1000,
+        "end_ms": 6000,
+        "text": "先比较蛋白质结构，再解释温度改变如何影响结构。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "split": "held_out",
+  "synthetic": true,
+  "source_records": [
+    {
+      "id": "invented-text",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rights_reference": "人工编写的测试文字；不对应真实录像或授权证明。"
+    }
+  ],
+  "samples": [
+    {
+      "id": "synthetic-clear",
+      "source_id": "invented-text",
+      "scenario": "clear",
+      "reference": "蛋白质，结构 123",
+      "hypothesis": "蛋白质结构123",
+      "duration_ms": 10000,
+      "timings": [
+        {
+          "reference_start_ms": 1000,
+          "reference_end_ms": 5000,
+          "actual_start_ms": 1200,
+          "actual_end_ms": 5300
+        }
+      ]
+    },
+    {
+      "id": "synthetic-noisy",
+      "source_id": "invented-text",
+      "scenario": "noisy",
+      "reference": "蛋白质，结构 123",
+      "hypothesis": "蛋白质结构123",
+      "duration_ms": 10000,
+      "timings": [
+        {
+          "reference_start_ms": 1000,
+          "reference_end_ms": 5000,
+          "actual_start_ms": 1200,
+          "actual_end_ms": 5300
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "version": "p0-provisional-1",
+  "approved_on": "2026-10-03",
+  "status": "provisional_target",
+  "cer_max": {"clear": 0.15, "noisy": 0.30},
+  "timing_p95_max_ms": 1500,
+  "normalization": "remove_unicode_punctuation_and_whitespace_keep_digits",
+  "percentile": "nearest_rank",
+  "required_split": "held_out"
+}
