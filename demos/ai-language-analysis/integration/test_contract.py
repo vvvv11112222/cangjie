@@ -57,6 +57,20 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(original["verification"])
         self.assertIn("quality_audit", self.result["extensions"]["source_report"])
 
+    def test_cli_accepts_empty_observations_and_preserves_strict_candidate(self):
+        report = json.loads((self.temp / "report.json").read_text(encoding="utf-8"))
+        report["observations"] = []
+        empty = self.temp / "empty-report.json"
+        empty.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+        result = subprocess.run([str(self.binary), "--report", str(empty),
+                                 "--model-input", str(self.temp / "model-input.json"),
+                                 "--context", str(self.temp / "context.json")], cwd=self.temp,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        converted = json.loads(result.stdout)
+        self.validator.validate(converted["candidate"])
+        self.assertEqual(converted["candidate"]["observations"], [])
+        self.assertEqual(converted["extensions"]["source_report"], report)
+
     def test_schema_rejects_local_ids_extra_fields_and_missing_coverage(self):
         for mutate in (lambda c: c.update(summary_evidence_ids=["seg-001"]),
                        lambda c: c["observations"][0].update(event_ids=["ev-001"]),

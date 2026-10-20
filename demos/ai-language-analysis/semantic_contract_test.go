@@ -13,6 +13,43 @@ import (
 	"testing"
 )
 
+func TestActivityGatePreservesTasksAccompaniedByAttentionReminders(t *testing.T) {
+	cases := []struct {
+		text string
+		task bool
+	}{
+		{"请注意单位并计算这道题，把结果写在纸上。", true},
+		{"Please listen to the recording and write down three key points.", true},
+		{"Pay attention to units and calculate the result.", true},
+		{"同学们请记住条件并解释你的理由。", true},
+		{"我要讲解例子，请两人一组讨论并写出理由。", true},
+		{"Please write one reason; I will collect it later.", true},
+		{"I want you to compare the two solutions.", true},
+		{"请注意这两个要点。", false},
+		{"同学们请认真听讲。", false},
+		{"Please listen carefully and remember these points.", false},
+		{"I want to explain two points.", false},
+		{"Pay attention to how I explain this example.", false},
+		{"Please notice the compared cases.", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.text, func(t *testing.T) {
+			segments := []Segment{{ID: "s1", Start: 0, End: 10000, Text: tc.text}}
+			set := EventSet{Events: []TeachingEvent{{ID: "task", Type: "organization", Summary: "课堂任务", DimensionCodes: []string{"management"},
+				Quotes:   []EventQuote{{QuoteID: "s1-q01", SegmentID: "s1", Text: tc.text}},
+				Activity: &ActivityInstruction{LearnerAction: "学生完成任务并提供产出", QuoteIDs: []string{"s1-q01"}}}}}
+			if err := validateEvents(set, segments); err != nil {
+				t.Fatal(err)
+			}
+			before := cloneValue(set)
+			valid, rejected := isolateInvalidActivityEvents(set)
+			if (len(valid.Events) == 1) != tc.task || len(rejected)+len(valid.Events) != 1 || !reflect.DeepEqual(before, set) {
+				t.Fatalf("task=%v, accepted=%d, rejected=%d; input must remain unchanged", tc.task, len(valid.Events), len(rejected))
+			}
+		})
+	}
+}
+
 func TestActivityGateKeepsExplicitStudentInstructionAndRejectsMissingMaterial(t *testing.T) {
 	segments := []Segment{{ID: "s1", Start: 0, End: 30000, Text: "请两人一组讨论这个例子。把理由写在纸上。"}}
 	catalog := evidenceCatalog(segments)

@@ -40,6 +40,8 @@ func TestCoachingReportRequiresInterpretationAndCheckableAdvice(t *testing.T) {
 		func(r *Report) { r.Observations[0].Type = "issue"; r.Observations[0].Suggestion = "" },
 		func(r *Report) { r.Observations[0].EventIDs = []string{"unknown"} },
 		func(r *Report) { r.AnalysisVersion = "unknown" },
+		func(r *Report) { r.AnalysisVersion = "six-dim-coaching-v0" },
+		func(r *Report) { r.AnalysisVersion = "six-dim-coaching-v9" },
 	} {
 		bad := cloneValue(report)
 		change(&bad)

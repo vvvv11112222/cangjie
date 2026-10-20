@@ -1,11 +1,64 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestHistoricalReportsRetainReviewTargetsAndSavedReviewsAfterReload(t *testing.T) {
+	for version := 1; version <= 7; version++ {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			s, v := reviewedFixture(t)
+			v.Report.AnalysisVersion = fmt.Sprintf("six-dim-coaching-v%d", version)
+			if err := s.update("sample", func(j *Job) error {
+				j.Report = cloneValue(v.Report)
+				j.ReportVersions = []ReportVersion{cloneValue(v)}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			hash := reviewHash(v)
+			saved, err := s.saveReview("sample", 1, 1, reviewRequest(hash, 0))
+			if err != nil {
+				t.Fatal("historical review save rejected", err)
+			}
+			reloaded, err := newJobStore(s.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, _ := reloaded.get("sample")
+			if job.ReportVersion != 1 || len(job.ReviewTargets) != 1 || job.ReviewTargets[0].ReportHash != hash {
+				t.Fatal("historical target lost after reload", job.ReviewTargets)
+			}
+			mux := http.NewServeMux()
+			reloaded.registerReviewRoutes(mux)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, httptest.NewRequest("GET", "/api/jobs/sample/reports/1/reviews", nil))
+			var bundle ReviewBundle
+			if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &bundle) != nil {
+				t.Fatal("historical review API rejected", w.Code, w.Body.String())
+			}
+			if len(bundle.Reviews) != 1 || bundle.Reviews[0] != saved || bundle.Counts.Confirmed != 1 || bundle.Target.ReportHash != hash || !reflect.DeepEqual(bundle.Report.Report, v.Report) {
+				t.Fatal("historical payload, hash or review was changed")
+			}
+			// Compatibility never permits a historical citation to point elsewhere.
+			if err := reloaded.update("sample", func(j *Job) error {
+				j.ReportVersions[0].Report.Observations[0].IDs = []string{"another-revision"}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reloaded.reviewBundle("sample", 1); err != errReviewReport {
+				t.Fatal("invalid historical evidence accepted", err)
+			}
+		})
+	}
+}
 
 func reviewedFixture(t *testing.T) (*jobStore, ReportVersion) {
 	t.Helper()

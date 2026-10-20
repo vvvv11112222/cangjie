@@ -95,7 +95,7 @@ func TestRejectsUnsafeEvidenceAndUnsupportedClaims(t *testing.T) {
 		},
 		"limited dimension claims": func(r *sourceReport, i *modelInput, c *Context) { r.Dimensions[1].Summary = "学生理解充分" },
 		"duplicate dimension":      func(r *sourceReport, i *modelInput, c *Context) { r.Dimensions[1].Code = "content" },
-		"empty observations":       func(r *sourceReport, i *modelInput, c *Context) { r.Observations = nil },
+		"null observations":        func(r *sourceReport, i *modelInput, c *Context) { r.Observations = nil },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -105,6 +105,32 @@ func TestRejectsUnsafeEvidenceAndUnsupportedClaims(t *testing.T) {
 				t.Fatal("invalid integration input accepted")
 			}
 		})
+	}
+}
+
+func TestPreservesEmptyObservationsWithoutInventingFindings(t *testing.T) {
+	for _, allInsufficient := range []bool{false, true} {
+		r, i, c := fixture(t)
+		r.Observations = []sourceObservation{}
+		if allInsufficient {
+			r.Summary, r.IDs = "", []string{}
+			for n := range r.Dimensions {
+				r.Dimensions[n].Status = "insufficient"
+				r.Dimensions[n].Summary, r.Dimensions[n].IDs = "", []string{}
+				r.Dimensions[n].Limitation = "没有足够教学事件。"
+			}
+		}
+		out, err := convertFixture(t, r, i, c)
+		if err != nil {
+			t.Fatal("valid empty observation list rejected", err)
+		}
+		if out.Candidate.Observations == nil || len(out.Candidate.Observations) != 0 || len(out.Candidate.Dimensions) != 6 {
+			t.Fatal("empty findings must remain a non-null empty array")
+		}
+		var preserved sourceReport
+		if err := json.Unmarshal(out.Extensions.SourceReport, &preserved); err != nil || preserved.Observations == nil || len(preserved.Observations) != 0 {
+			t.Fatal("original empty report changed", err)
+		}
 	}
 }
 

@@ -53,8 +53,20 @@ type Report struct {
 
 var codes = []string{"content", "pace", "thinking", "expression", "management", "technology"}
 
+// Known saved versions keep their original payload and review hash. Generation
+// still stamps analysisVersion in bindReportDraft; unknown formats stay rejected.
+func supportedReportVersion(version string) bool {
+	switch version {
+	case "", analysisVersion,
+		"six-dim-coaching-v1", "six-dim-coaching-v2", "six-dim-coaching-v3",
+		"six-dim-coaching-v4", "six-dim-coaching-v5", "six-dim-coaching-v6", "six-dim-coaching-v7":
+		return true
+	}
+	return false
+}
+
 func validateReport(r Report, segments []Segment) error {
-	if r.AnalysisVersion != "" && r.AnalysisVersion != analysisVersion {
+	if !supportedReportVersion(r.AnalysisVersion) {
 		return errors.New("分析报告版本不支持")
 	}
 	known := map[string]bool{}

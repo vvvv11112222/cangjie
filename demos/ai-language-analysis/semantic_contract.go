@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 const semanticProtocol = "grounded-feedback-v4"
@@ -124,23 +125,48 @@ func isolateInvalidActivityEvents(set EventSet) (EventSet, []RejectedEvent) {
 
 // ActivityInstruction is a semantic material gate. A generated learner_action
 // such as “注意两个要点” cannot turn teacher narration into a student task;
-// every cited quote must contain an explicit task/output marker.
+// every cited quote must contain a task/output marker. Attention reminders may
+// accompany a real task, but politeness or learner names alone are not tasks.
 func explicitLearnerTaskQuote(text string) bool {
 	lower := strings.ToLower(strings.TrimSpace(text))
 	if lower == "" {
 		return false
 	}
-	for _, passive := range []string{"pay attention", "focus on", "listen", "notice", "remember", "keep in mind", "i want to", "i will", "we will", "注意", "关注", "听讲", "记住", "留意", "我要", "我会", "我来"} {
-		if strings.Contains(lower, passive) {
-			return false
+	clauses := strings.FieldsFunc(lower, func(r rune) bool {
+		return strings.ContainsRune(",;.!?，；。！？\n", r)
+	})
+	for _, clause := range clauses {
+		// A separate teacher-narration clause must not mask a learner task.
+		narration := false
+		for _, teacher := range []string{"i want to", "i will", "we will", "i explain", "i compare", "我要", "我会", "我来"} {
+			if strings.Contains(clause, teacher) {
+				narration = true
+				break
+			}
 		}
-	}
-	for _, marker := range []string{"please", "you should", "you need to", "i want you to", "discuss", "write", "calculate", "explain", "compare", "solve", "submit", "turn in", "work in pairs", "in groups", "answer", "complete", "show your", "请", "你们", "同学", "讨论", "写", "计算", "解释", "比较", "解决", "提交", "完成", "展示", "分组"} {
-		if strings.Contains(lower, marker) {
-			return true
+		if narration {
+			continue
+		}
+		for _, passive := range []string{"pay attention", "focus on", "listen", "notice", "remember", "keep in mind", "注意", "关注", "听讲", "记住", "留意"} {
+			clause = strings.ReplaceAll(clause, passive, " ")
+		}
+		for _, marker := range []string{"discuss", "write", "calculate", "explain", "compare", "solve", "submit", "turn in", "work in pairs", "in groups", "answer", "complete", "show your", "讨论", "写", "计算", "解释", "比较", "解决", "提交", "完成", "展示", "分组", "回答", "复述", "朗读", "画出", "圈出", "标注", "举手"} {
+			if strings.Contains(clause, marker) {
+				// Match English words, so e.g. "compared" or "writer"
+				// cannot supply an imperative "compare" or "write" marker.
+				if marker[0] < unicode.MaxASCII && !containsTaskWords(clause, marker) {
+					continue
+				}
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func containsTaskWords(text, marker string) bool {
+	words := strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) })
+	return strings.Contains(" "+strings.Join(words, " ")+" ", " "+marker+" ")
 }
 
 func validateProblemBasis(finding ObservationDraft, basis ReportBasis, segments []Segment) error {

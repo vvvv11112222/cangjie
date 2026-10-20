@@ -31,6 +31,8 @@ go run ./cmd/adapt-report --report <纯Report文件> --model-input <最终ModelI
 
 输出分成 candidate 和 extensions。只有 candidate 符合正式候选 Schema，包含六维、原观察文字与完整 suggestion；coverage 原样采用实际输入窗口，保留空隙，不解释为行为持续区间。extensions 保存原报告全部内容，包括 title、analysis、verification、event_ids 和 quality_audit，并记录候选摘要用于防止错配。主项目尚不接受这个扩展对象；需与队长确定存储和 React 展示方式，避免迁移后丢失有用内容。扩展含课堂正文，同样受权限和清理约束，不能提交实际输出到 GitHub。
 
+没有独立发现时允许 `observations: []`，保留六维状态、覆盖窗口及限制，不补造观察；缺失或 null 数组仍拒绝。转换成功仅表示候选符合输入检查，正式发布仍须遵循主项目的人工复核和至少一条事实观察等条件。
+
 extensions 的 candidate_sha256 按 Go 候选结构 JSON 紧凑序列化计算，source_report_sha256 按保留对象原字段顺序经 Go json.Marshal(RawMessage) 紧凑序列化计算，使用默认 HTML 字符转义规则；重新排序键会改变摘要。它们不等同于主项目业务报告的 content_sha256。
 
 哈希和绑定只检查结构与内容一致性，不能证明某次模型调用实际发生、来源获准或输入与旧报告的生成历史一致。调用方仍须用可信账目/请求记录关联报告及最终输入，沿用主项目当前许可、有效租约、实际请求体摘要、发布审核和过期检查。不要把历史 demo 报告补一组新 UUID 后当作已完成正式接入。

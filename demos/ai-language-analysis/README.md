@@ -45,6 +45,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 
 打开 [http://127.0.0.1:8090](http://127.0.0.1:8090)。脚本统一编译并启动 `bin/teacher-report-demo.exe`。只编译可用 `go build -o bin/teacher-report-demo.exe .`，开发可用 `go run .`。
 
+自定义端口可修改 `.env` 的 `DEMO_PORT`，启动后按终端打印的实际地址访问；已有进程环境变量优先于 `.env`，两处均未设置时才使用 8090。Windows 脚本不会写入默认端口覆盖配置文件。
+
 端口被占用时，确认旧服务没有正在处理的任务，在原窗口按 Ctrl+C 停止后再启动。刷新页面不会切换后端；提示词、标准及网页嵌入程序，修改后需要重新编译启动。一个数据目录只运行一个服务。
 
 Linux 配置环境后用 `sh scripts/start.sh`。容器可用 `docker compose up --build -d`，日志用 `docker compose logs -f demo`；国内构建可加 GOPROXY 构建参数。Compose 仅绑定宿主机本地端口，使用命名数据卷；停止用 `docker compose down`，不要添加删除卷的 `-v`。Linux/Docker 实际运行尚未验收。

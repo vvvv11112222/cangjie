@@ -246,8 +246,8 @@ func Convert(reportJSON, modelInputJSON []byte, ctx Context) (Result, error) {
 	if err := decode(reportJSON, &source, true); err != nil {
 		return fail("invalid demo report JSON or unsupported fields")
 	}
-	if len(source.Dimensions) != 6 || len(source.Observations) == 0 {
-		return fail("six dimensions and at least one observation required")
+	if len(source.Dimensions) != 6 || source.Observations == nil {
+		return fail("six dimensions and a non-null observations array required")
 	}
 	candidate := Candidate{Summary: source.Summary, Dimensions: []Dimension{}, Observations: []Observation{}}
 	var err error
