@@ -106,6 +106,27 @@ describe('phone capture lifecycle (synthetic browser APIs, not Android acceptanc
     expect(s.video.stop).toHaveBeenCalled(); expect(s.phone.state.error).toContain('必须同时'); s.phone.dispose();
   });
 
+  it('rejects a portrait 720x1280 stream before consuming its pairing',async()=>{
+    const s=setup();vi.spyOn(s.video,'getSettings').mockReturnValue({width:720,height:1280,frameRate:15,facingMode:'environment'});
+    await s.phone.start();expect(s.fetch).not.toHaveBeenCalled();
+    expect(s.video.stop).toHaveBeenCalled();expect(s.phone.state.error).toContain('横放手机');expect(s.phone.state.canStart).toBe(true);s.phone.dispose();
+  });
+
+  it('shows the actual server processing failure rather than a permission error',async()=>{
+    const s=setup();await s.phone.start();
+    s.fetch.mockImplementation(async(_url,init)=>init?.method==='DELETE'?new Response(null,{status:204}):response({...waiting,state:'failed',error_code:'CAPTURE_PREPARE_FAILED'}));
+    await s.phone.poll();expect(s.phone.state.error).toContain('CAPTURE_PREPARE_FAILED');
+    expect(s.phone.state.canStop).toBe(false);const count=s.fetch.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5000);expect(s.fetch).toHaveBeenCalledTimes(count);s.phone.dispose();
+  });
+
+  it('stops polling revoked credentials and releases hardware without claiming success',async()=>{
+    const s=setup();await s.phone.start();
+    s.fetch.mockImplementation(async(_url,init)=>init?.method==='DELETE'?new Response(null,{status:204}):new Response(JSON.stringify({error:{code:'FORBIDDEN'}}),{status:403}));
+    await s.phone.poll();expect(s.video.stop).toHaveBeenCalled();expect(s.phone.state.notice).toContain('不能确认录像已保存');
+    const count=s.fetch.mock.calls.length;await vi.advanceTimersByTimeAsync(5000);expect(s.fetch).toHaveBeenCalledTimes(count);s.phone.dispose();
+  });
+
   it('never retries an expired/consumed exchange, or an exchange whose response was lost',async()=>{
     for(const lost of [false,true]) {
       const s=setup(); s.fetch.mockImplementation(async()=>{

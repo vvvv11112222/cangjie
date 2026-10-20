@@ -112,6 +112,16 @@ func TestLiveCaptureRevocationCleanupAndFinalizeBackoff(t *testing.T) {
 		t.Fatal("cleanup left recording")
 	}
 	third := create("retry")
+	thirdPair, e := cs.Pair(ctx, p, third.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	thirdURL, _ := url.Parse(thirdPair.URL)
+	thirdFragment, _ := url.ParseQuery(thirdURL.Fragment)
+	thirdPublisher, e := cs.Exchange(ctx, capture.Exchange{Token: thirdFragment.Get("pairing_token")})
+	if e != nil {
+		t.Fatal(e)
+	}
 	path = queryID(t, pool, `SELECT stream_path FROM teaching.live_captures WHERE id='`+third.ID+`'`)
 	file = filepath.Join(root, filepath.FromSlash(path), "part.mp4")
 	if e = os.MkdirAll(filepath.Dir(file), 0700); e != nil {
@@ -149,5 +159,36 @@ func TestLiveCaptureRevocationCleanupAndFinalizeBackoff(t *testing.T) {
 	}
 	if attempts != 2 || !delayed {
 		t.Fatalf("failed finalizer bypassed backoff: attempts=%d delayed=%v", attempts, delayed)
+	}
+	if _, e = pool.Exec(ctx, `UPDATE teaching.live_captures SET available_at=now() WHERE id=$1`, third.ID); e != nil {
+		t.Fatal(e)
+	}
+	end = time.Now().Add(4 * time.Second)
+	for {
+		v, err := cs.Get(ctx, p, third.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.State == "failed" {
+			break
+		}
+		if time.Now().After(end) {
+			t.Fatal("operational failure did not reach terminal state")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	phonePrincipal, e := cs.ControlPrincipal(ctx, third.ID, thirdPublisher.ControlToken)
+	if e != nil {
+		t.Fatal("operational failure hid terminal status from phone:", e)
+	}
+	failed, e := cs.Get(ctx, phonePrincipal, third.ID)
+	if e != nil || failed.State != "failed" || failed.ErrorCode == nil || *failed.ErrorCode != "CAPTURE_FINALIZE_FAILED" {
+		t.Fatalf("phone terminal status=%+v err=%v", failed, e)
+	}
+	if _, e = pool.Exec(ctx, `UPDATE teaching.capture_grants SET expires_at=now()-interval '1 second' WHERE capture_id=$1 AND purpose='control'`, third.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = cs.ControlPrincipal(ctx, third.ID, thirdPublisher.ControlToken); e == nil {
+		t.Fatal("expired control token retained access")
 	}
 }

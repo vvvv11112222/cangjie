@@ -204,7 +204,14 @@ func (s *Service) abort(ctx context.Context, r record, code string) error {
 	if _, e = tx.Exec(ctx, `UPDATE teaching.live_captures SET state='failed',error_code=$2,end_reason=COALESCE(end_reason,'invalidated'),ended_at=now(),recording_state='cleanup_pending' WHERE id=$1`, r.ID, code); e != nil {
 		return e
 	}
-	if _, e = tx.Exec(ctx, `UPDATE teaching.capture_grants SET revoked_at=now() WHERE capture_id=$1`, r.ID); e != nil {
+	// Operational failures still need to be observable by the paired phone.
+	// Keep only its bounded control grant; authorization loss revokes everything.
+	revokeControl := true
+	switch code {
+	case "CAPTURE_NO_MEDIA", "CAPTURE_PREPARE_FAILED", "CAPTURE_FINALIZE_FAILED", "CAPTURE_FINALIZE_TIMEOUT":
+		revokeControl = false
+	}
+	if _, e = tx.Exec(ctx, `UPDATE teaching.capture_grants SET revoked_at=now() WHERE capture_id=$1 AND ($2::boolean OR purpose<>'control')`, r.ID, revokeControl); e != nil {
 		return e
 	}
 	if e = tx.Commit(ctx); e != nil {

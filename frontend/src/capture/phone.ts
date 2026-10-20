@@ -53,6 +53,7 @@ export function captureHint(error: unknown): string {
     CONNECTION_TIMEOUT: '媒体连接超时，请检查 Wi-Fi 和 UDP 8189；回电脑停止后重新建采集。',
     CODEC_UNSUPPORTED: '浏览器未能提供兼容的 H.264/Opus，请更新安卓 Chrome 或与后端确认兼容方案。',
     TRACKS_MISSING: '必须同时获得一个摄像头和一个麦克风，当前不能完成音视频采集。',
+    CAPTURE_DIMENSIONS: '手机实际画面超过采集分辨率上限。请先横放手机，再重新开始；当前尚未发布音视频。',
     WHIP_LOCATION_MISSING: '媒体代理未返回资源地址，请后端检查 Location 响应头。',
     WHIP_LOCATION_INVALID: '媒体资源地址与发布通道不匹配，请后端检查代理的 Location 重写。',
     MEDIA_URL_INVALID: '发布地址不是可信 HTTPS 通道，请后端检查媒体地址配置。',
@@ -112,13 +113,15 @@ export class PhoneCapture {
     this.emit();
     try {
       const stream = await this.env.getMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15 } },
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 15, max: 15 } },
         audio: { echoCancellation: true, noiseSuppression: true },
       });
       if (generation !== this.generation) { stream.getTracks().forEach(track => track.stop()); return; }
       this.state.stream = stream;
       if (stream.getVideoTracks().length !== 1 || stream.getAudioTracks().length !== 1 || stream.getTracks().some(t => t.readyState !== 'live')) throw new Error('TRACKS_MISSING');
       this.state.settings = stream.getTracks().map(track => track.getSettings());
+      const videoSettings = stream.getVideoTracks()[0]?.getSettings();
+      if ((videoSettings?.width ?? 0) > 1280 || (videoSettings?.height ?? 0) > 720) throw new Error('CAPTURE_DIMENSIONS');
       for (const track of stream.getTracks()) {
         track.onended = () => { void this.interrupted('摄像头或麦克风权限被收回。本次采集结束，请回电脑重新创建。'); };
         track.onmute = () => {
@@ -241,10 +244,17 @@ export class PhoneCapture {
         this.state.stopPending = false;
         this.state.canStop = false;
         this.state.notice = capture.state === 'ready' ? '服务器已完成录像登记，请回电脑验证回放中的画面与声音。' : '服务器采集失败，请回电脑查看错误并重新创建采集。';
+        if (capture.state === 'failed') this.state.error = '录像处理失败：' + (capture.error_code ?? 'UNKNOWN') + '。请回电脑查看处理详情，再新建采集。';
       }
       if (this.peer?.connectionState === 'connected') await this.readCodecs(this.peer);
     } catch (error) {
       this.state.error = '状态暂时无法确认：' + captureHint(error);
+      if (error instanceof CaptureError && ['FORBIDDEN', 'UNAUTHENTICATED', 'RESOURCE_EXPIRED'].includes(error.code)) {
+        ++this.generation; this.releaseLocal(); void this.deleteResource();
+        this.finished = true;
+        this.state.phase = 'stopped'; this.state.canStart = false; this.state.canStop = false;
+        this.state.notice = '本地已停止，控制权限已失效。请回电脑查询服务器最终状态；当前不能确认录像已保存。';
+      }
     } finally {
       this.pollRunning = false;
       this.emit();
