@@ -41,6 +41,9 @@ func run() error {
 	if err := cfg.ValidateWorkerRuntime(); err != nil {
 		return err
 	}
+	if err := analysis.ValidateReportPrompt(cfg.ReportEnabled, cfg.ReportPromptVersion, cfg.ReportPromptSHA256); err != nil {
+		return err
+	}
 
 	logger := newLogger(cfg.AppEnv)
 	slog.SetDefault(logger)

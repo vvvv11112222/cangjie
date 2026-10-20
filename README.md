@@ -267,6 +267,10 @@ node frontend/tools/browser-regression.mjs '<已安装的playwright包目录>/in
 
 脚本失败时返回非零退出码；成功时在 `output/playwright/` 保存 JSON 结果和窄屏截图。静态服务仅用于受控回归，真实接口模式仍按上面的同源服务或 Vite 代理运行。
 
+## 教师六维分析（FR-08）
+
+教师六维分析已提供主项目原生提示词和报告页：六维导航、课堂分析/问题/实施建议分开呈现，并可按原媒体和毫秒核对依据。启用、版本摘要、输入覆盖边界和测试入口见 [六维分析接入](docs/六维分析接入.md)。既有 `p0-v1` 配置需显式选择新模板；旧报告和批次快照保持原样。
+
 ## 使用 Codex
 
 在 Codex 中打开克隆后的 Git 仓库根目录并新建任务，确认已读取 `AGENTS.md`；已有会话可直接要求重新读取。仓库级指令的加载方式见 [OpenAI 官方说明](https://learn.chatgpt.com/docs/agent-configuration/agents-md)。

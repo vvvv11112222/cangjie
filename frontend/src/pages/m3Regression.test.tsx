@@ -138,7 +138,7 @@ it('does not renew if the video play promise resolves after leaving', async () =
 it('loads evidence and disclosures for the selected report run and discards late selections', async () => {
   const next = { ...reportFixture, id: 'report-other', run_id: 'run-other', summary: '另一批次报告', summary_evidence_ids: ['evidence-other'] };
   reports = [reportFixture, next];
-  const result = { ...resultsFixture, transcript_revision_id: null, evidence: [{ ...resultsFixture.evidence[0]!, id: 'evidence-other', description: '所选批次的证据' }] };
+  const result = { ...resultsFixture, transcript_revision_id: null, evidence: [{ ...resultsFixture.evidence[0]!, id: 'evidence-other', run_id: next.run_id, description: '所选批次的证据' }] };
   const delayed = deferred<typeof result>(); h.source.getResults.mockReturnValue(delayed.promise);
   await mount(<ReportPage embedded view={reportView()}/>); await select(next.id);
   expect(container.textContent).toContain('正在加载所选报告'); expect(button('编辑草稿').disabled).toBe(true);
