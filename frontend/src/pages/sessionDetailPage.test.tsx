@@ -173,7 +173,7 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
 
     // 关闭表单、切到账号 B，再点一次：状态必须属于新会话并且可写。
     await act(async () => {
-      buttonByText('上传录像').click();
+      buttonByText('取消上传').click();
     });
     expect(container.querySelector('input[type="file"]')).toBeNull();
 
@@ -184,6 +184,26 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
       buttonByText('上传录像').click();
     });
     expect(container.querySelector('input[type="file"]')).not.toBeNull();
+  });
+
+  it('点击上传立即调用已挂载的文件选择器，取消选择后仍可重新选择或关闭表单', async () => {
+    const choose = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+      expect(this.type).toBe('file');
+      expect(this.isConnected).toBe(true);
+    });
+    try {
+      await renderAndSettle();
+      await act(async () => buttonByText('上传录像').click());
+      expect(choose).toHaveBeenCalledTimes(1);
+      expect(buttonByText('上传录像').getAttribute('aria-expanded')).toBe('true');
+      expect(buttonWithExactText('提交上传')?.disabled).toBe(true);
+      await act(async () => buttonByText('上传录像').click());
+      expect(choose).toHaveBeenCalledTimes(2);
+      expect(container.querySelectorAll('input[type="file"]')).toHaveLength(1);
+      await act(async () => buttonByText('取消上传').click());
+      expect(container.querySelector('input[type="file"]')).toBeNull();
+      expect(buttonByText('上传录像').getAttribute('aria-expanded')).toBe('false');
+    } finally { choose.mockRestore(); }
   });
 
   it('媒体列表读取失败时显示错误与重试，并且不放行分析（评审意见 N05/N07）', async () => {

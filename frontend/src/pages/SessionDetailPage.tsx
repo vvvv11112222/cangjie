@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { ReactElement } from 'react';
 import { useAuth } from '../auth';
 import { cancelRun, createRun, uploadMedia } from '../data/actions';
@@ -98,6 +99,8 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
   const [tab, setTab] = useState<Tab>('run');
   const [actions, setActions] = useState<ActionState>(() => emptyActionState(scope));
+  const uploadFile = useRef<HTMLInputElement>(null);
+  const uploadForm = useRef<HTMLDivElement>(null);
   /**
    * 评审意见 N01：scope 变化时必须**真正重建可写状态**。
    * 只把 actionStateFor 当渲染兜底的话，state 里仍是旧 scope，
@@ -249,6 +252,13 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     }
   }
 
+  function openUpload(): void {
+    // Mount the input within this click, so browsers keep the file chooser's user gesture.
+    flushSync(() => write(scope, (base) => ({ ...base, uploadOpen: true })));
+    uploadForm.current?.scrollIntoView?.({ block: 'center' });
+    uploadFile.current?.click();
+  }
+
   async function submitUpload(): Promise<void> {
     const fromScope = scope;
     if (session === null || action.file === null || action.sourceRecordId.trim() === '') {
@@ -265,7 +275,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       write(fromScope, (base) => ({
         ...base,
         busy: false,
-        note: `已上传，媒体 ${shortId(result.mediaId)} 已设为处理目标（状态 pending，可直接媒体准备）。`,
+        note: `录像已上传，已设为处理目标。可以点击“举手与低头分析”。`,
         uploadedMediaId: result.mediaId,
         uploadOpen: false,
         file: null,
@@ -474,7 +484,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       type="button"
                       className="btn btn-secondary"
                       disabled={!api || action.busy}
-                      onClick={() => write(scope, (base) => ({ ...base, uploadOpen: !base.uploadOpen }))}
+                      aria-expanded={action.uploadOpen}
+                      aria-controls="classroom-upload-form"
+                      onClick={openUpload}
                     >
                       上传录像
                     </button>
@@ -556,7 +568,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       <p className="load-note">该课堂还没有可选的原媒体，先上传录像。</p>
                     ) : null}
                     {mediaTarget === null ? (
-                      <p className="load-note">该课堂还没有可处理的媒体，请先上传录像。</p>
+                      <p className="load-note">{sourceMedia.length > 0 ? '请在“处理目标媒体”中选择已上传的录像，或上传新的录像。' : '请先上传录像。'}</p>
                     ) : null}
                     {mediaTarget !== null && !targetMediaKnown ? (
                       <p className="load-note">
@@ -580,10 +592,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
                 {!api ? <p className="load-note">固定样例模式未接入后端，操作按钮不可用。</p> : null}
                 {action.uploadOpen ? (
-                  <div className="upload-form">
+                  <div className="upload-form" id="classroom-upload-form" ref={uploadForm}>
+                    <p className="load-note" style={{ gridColumn: '1 / -1' }}>选择录像文件和来源后，点击“提交上传”。关闭文件选择窗口后，也可以在这里重新选文件。</p>
                     <label className="account-field">
                       <span>录像文件（必填）</span>
                       <input
+                        ref={uploadFile}
                         type="file"
                         onChange={(event) =>
                           write(scope, (base) => ({ ...base, file: event.target.files?.[0] ?? null }))
@@ -611,8 +625,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       disabled={!api || action.busy || action.file === null || action.sourceRecordId.trim() === ''}
                       onClick={() => void submitUpload()}
                     >
-                      提交上传
+                      {action.busy ? '正在上传，请稍候…' : '提交上传'}
                     </button>
+                    <button type="button" className="btn btn-secondary" disabled={action.busy} onClick={() => write(scope, base => ({ ...base, uploadOpen: false, file: null }))}>取消上传</button>
                   </div>
                 ) : null}
                 {action.error === null ? null : <p className="load-note load-note-error">{action.error}</p>}
