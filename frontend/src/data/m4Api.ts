@@ -81,7 +81,7 @@ export function parseOperations(value: unknown): Operations {
         limit: money(budget, 'limit', 'Operations.budget'),
         charged: money(budget, 'charged', 'Operations.budget'),
         reserved: money(budget, 'reserved', 'Operations.budget'),
-        // Schema 明确要求 unknown。当前 Go 若缺失，应报契约错误，不能在前端补成 0。
+        // unknown 独立占用预算；响应缺失时不能在前端补成 0。
         unknown: money(budget, 'unknown', 'Operations.budget'),
       },
     };

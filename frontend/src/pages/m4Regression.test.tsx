@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Deletion, ModelCall, Operations, Session } from '../types';
 
 const state = vi.hoisted(() => ({
+  account: 'm4-account',
   getOperations: vi.fn(),
   listModelCalls: vi.fn(),
   reconcileModelCall: vi.fn(),
   createDeletion: vi.fn(),
   getDeletion: vi.fn(),
 }));
+vi.mock('../auth', () => ({ useAuth: () => ({ me: { user_id: state.account }, sessionKey: `${state.account}#1` }) }));
 
 vi.mock('../data/sources', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../data/sources')>();
@@ -67,6 +69,7 @@ async function change(input: HTMLInputElement | HTMLTextAreaElement, value: stri
 }
 
 beforeEach(() => {
+  sessionStorage.clear(); state.account = 'm4-account';
   (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   state.getOperations.mockReset().mockResolvedValue(operations);
   state.listModelCalls.mockReset().mockResolvedValue({ items: [modelCall], next_cursor: null });
@@ -81,6 +84,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.useRealTimers();
 });
 
 describe('M4 页面回归', () => {
@@ -95,6 +99,29 @@ describe('M4 页面回归', () => {
     expect(container.textContent).toContain('worker-01');
     expect(container.textContent).toContain('媒体检查、音频转写');
     expect(button('核对账目')).toBeTruthy();
+  });
+
+  it('切换核对调用后清空上一条调用的费用和供应商信息', async () => {
+    const second = { ...modelCall, id: 'call-b', lock_version: 7 };
+    state.listModelCalls.mockResolvedValue({ items: [modelCall, second], next_cursor: null });
+    await act(async () => root.render(<OperationsPage />));
+    await act(async () => container.querySelectorAll<HTMLButtonElement>('tbody button')[0]!.click());
+    const inputs = container.querySelectorAll<HTMLInputElement>('form input');
+    await change(inputs[0]!, '1.250000'); await change(inputs[1]!, 'provider-a'); await change(inputs[2]!, '调用 A 的原因');
+    await act(async () => container.querySelectorAll<HTMLButtonElement>('tbody button')[1]!.click());
+    const nextInputs = container.querySelectorAll<HTMLInputElement>('form input');
+    expect([...nextInputs].map(input => input.value)).toEqual(['0.000000', '', '']);
+    await change(nextInputs[2]!, '调用 B 的原因');
+    await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(state.reconcileModelCall).toHaveBeenCalledWith(second.id, { lock_version: 7, status: 'failed', actual_cost: '0.000000', provider_request_id: null, reason: '调用 B 的原因' });
+  });
+
+  it.each(['operations', 'calls'])('另一项请求未结束时仍显示已经返回的 %s', async (kind) => {
+    if (kind === 'operations') state.listModelCalls.mockReturnValue(new Promise(() => {}));
+    else state.getOperations.mockReturnValue(new Promise(() => {}));
+    await act(async () => root.render(<OperationsPage />));
+    if (kind === 'operations') expect(container.textContent).toContain('worker-01');
+    else expect(button('核对账目')).toBeTruthy();
   });
 
   it('彻底清理要求原因和确认文字，并提交真实课堂 id', async () => {
@@ -116,5 +143,59 @@ describe('M4 页面回归', () => {
     expect(state.createDeletion).toHaveBeenCalledWith(id, '超过获准保留期限', expect.any(String));
     expect(container.textContent).toContain('当前状态：已请求');
     expect(changed).toHaveBeenCalled();
+  });
+
+  async function submitDeletion(): Promise<void> {
+    await act(async () => button('发起彻底清理').click());
+    await change(container.querySelector('textarea')!, '原始清理原因');
+    await change(container.querySelector('input')!, '彻底清理');
+    await act(async () => button('确认彻底清理').click());
+  }
+
+  it('切换标签和整页重建后恢复请求并继续轮询，账号之间隔离', async () => {
+    vi.useFakeTimers();
+    state.getDeletion.mockResolvedValue({ ...deletion, status: 'blocked' });
+    const changed = vi.fn();
+    await act(async () => root.render(<DeletionPanel session={session} api onSessionChanged={changed} />));
+    await submitDeletion();
+    await act(async () => root.unmount()); root = createRoot(container);
+    await act(async () => root.render(<DeletionPanel session={{ ...session, status: 'deleting' }} api onSessionChanged={changed} />));
+    expect(state.getDeletion).toHaveBeenCalledWith(deletion.id);
+    expect(container.textContent).toContain('清理受阻');
+    state.getDeletion.mockResolvedValue({ ...deletion, status: 'succeeded' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+    expect(state.getDeletion).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('清理完成');
+    await act(async () => root.unmount()); root = createRoot(container); state.account = 'other-admin';
+    await act(async () => root.render(<DeletionPanel session={{ ...session, status: 'deleting' }} api onSessionChanged={changed} />));
+    expect(container.textContent).not.toContain(deletion.id);
+    expect(state.getDeletion).toHaveBeenCalledTimes(2);
+  });
+
+  it('未确认的清理请求禁止更改原因，重进页面重试仍发送原参数与原键', async () => {
+    state.createDeletion.mockRejectedValue(new TypeError('response lost'));
+    await act(async () => root.render(<DeletionPanel session={session} api onSessionChanged={() => {}} />));
+    await submitDeletion();
+    const first = state.createDeletion.mock.calls[0]!;
+    expect(container.querySelector('textarea')!.disabled).toBe(true);
+    await act(async () => root.unmount()); root = createRoot(container);
+    await act(async () => root.render(<DeletionPanel session={{ ...session, status: 'deleting' }} api onSessionChanged={() => {}} />));
+    expect(container.querySelector('textarea')!.value).toBe('原始清理原因');
+    await change(container.querySelector('input')!, '彻底清理');
+    state.createDeletion.mockResolvedValue(deletion);
+    await act(async () => button('确认彻底清理').click());
+    expect(state.createDeletion.mock.calls[1]).toEqual(first);
+  });
+
+  it('迟到的创建响应保留编号，但不调用已卸载页面的刷新回调', async () => {
+    let accept!: (value: Deletion) => void;
+    state.createDeletion.mockReturnValue(new Promise(resolve => { accept = resolve; }));
+    const changed = vi.fn();
+    await act(async () => root.render(<DeletionPanel session={session} api onSessionChanged={changed} />));
+    await submitDeletion();
+    await act(async () => root.render(<div />));
+    await act(async () => accept(deletion)); expect(changed).not.toHaveBeenCalled();
+    await act(async () => root.render(<DeletionPanel session={{ ...session, status: 'deleting' }} api onSessionChanged={changed} />));
+    expect(state.getDeletion).toHaveBeenCalledWith(deletion.id);
   });
 });

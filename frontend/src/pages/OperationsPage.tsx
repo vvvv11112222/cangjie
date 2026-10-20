@@ -99,7 +99,9 @@ export function OperationsPage(): ReactElement {
   const [operations, setOperations] = useState<Operations | null>(null);
   const [calls, setCalls] = useState<ModelCall[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(api);
+  const [operationsLoading, setOperationsLoading] = useState(api);
+  const [callsLoading, setCallsLoading] = useState(api);
+  const loading = operationsLoading || callsLoading;
   const [loadingMore, setLoadingMore] = useState(false);
   const [operationsError, setOperationsError] = useState<string | null>(null);
   const [callsError, setCallsError] = useState<string | null>(null);
@@ -111,18 +113,16 @@ export function OperationsPage(): ReactElement {
   useEffect(() => {
     if (!api) return;
     let active = true;
-    setLoading(true); setOperationsError(null); setCallsError(null); setMessage(null);
-    void Promise.allSettled([getOperations(), listModelCalls(undefined, 20)]).then(([operationsResult, callsResult]) => {
-      if (!active) return;
-      if (operationsResult.status === 'fulfilled') setOperations(operationsResult.value);
-      else { setOperations(null); setOperationsError(describeError(operationsResult.reason)); }
-      if (callsResult.status === 'fulfilled') {
-        setCalls(callsResult.value.items); setNextCursor(callsResult.value.next_cursor);
-      } else {
-        setCalls([]); setNextCursor(null); setCallsError(describeError(callsResult.reason));
-      }
-      setLoading(false);
-    });
+    setOperationsLoading(true); setCallsLoading(true);
+    setOperationsError(null); setCallsError(null); setMessage(null); setSelected(null);
+    void getOperations().then((value) => { if (active) setOperations(value); })
+      .catch((error: unknown) => { if (active) { setOperations(null); setOperationsError(describeError(error)); } })
+      .finally(() => { if (active) setOperationsLoading(false); });
+    void listModelCalls(undefined, 20).then((page) => {
+      if (active) { setCalls(page.items); setNextCursor(page.next_cursor); }
+    }).catch((error: unknown) => {
+      if (active) { setCalls([]); setNextCursor(null); setCallsError(describeError(error)); }
+    }).finally(() => { if (active) setCallsLoading(false); });
     return () => { active = false; };
   }, [api, reloadKey]);
 
@@ -149,7 +149,7 @@ export function OperationsPage(): ReactElement {
       setSelected(null);
       setMessage('模型调用账目已核对，预算汇总需要重新读取。');
       try {
-        setOperations(await getOperations());
+        setOperations(await getOperations()); setOperationsError(null);
       } catch (error) {
         setOperationsError(describeError(error));
       }
@@ -168,7 +168,7 @@ export function OperationsPage(): ReactElement {
           <h1>运行与设置</h1>
           <p className="muted">查看工作空间的任务、存储、Worker 与模型预算状态。</p>
         </div>
-        {api ? <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>刷新状态</button> : null}
+        {api ? <button type="button" className="btn btn-secondary" disabled={loading || saving || loadingMore} onClick={() => setReloadKey((value) => value + 1)}>刷新状态</button> : null}
       </header>
 
       <p className="notice-strip">
@@ -182,7 +182,7 @@ export function OperationsPage(): ReactElement {
         </Card>
       ) : null}
 
-      {loading ? <p className="load-note">正在读取运行状态和模型账目……</p> : null}
+      {operationsLoading ? <p className="load-note">正在读取运行状态……</p> : null}
       {operationsError ? <p className="load-note load-note-error">运行状态读取失败：{operationsError}</p> : null}
       {operations !== null ? (
         <>
@@ -204,16 +204,17 @@ export function OperationsPage(): ReactElement {
 
       {api ? (
         <Card title="模型调用账目" subtitle="unknown 表示费用结果不确定，必须由系统管理员查账后处理。">
+          {callsLoading ? <p className="load-note">正在读取模型账目……</p> : null}
           {message ? <p className="notice-strip">{message}</p> : null}
           {callsError ? <p className="load-note load-note-error">{callsError}</p> : null}
           <div className="table-wrap"><table className="table"><thead><tr><th>调用</th><th>状态</th><th>预留 / 实际费用</th><th>账期 / 价格版本</th><th>发送 / 结算</th><th>操作</th></tr></thead><tbody>{calls.map((call) => <tr key={call.id}><td><IdChip id={call.id} /></td><td><BadgeTag badge={modelCallStatusBadge(call.status)} /></td><td>{money(call.reserved_cost)}<br/><span className="muted small">实际 {call.actual_cost === null ? '待确认' : money(call.actual_cost)}</span></td><td>{call.billing_period}<br/><span className="muted small">{call.price_version ?? '未记录价格版本'}</span></td><td>{call.dispatch_started_at === null ? '未发送' : formatDateTime(call.dispatch_started_at)}<br/><span className="muted small">{call.settled_at === null ? '尚未结算' : formatDateTime(call.settled_at)}</span></td><td>{call.status === 'unknown' ? <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => setSelected(call)}>核对账目</button> : '—'}</td></tr>)}</tbody></table></div>
-          {calls.length === 0 && !loading && callsError === null ? <EmptyState text="当前没有模型调用记录。" /> : null}
-          {nextCursor !== null ? <button type="button" className="btn btn-secondary btn-sm" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? '加载中…' : '加载更多账目'}</button> : null}
+          {calls.length === 0 && !callsLoading && callsError === null ? <EmptyState text="当前没有模型调用记录。" /> : null}
+          {nextCursor !== null ? <button type="button" className="btn btn-secondary btn-sm" disabled={loadingMore || callsLoading} onClick={() => void loadMore()}>{loadingMore ? '加载中…' : '加载更多账目'}</button> : null}
           {selected === null ? null : (
             <div className="operations-reconcile-shell">
               <h3>核对调用 <IdChip id={selected.id} /></h3>
               <p className="muted small">提交携带当前 lock_version；若后台记录已变化，服务端返回版本冲突，页面不会覆盖新数据。</p>
-              <ReconcileForm call={selected} busy={saving} onCancel={() => setSelected(null)} onSubmit={reconcile} />
+              <ReconcileForm key={selected.id} call={selected} busy={saving} onCancel={() => setSelected(null)} onSubmit={reconcile} />
               <TechDetails><p className="mono">model_call.lock_version = {selected.lock_version}</p></TechDetails>
             </div>
           )}

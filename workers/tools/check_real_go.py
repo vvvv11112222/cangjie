@@ -26,11 +26,11 @@ def prepare(output, odd):
             "source_sha256": metadata["sha256"], "width": metadata["width"], "height": metadata["height"]}
 
 
-def work(api_base, expected_stage, expected_run, scratch):
+def work(api_base, expected_stage, expected_run, scratch, visual=False):
     # Credentials stay in the child environment, never in CLI arguments or reports.
     settings = Settings(api_base, "worker-01", os.environ["WORKER_TOKEN"], scratch.resolve(),
                         PROCESSOR_VERSION, digest_file(ffmpeg_executable()), heartbeat_seconds=.25,
-                        max_artifact_bytes=10 * 1024**2)
+                        max_artifact_bytes=10 * 1024**2, vision_enabled=visual)
     runner = Runner(settings)
     started = time.perf_counter()
     try:
@@ -57,6 +57,7 @@ def main():
     worker.add_argument("--stage", choices=("probe", "video_analysis"), required=True)
     worker.add_argument("--run-id", required=True)
     worker.add_argument("--scratch", type=Path, required=True)
+    worker.add_argument("--visual", action="store_true", help="Use pinned formal vision-v1 profile")
     deletion = sub.add_parser("cleanup", help="Real backend cleanup fixture; synthetic leftovers only")
     deletion.add_argument("--api-base", required=True)
     deletion.add_argument("--scratch", type=Path, required=True)
@@ -67,7 +68,7 @@ def main():
     if args.command == "prepare":
         result = prepare(args.output, args.odd)
     elif args.command == "work":
-        result = work(args.api_base, args.stage, args.run_id, args.scratch)
+        result = work(args.api_base, args.stage, args.run_id, args.scratch, args.visual)
     else:
         job_id, deletion_id = str(UUID(args.seed_job_id)), str(UUID(args.deletion_id))
         scratch = args.scratch.resolve()

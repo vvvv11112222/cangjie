@@ -30,15 +30,28 @@ export interface SessionDetailLoad {
   runError: string | null;
 }
 
-/** 从课堂列表里按 id 找到课堂并取它的最新批次。找不到就在可见范围外（NOT_FOUND）。 */
+export function newSessionDetailSearch(): { statusIndex: number; search: SearchCheckpoint } {
+  return { statusIndex: 0, search: newSearch() };
+}
+
+/** 详情也可读取默认列表隐藏的归档、清理中及已清理课堂；各查询仍由 Go 授权。 */
 export async function loadSessionDetail(
   source: DataSource = dataSource,
   sessionId: string,
-  checkpoint: SearchCheckpoint = newSearch(),
+  checkpoint = newSessionDetailSearch(),
 ): Promise<SessionDetailLoad> {
-  const session = await searchSessions(source, checkpoint, async (candidate) =>
-    sameId(candidate.id, normalizeId(sessionId)) ? candidate : null,
-  );
+  const statuses = [undefined, 'archived', 'deleting', 'deleted'] as const;
+  let session: Session | null = null;
+  while (checkpoint.statusIndex < statuses.length) {
+    const status = statuses[checkpoint.statusIndex];
+    session = await searchSessions(source, checkpoint.search, async (candidate) =>
+      sameId(candidate.id, normalizeId(sessionId)) ? candidate : null,
+      false, status === undefined ? {} : { status },
+    );
+    if (session !== null) break;
+    checkpoint.statusIndex += 1;
+    checkpoint.search = newSearch();
+  }
   if (session === null) {
     throw new ApiError({ code: 'NOT_FOUND', status: 0, message: '找不到该课堂，或不在当前账号可见范围。' });
   }

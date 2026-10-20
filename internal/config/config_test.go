@@ -155,3 +155,16 @@ func mapLookup(values map[string]string) func(string) (string, bool) {
 		return value, ok
 	}
 }
+
+func TestVisionRequiresExplicitFlagAndRevision(t *testing.T) {
+	for _, entry := range []map[string]string{{"VISION_ANALYSIS_ENABLED": "true"}, {"VISION_ANALYSIS_ENABLED": "1"}, {"VISION_ANALYSIS_ENABLED": "1", "VISION_MODEL_REVISION": strings.Repeat("z", 64)}} {
+		entry["DATABASE_URL"] = "postgres://localhost/teaching"
+		if _, err := FromLookup(mapLookup(entry)); err == nil {
+			t.Fatal("accepted invalid vision config")
+		}
+	}
+	cfg, err := FromLookup(mapLookup(map[string]string{"DATABASE_URL": "postgres://localhost/teaching", "VISION_ANALYSIS_ENABLED": "1", "VISION_MODEL_REVISION": strings.Repeat("a", 64)}))
+	if err != nil || !cfg.VisionEnabled {
+		t.Fatal("valid vision config rejected", err)
+	}
+}

@@ -71,6 +71,10 @@ def validate_claim(claim, settings):
         settings.ffmpeg_sha256 != digest_file(ffmpeg_executable()) or
         expected["parameters_sha256"] != parameter_digest(claim["parameters"])):
         raise WorkerError("CONFIG_MISMATCH", "任务固定的处理器、FFmpeg 或参数摘要与当前 Worker 不一致")
+    if claim["parameters"]["config_profile"] == "vision-v1":
+        from workers.video.visual import model_identity
+        if not settings.vision_enabled or claim["parameters"]["visual"]["model"] != model_identity():
+            raise WorkerError("CONFIG_MISMATCH", "视觉功能未启用或模型及规则版本与任务不一致")
     if claim["stage"] not in settings.capabilities:
         raise WorkerError("CONFIG_MISMATCH", "本 Worker 未注册该处理阶段")
     if claim["input_url"] != f"/internal/v1/jobs/{claim['job_id']}/input":

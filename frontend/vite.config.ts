@@ -22,11 +22,12 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: process.env.TEAM_API_TARGET ?? 'http://127.0.0.1:8080',
         changeOrigin: false,
       },
     },
   },
+  preview: { proxy: { '/api': { target: process.env.TEAM_API_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false }, '/health': { target: process.env.TEAM_API_TARGET ?? 'http://127.0.0.1:8080', changeOrigin: false } } },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],

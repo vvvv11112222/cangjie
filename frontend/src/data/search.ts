@@ -1,6 +1,6 @@
 import type { Session } from '../types';
 import { ApiError } from './errors';
-import type { DataSource } from './sources';
+import type { DataSource, SessionQuery } from './sources';
 
 export const MAX_SESSION_PAGES = 10;
 export const MAX_DRAFT_RUN_LOOKUPS = 20;
@@ -37,6 +37,7 @@ export async function searchSessions<T>(
   checkpoint: SearchCheckpoint,
   inspect: (session: Session) => Promise<T | null>,
   preferPublished = false,
+  query: Omit<SessionQuery, 'cursor'> = {},
 ): Promise<T | null> {
   let pages = 0;
   while (true) {
@@ -48,7 +49,7 @@ export async function searchSessions<T>(
     }
     if (checkpoint.exhausted) return null;
     if (pages >= MAX_SESSION_PAGES) throw new SearchPaused();
-    const page = await source.getSessions({ cursor: checkpoint.cursor });
+    const page = await source.getSessions({ ...query, cursor: checkpoint.cursor });
     const seen = [...checkpoint.seen, checkpoint.cursor ?? ''];
     checkNextCursor(page.next_cursor, seen);
     checkpoint.items = preferPublished

@@ -63,7 +63,7 @@ export function formatIntervals(intervals: Interval[]): string {
  * 输入为 RFC3339（带偏移），无法解析时原样返回并标记。
  */
 export function formatDateTime(value: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:?\d{2})?$/.exec(
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/.exec(
     value,
   );
   if (!match) {
@@ -130,6 +130,7 @@ const JOB_STAGE: Record<JobStage, string> = {
 };
 
 const RUN_MODE: Record<RunMode, string> = {
+  visual_only: '视觉行为分析',
   full: '完整分析',
   report_only: '仅重新生成报告',
   media_prepare: '仅媒体准备',

@@ -8,6 +8,7 @@ import {
   reconcileModelCall,
 } from './m4Api';
 import { ApiError } from './errors';
+import operationsFixture from '../../../contracts/examples/operations.json';
 
 interface Call { url: string; init?: RequestInit }
 let calls: Call[] = [];
@@ -60,6 +61,9 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('M4 治理接口', () => {
+  it('读取共享 Operations 样例中的三个预算分栏', () => {
+    expect(parseOperations(operationsFixture).budget).toEqual(operationsFixture.budget);
+  });
   it('严格读取 Operations，包括独立的 unknown 预算', async () => {
     await expect(getOperations()).resolves.toMatchObject({ queued_jobs: 2, budget: { unknown: '0.500000' } });
     expect(calls[0]?.url).toBe('/api/v1/operations');

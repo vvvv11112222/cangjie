@@ -97,6 +97,9 @@ def probe(claim, directory, settings, transport, guard):
 
 
 def video_analysis(claim, directory, settings, transport, guard):
+    if claim["parameters"]["config_profile"] == "vision-v1":
+        from .visual import visual_analysis
+        return visual_analysis(claim, directory, settings, transport, guard)
     source = directory / "input.bin"
     metadata = inspect_source(source, settings)
     duration = claim["duration_ms"]
