@@ -233,6 +233,9 @@ func auditReport(ctx context.Context, base, key string, report Report, segments 
 	a.Message = "全文复核未完成；原报告已保留，结论与建议尚需核对。"
 	if err != nil {
 		a.Diagnostic = "模型请求未完成"
+		if strings.Contains(err.Error(), "输入预算") {
+			a.Diagnostic = err.Error()
+		}
 		return a
 	}
 	var d auditDraft

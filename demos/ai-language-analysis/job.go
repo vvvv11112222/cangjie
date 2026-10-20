@@ -25,6 +25,7 @@ const (
 )
 
 type Job struct {
+	Coverage           *LessonCoverage     `json:"lesson_coverage,omitempty"`
 	ASRStatus          string              `json:"asr_status"`
 	ReportStatus       string              `json:"report_status"`
 	FailureStage       string              `json:"failure_stage,omitempty"`
@@ -63,19 +64,20 @@ type Job struct {
 }
 
 type ReportVersion struct {
-	ASRStatus     string        `json:"asr_status"`
-	ReportStatus  string        `json:"report_status"`
-	Version       int           `json:"version"`
-	InputRevision int           `json:"input_revision_no"`
-	Report        Report        `json:"report"`
-	Segments      []Segment     `json:"segments"`
-	Reading       ReadingResult `json:"reading"`
-	Events        EventSet      `json:"events"`
-	RubricVersion string        `json:"rubric_version"`
-	EventRequest  ModelMeta     `json:"event_request"`
-	ReportRequest ModelMeta     `json:"text_request"`
-	Warnings      []string      `json:"warnings,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
+	Coverage      *LessonCoverage `json:"lesson_coverage,omitempty"`
+	ASRStatus     string          `json:"asr_status"`
+	ReportStatus  string          `json:"report_status"`
+	Version       int             `json:"version"`
+	InputRevision int             `json:"input_revision_no"`
+	Report        Report          `json:"report"`
+	Segments      []Segment       `json:"segments"`
+	Reading       ReadingResult   `json:"reading"`
+	Events        EventSet        `json:"events"`
+	RubricVersion string          `json:"rubric_version"`
+	EventRequest  ModelMeta       `json:"event_request"`
+	ReportRequest ModelMeta       `json:"text_request"`
+	Warnings      []string        `json:"warnings,omitempty"`
+	CreatedAt     time.Time       `json:"created_at"`
 }
 
 type revisionFile struct {

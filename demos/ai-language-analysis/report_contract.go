@@ -27,7 +27,14 @@ func requestSixDimReport(ctx context.Context, base, key string, segments []Segme
 	if feedback := reportFeedback(ctx); feedback != nil {
 		input["previous_validation_feedback"] = feedback
 	}
-	return textTask(ctx, base, key, string(prompt)+"\n"+string(rubric)+reportContractReminder, input)
+	if windows := lessonWindows(segments); len(windows) > 1 {
+		input["lesson_windows"] = windows
+		input["evidence_catalog"] = compactEvidenceCatalog(segments)
+		// The complete original transcript is already present. Avoid sending
+		// its reading-only punctuation copy a second time for long lessons.
+		delete(input, "reading_paragraphs")
+	}
+	return textTask(ctx, base, key, string(prompt)+"\n"+string(rubric)+reportContractReminder+longLessonReminder(segments), input)
 }
 
 // JSON Object mode guarantees JSON syntax, not required fields. This schema is
