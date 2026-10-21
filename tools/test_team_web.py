@@ -88,4 +88,52 @@ class TeamWebTests(unittest.TestCase):
             self.assertEqual(env['WORKER_CAPABILITIES'],'probe,audio_analysis,video_analysis')
             self.assertEqual(env['WORKER_CONCURRENCY'],'1')
 
+    def test_directml_environment_does_not_inherit_another_pcs_adapter(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state)
+            config['vision_execution']={'engine':'directml','batch_size':16,
+                'device':{'name':'test discrete GPU','device_id':2},'accelerator_root':str(state/'accelerators')}
+            with patch.dict(os.environ,{'VISION_DML_DEVICE':'0','VISION_TF32':'1','VISION_BATCH_SIZE':'96'}), \
+                 patch.object(dev,'ascii_root',side_effect=lambda p:p):
+                env=dev.environment(config,state)
+            self.assertEqual(env['VISION_DML_DEVICE'],'2')
+            self.assertEqual(env['VISION_RUNTIME'],'directml')
+            self.assertEqual(env['VISION_BATCH_SIZE'],'16')
+            self.assertEqual(env['VISION_REQUIRE_GPU'],'1')
+            self.assertEqual(env['VISION_TF32'],'0')
+
+    def test_auto_fallback_is_explicit_and_forced_gpu_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state); config['python']='python'
+            config['vision_runtime']='auto'
+            failed=MagicMock(returncode=1,stdout='{"error":"DirectML is not installed"}\n',stderr='')
+            with patch.object(dev.subprocess,'run',return_value=failed):
+                result=dev.select_vision(config,state)
+                self.assertEqual(result['engine'],'cpu')
+                self.assertIn('DirectML is not installed',result['reason'])
+                self.assertIsNone(result['device'])
+                config['vision_runtime']='directml'
+                with self.assertRaisesRegex(RuntimeError,'要求独显'):
+                    dev.select_vision(config,state)
+
+    def test_restart_reenumerates_gpu_and_records_probe_result(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state); config['python']='python';config['vision_runtime']='auto'
+            config['vision_execution']={'engine':'directml','device':{'device_id':0}}
+            verified={'engine':'directml','device':{'name':'current GPU','device_id':2},'batch_size':16,'probe_passed':True}
+            success=MagicMock(returncode=0,stdout=json.dumps(verified)+'\n',stderr='')
+            with patch.object(dev.subprocess,'run',return_value=success) as probe:
+                result=dev.select_vision(config,state)
+                probe.assert_called_once()
+                self.assertEqual(result['device']['device_id'],2)
+                self.assertEqual(dev.load(state/'vision-runtime.json')['device']['device_id'],2)
+
+    def test_probe_timeout_does_not_claim_gpu_success(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state);config['python']='python';config['vision_runtime']='auto'
+            with patch.object(dev.subprocess,'run',side_effect=dev.subprocess.TimeoutExpired('probe',45)):
+                result=dev.select_vision(config,state)
+            self.assertEqual(result['engine'],'cpu')
+            self.assertFalse(result['probe_passed'])
+
 if __name__=='__main__': unittest.main()

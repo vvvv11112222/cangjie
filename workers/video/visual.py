@@ -8,6 +8,17 @@ from workers.common.contracts import WorkerError, json_bytes
 from .handlers import base_result, inspect_source
 
 
+def require_acceleration(status):
+    """Do not finish a CPU result as an explicitly GPU-selected execution."""
+    if os.environ.get('VISION_REQUIRE_GPU') != '1':
+        return
+    requested = [r for r in status['sessions'] if r['gpu_requested']]
+    expected = int(os.environ['VISION_DML_DEVICE'])
+    if not requested or any(r['provider'] != 'DmlExecutionProvider' or not r.get('device') or
+                            r['device']['device_id'] != expected for r in requested):
+        raise WorkerError('CONFIG_MISMATCH', '独显推理未按部署选择生效，请检查视觉设备日志；未降级为 CPU 继续分析')
+
+
 def model_identity():
     root = Path(__file__).resolve().parents[1]
     paths = [root / "config/models.manifest.json"]
@@ -77,6 +88,12 @@ def visual_analysis(claim, directory, settings, transport, guard):
             raise WorkerError("UNSUPPORTED_MEDIA", "请先将带旋转标记的视频转正后再做视觉分析")
     from workers.vision_core.config import AnalysisConfig
     from workers.vision_core.analysis import analyze
+    if os.environ.get('VISION_REQUIRE_GPU') == '1':
+        from workers.vision_core.models import get_models, runtime_status
+        get_models()
+        active = runtime_status()
+        require_acceleration(active)
+        print('vision_job='+claim['job_id']+' active_runtime='+json.dumps(active, ensure_ascii=False),flush=True)
     work = directory / "visual"
     work.mkdir()
     # Both files share a lease directory; hardlink avoids a full video copy and
@@ -90,6 +107,10 @@ def visual_analysis(claim, directory, settings, transport, guard):
     def progress(**values):
         guard.update(progress=int(values.get("progress", 0) * .90))
     report = analyze(claim["job_id"], work, metadata, config, guard, progress)
+    active = report['provenance']['runtime_status']
+    require_acceleration(active)
+    print('vision_job='+claim['job_id']+' timings='+json.dumps(report['statistics']['timing_seconds'])+
+          ' runtime='+json.dumps(active, ensure_ascii=False),flush=True)
     # Check the observation limit before uploading pictures. No silent loss.
     if sum(len(p["observations"]) for p in report["persons"]) > 100000:
         raise WorkerError("MEDIA_TOO_LARGE", "逐人记录超过十万条，请将录像分段分析")

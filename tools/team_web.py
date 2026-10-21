@@ -1,4 +1,4 @@
-"""Local team website: official Go API, React build and CPU vision Worker.
+"""Local team website: official Go API, React build and selected vision Worker.
 
 Private state stays in the chosen project data directory. Never resets a database,
 changes migration history, installs drivers or terminates processes by name.
@@ -52,6 +52,9 @@ def ascii_root(state):
 
 def environment(config, state):
     env = dict(os.environ)
+    # Ignore another terminal/project's stale adapter ordinal or acceleration flags.
+    for name in list(env):
+        if name.startswith('VISION_'): del env[name]
     for line in (ROOT / '.env.example').read_text(encoding='utf-8-sig').splitlines():
         if line.strip() and not line.lstrip().startswith('#') and '=' in line:
             key, value = line.split('=', 1); env[key.strip()] = value.strip()
@@ -65,12 +68,12 @@ def environment(config, state):
         WORKER_CAPABILITIES='probe,audio_analysis,video_analysis', ASR_MODEL_NAME='not-installed', ASR_MODEL_REVISION='not-installed',
         WORKER_PROCESSOR_VERSION=runtime['processor_version'], FFMPEG_BUILD_SHA256=runtime['ffmpeg_build_sha256'],
         VISION_FFMPEG_BINARY=runtime['ffmpeg_binary'], VISION_ANALYSIS_ENABLED='1', VISION_MODEL_REVISION=runtime['visual_model']['revision'],
-        VISION_MODEL_ROOT=config['models'], VISION_RUNTIME='cpu', VISION_RUNTIME_CONFIG=str(ROOT / 'workers/config/runtime.cpu.json'),
-        VISION_CPU_THREADS='4', VISION_CV_THREADS='4', VISION_BATCH_SIZE='1', VISION_FIXED_BATCH='0',
-        VISION_GPU_DETECTION='0', VISION_GPU_YOLOX='0', VISION_GPU_THREADS='1', VISION_PREFETCH='1', WORKER_CONCURRENCY='1', WORKER_CLEANUP_ENABLED='1',
+        VISION_MODEL_ROOT=config['models'], WORKER_CONCURRENCY='1', WORKER_CLEANUP_ENABLED='1',
         MODEL_MONTHLY_BUDGET='0', REPORT_API_KEY='', CAPTURE_ENABLED='false', ASR_DEVICE='cpu',
         BOOTSTRAP_TEST_PASSWORD=secret['login'], VITE_DATA_SOURCE='api', TEAM_API_TARGET=f"http://127.0.0.1:{ports['api']}",
         GOMAXPROCS='2', GOTOOLCHAIN='local', GOTELEMETRY='off', PYTHONUTF8='1', PYTHONUNBUFFERED='1')
+    from vision_runtime import execution_environment
+    env.update(execution_environment(config.get('vision_execution', {'engine':'cpu','batch_size':1}), ROOT))
     for name in list(env):
         if name.startswith('MTX_'): del env[name]
     # Optional private configuration enables the unified audio/report flow.
@@ -88,6 +91,40 @@ def environment(config, state):
     env.update(GOCACHE=str(runtime_root / 'go-cache'), GOMODCACHE=str(runtime_root / 'go-mod'), GOTMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
     env['PATH'] = str(Path(config['node']).parent) + os.pathsep + env.get('PATH', '')
     return env
+
+
+def select_vision(config, state):
+    mode = config.get('vision_runtime', 'cpu')  # Preserve an existing explicit safe deployment until reconfigured.
+    if mode not in ('cpu', 'auto', 'directml'): raise ValueError('Unknown vision runtime')
+    result = {'engine':'cpu', 'batch_size':1, 'device':None, 'probe_passed':False,
+              'reason':'明确选择 CPU 模式' if mode == 'cpu' else None}
+    if mode != 'cpu':
+        command = [config['python'], str(ROOT / 'tools/vision_runtime.py'), '--models',config['models'],
+                   '--batch-size',str(config.get('vision_batch_size',16))]
+        if config.get('accelerator_root'): command += ['--accelerator-root',config['accelerator_root']]
+        try:
+            probe = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, encoding='utf-8',
+                                   env={**os.environ,'PYTHONUTF8':'1'}, creationflags=HIDDEN, timeout=45)
+            with (state/'runtime-probe.log').open('a',encoding='utf-8') as output:
+                output.write(probe.stdout + probe.stderr)
+            details = json.loads(probe.stdout.strip().splitlines()[-1]) if probe.stdout.strip() else {}
+            if probe.returncode or details.get('engine') != 'directml' or not details.get('probe_passed'):
+                raise RuntimeError(details.get('error','独显检查未完成，请查看 runtime-probe.log'))
+            result = details
+        except (OSError, subprocess.TimeoutExpired, RuntimeError, ValueError) as error:
+            if mode == 'directml': raise RuntimeError('要求独显但检查失败：'+str(error)) from error
+            result['reason'] = '独显不可用，已使用 CPU：'+str(error)
+    result['requested'] = mode
+    config['vision_execution'] = result
+    save(state/'vision-runtime.json', result)
+    save(state/'private.json', config)
+    describe_vision(result)
+    return result
+
+
+def describe_vision(result):
+    label = result['device']['name'] if result['device'] else 'CPU'
+    print(f"视觉计算设备：{label}；每批 {result['batch_size']} 人。" + (result.get('reason') or ''),flush=True)
 
 
 def pg_tools(config):
@@ -175,13 +212,17 @@ def prepare(args, state):
                   models=str(Path(args.models).resolve(strict=True)))
     analysis_config = args.analysis_config or prior.get('analysis_config')
     if analysis_config: config['analysis_config'] = str(Path(analysis_config).resolve(strict=True))
+    config['vision_runtime'] = args.vision_runtime or prior.get('vision_runtime','auto')
+    config['vision_batch_size'] = args.vision_batch_size or prior.get('vision_batch_size',16)
+    accelerator_root = args.accelerator_root or prior.get('accelerator_root')
+    if accelerator_root: config['accelerator_root'] = str(Path(accelerator_root).resolve(strict=True))
     if not (ROOT / 'frontend/node_modules/vite/bin/vite.js').exists(): raise RuntimeError('Install frontend locked dependencies with npm ci first')
     for name in ('media', 'worker-tmp', 'ledger', 'bin'): (state / name).mkdir(exist_ok=True)
     env = {**os.environ, 'VISION_RUNTIME': 'cpu', 'PYTHONUTF8': '1'}
     config['runtime'] = json.loads(subprocess.check_output([config['python'], '-m', 'workers', 'runtime-info'], cwd=ROOT, env=env, creationflags=HIDDEN))
     config['code_sha'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     config['source_dirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
-    save(state / 'private.json', config); env = environment(config, state)
+    select_vision(config, state); env = environment(config, state)
     for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
     if config.get('analysis_config'):
@@ -196,9 +237,10 @@ def prepare(args, state):
     seed = (ROOT / 'deploy/team-web/development.sql').read_text(encoding='utf-8')
     sql(config, state, seed)
     receipt = dict(url='http://127.0.0.1:8088/#/sessions', code_sha=config['code_sha'], source_dirty=config['source_dirty'],
-                   processor_version=config['runtime']['processor_version'], visual_model=config['runtime']['visual_model'], execution='cpu')
+                   processor_version=config['runtime']['processor_version'], visual_model=config['runtime']['visual_model'],
+                   execution=config['vision_execution']['engine'], vision_execution=config['vision_execution'])
     save(state / 'deployment.json', receipt)
-    (state / '使用说明.txt').write_text('团队网站：http://127.0.0.1:8088/#/sessions\n账号：admin（或 teacher_demo）\n密码：' + secret['login'] + '\n\n在课堂详情上传录像，再点“举手与低头分析”，到“视觉观察”查看人物记录与回放。\n来源须先在“素材与来源”登记并核验。\n只使用CPU，每次一个分析任务。旧试验库保留，正式版不连接旧试验库。\n', encoding='utf-8')
+    (state / '使用说明.txt').write_text('团队网站：http://127.0.0.1:8088/#/sessions\n账号：admin（或 teacher_demo）\n密码：' + secret['login'] + '\n\n在课堂详情上传录像，再点“举手与低头分析”，到“视觉观察”查看人物记录与回放。\n来源须先在“素材与来源”登记并核验。\n设备见vision-runtime.json和启动提示，每次一个分析任务。旧试验库保留，正式版不连接旧试验库。\n', encoding='utf-8')
     print('Prepared official team website. Private account guide: ' + str(state / '使用说明.txt'), flush=True)
 
 
@@ -222,6 +264,7 @@ def start(config, state):
             raise RuntimeError('Deployment is only partly running; stop the owned deployment before restarting')
         wait_ready(config, 5); print('Team website already running: http://127.0.0.1:8088/#/sessions'); return
     for name in ('web', 'api'): check_port(config['ports'][name])
+    select_vision(config, state)  # Re-enumerate on every start; never copy this PC's GPU ordinal to another PC.
     database_start(config, state)
     env = environment(config, state)
     job_name = 'Local\\CangjieTeamVision-' + secrets.token_hex(16)
@@ -258,6 +301,9 @@ def main():
     for name in ('go', 'pg-bin', 'node', 'python', 'models'): setup.add_argument('--' + name, required=True)
     setup.add_argument('--login-from')
     setup.add_argument('--analysis-config', help='Private JSON with ASR/REPORT/MODEL settings; enables unified analysis')
+    setup.add_argument('--vision-runtime', choices=('auto','directml','cpu'), help='New installs default to auto; directml requires a verified discrete GPU')
+    setup.add_argument('--accelerator-root', help='Existing accelerator folder containing directml/onnxruntime; no packages or drivers installed automatically')
+    setup.add_argument('--vision-batch-size',type=int,choices=(1,8,16))
     sub.add_parser('start'); sub.add_parser('start-detached'); sub.add_parser('stop'); sub.add_parser('status')
     sub.add_parser('startup-paths')
     worker = sub.add_parser('supervise-worker'); worker.add_argument('--job', required=True)
@@ -281,7 +327,9 @@ def main():
                 creationflags=HIDDEN | getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0), close_fds=True)
         code = process.wait(timeout=55)
         if code: raise RuntimeError('Detached start failed; inspect launcher.log')
-        wait_ready(config); print('Team website running: http://127.0.0.1:8088/#/sessions'); return 0
+        wait_ready(config)
+        if (state/'vision-runtime.json').exists(): describe_vision(load(state/'vision-runtime.json'))
+        print('Team website running: http://127.0.0.1:8088/#/sessions'); return 0
     if args.command == 'start': start(config, state)
     elif args.command == 'stop': stop(config, state); print('Team website stopped')
     else: print(json.dumps({name: alive(record) for name, record in records(state).items()}))
