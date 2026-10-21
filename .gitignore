@@ -1,5 +1,6 @@
 .env
 .env.*
+*.private.json
 !.env.example
 var/
 output/

@@ -77,10 +77,19 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return Config{}, fmt.Errorf("load .env: %w", err)
+	lookup, err := LoadLookup()
+	if err != nil {
+		return Config{}, err
 	}
-	return FromLookup(os.LookupEnv)
+	return FromLookup(lookup)
+}
+
+// LoadLookup fixes one settings snapshot for consumers such as ASR and reports.
+func LoadLookup() (func(string) (string, bool), error) {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("load .env failed; check its format without logging credentials")
+	}
+	return WithModelFile(os.LookupEnv, os.Getenv("MODEL_CONFIG_FILE"))
 }
 
 func FromLookup(lookup func(string) (string, bool)) (Config, error) {
