@@ -94,7 +94,13 @@ function VisualResults({ run }: { run: Run }): ReactElement {
     try { const page = await getVisualObservations(run.id, fromTrack, observations.cursor); if (page.next_cursor === observations.cursor) throw new Error('人物记录分页没有前进，请重新读取。'); setObservations(old => old?.track === fromTrack && old.cursor === observations.cursor ? { track: fromTrack, rows: [...old.rows, ...page.items.filter(p => !old.rows.some(row => row.timestamp_ms === p.timestamp_ms))], cursor: page.next_cursor } : old); }
     catch (e) { setPersonError(describeError(e)); } finally { setBusy(false); }
   }
-  function jump(row: VisualObservation): void { setAt(row.timestamp_ms); if (video.current) video.current.currentTime = row.timestamp_ms / 1000; }
+  function jump(row: VisualObservation): void {
+    setAt(row.timestamp_ms);
+    if (video.current) {
+      video.current.currentTime = row.timestamp_ms / 1000;
+      video.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
   if (!summary) return <Card title="读取视觉结果"><p role={error ? 'alert' : undefined}>{error ?? '正在读取分析结果…'}</p>{error && <button className="btn btn-secondary" onClick={() => setReload(v => v + 1)}>重新读取</button>}</Card>;
   const known = summary.visual.counts.flatMap(p => p.visible_count === null ? [] : [p.visible_count]);
   const max = (key: 'hand_raise_count' | 'head_down_count'): string => { const n = summary.visual.counts.flatMap(p => p[key] === null ? [] : [p[key]!]); return n.length ? String(Math.max(...n)) : '看不清'; };

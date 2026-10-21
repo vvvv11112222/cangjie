@@ -24,7 +24,10 @@ for %%D in (V W Y Z) do (
             fc /b "%%D:\.team-web-alias-owner" "%~1\.team-web-alias-owner" >nul 2>&1
             if not errorlevel 1 exit /b 0
         )
-    ) else (
+    )
+)
+for %%D in (V W Y Z) do (
+    if not exist "%%D:\" (
         subst.exe %%D: "%~1"
         if not errorlevel 1 exit /b 0
     )
