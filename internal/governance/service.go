@@ -433,8 +433,10 @@ func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
 		// A PostgreSQL rejection followed by idle transaction status confirms
 		// rollback. Transport errors do not establish the commit outcome.
 		var serverError *pgconn.PgError
+		// Severity is translated by PostgreSQL's lc_messages; use the stable
+		// protocol field so a confirmed rollback is recognized in every locale.
 		removeOnFailure = errors.Is(err, pgx.ErrTxCommitRollback) ||
-			(errors.As(err, &serverError) && serverError.Severity == "ERROR" && tx.Conn().PgConn().TxStatus() == 'I')
+			(errors.As(err, &serverError) && serverError.SeverityUnlocalized == "ERROR" && tx.Conn().PgConn().TxStatus() == 'I')
 	}
 	if err != nil && removeOnFailure {
 		s.store.Remove(key)

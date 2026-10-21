@@ -21,6 +21,7 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/academic"
 	"github.com/vvvv11112222/cangjie/internal/analysis"
 	"github.com/vvvv11112222/cangjie/internal/classroom"
+	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/media"
 	"github.com/vvvv11112222/cangjie/internal/storage"
@@ -61,6 +62,10 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	}
 	runtime := bridge("-m", "workers", "runtime-info")
 	var asrCalls, reportCalls atomic.Int32
+	systemPrompt, promptSHA, err := analysis.ReportPrompt(analysis.TeacherPromptVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Model    string `json:"model"`
@@ -103,6 +108,10 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 			}
 		} else {
 			reportCalls.Add(1)
+			var actualPrompt string
+			if json.Unmarshal(body.Messages[0].Content, &actualPrompt) != nil || actualPrompt != systemPrompt {
+				t.Error("main audio flow did not use the bundled teacher report prompt")
+			}
 			var payload string
 			_ = json.Unmarshal(body.Messages[1].Content, &payload)
 			var input struct {
@@ -127,7 +136,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 				t.Error("ASR evidence missing from report")
 				return
 			}
-			candidate := analysis.ReportCandidate{Summary: "合成报告", SummaryEvidenceIDs: []string{id}, Dimensions: []analysis.Dimension{}, Observations: []analysis.CandidateObservation{{DimensionCode: "content", ObservationType: "observation", ObservationText: "教师要求解释定义", EvidenceIDs: []string{id}}}}
+			candidate := analysis.ReportCandidate{Summary: "合成报告", SummaryEvidenceIDs: []string{id}, Dimensions: []analysis.Dimension{}, Observations: []analysis.CandidateObservation{{DimensionCode: "thinking", ObservationType: "observation", ObservationText: "教师要求解释定义；合成片段不能判断学生实际理解情况。", Suggestion: "下次可以请一名学生先解释，再让同伴补充一个矩阵加法例子，观察其是否能说明对应位置相加。", EvidenceIDs: []string{id}}}}
 			for _, code := range []string{"content", "pace", "thinking", "expression", "management", "technology"} {
 				candidate.Dimensions = append(candidate.Dimensions, analysis.Dimension{DimensionCode: code, CoverageStatus: "insufficient", Limitation: "合成素材不评价教学质量", Coverage: []analysis.Interval{}, SummaryEvidenceIDs: []string{}})
 			}
@@ -141,14 +150,17 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prompt, sha, _ := analysis.ReportPrompt("p0-v1")
-	_ = prompt
 	cfg := analysis.Config{Lease: 30 * time.Second, ProbeTimeout: time.Minute, ASRTimeout: time.Minute, VideoTimeout: time.Minute, GoStageTimeout: time.Minute, MediaJobAttempts: 2,
 		ProcessorVersion: runtime["processor_version"].(string), FFmpegSHA256: runtime["ffmpeg_build_sha256"].(string), ASRModelName: "synthetic-asr", ASRModelRevision: "v1", ASRDevice: "cpu", KeyframeIntervalMS: 1000, MaxKeyframes: 100, MaxMediaDurationMS: 60000, MaxVideoHeight: 1080, MaxArtifactBytes: 10 << 20,
-		ReportEnabled: true, ReportAPIBase: provider.URL, ReportAPIKey: "synthetic", ReportModel: "synthetic-report", ReportModelRevision: "v1", ReportPromptVersion: "p0-v1", ReportPromptSHA256: sha, ReportSelectionVersion: "time-window-v1", ReportPriceVersion: "synthetic", ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai", ReportMonthlyBudgetMicros: 100000000, ReportInputPriceMicros: 1000000, ReportOutputPriceMicros: 1000000, ReportTimeout: time.Minute, ReportMaxInputTokens: 8000, ReportMaxOutputTokens: 1000,
+		ReportEnabled: true, ReportAPIBase: provider.URL, ReportAPIKey: "synthetic", ReportModel: "synthetic-report", ReportModelRevision: "v1", ReportPromptVersion: analysis.TeacherPromptVersion, ReportPromptSHA256: promptSHA, ReportSelectionVersion: "time-window-v1", ReportPriceVersion: "synthetic", ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai", ReportMonthlyBudgetMicros: 30000000, ReportInputPriceMicros: 1000000, ReportOutputPriceMicros: 1000000, ReportTimeout: time.Minute, ReportMaxInputTokens: 8000, ReportMaxOutputTokens: 1000,
 		CloudASR: analysis.CloudASRConfig{Enabled: true, APIKey: "synthetic", ASRSnapshot: analysis.ASRSnapshot{APIBase: provider.URL, LanguageHints: "zh,en", RequestVersion: asrrequest.Version, PriceVersion: "synthetic", InputPriceMicros: 1000000, OutputPriceMicros: 1000000, MaxInputTokens: 32768, MaxOutputTokens: 4096}}}
 	svc := analysis.NewService(pool, store, cfg)
-	server := httptest.NewServer(New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: media.NewService(pool, store, 10<<20, 14*24*time.Hour), Analysis: svc, PublicOrigin: "http://frontend.test", WorkerID: "worker-01", WorkerToken: "synthetic-audio-worker", WorkerCapabilities: []string{"probe", "audio_analysis", "video_analysis"}}))
+	ledger, err := governance.InitializeLedger(filepath.Join(tmp, "deletions.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gov := governance.NewService(pool, store, ledger, governance.Config{Lease: time.Minute, MaxAttempts: 3, ExportRetention: time.Hour, ExecutorID: "synthetic-audio-export"})
+	server := httptest.NewServer(New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: media.NewService(pool, store, 10<<20, 14*24*time.Hour), Analysis: svc, Governance: gov, PublicOrigin: "http://frontend.test", WorkerID: "worker-01", WorkerToken: "synthetic-audio-worker", WorkerCapabilities: []string{"probe", "audio_analysis", "video_analysis"}}))
 	defer server.Close()
 	input := filepath.Join(tmp, "delayed.mp4")
 	gen := exec.Command(runtime["ffmpeg_binary"].(string), "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=45", "-itsoffset", "1", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=44", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", input)
@@ -185,6 +197,95 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	if report["status"] != "draft" || asrCalls.Load() != 2 || reportCalls.Load() != 1 {
 		t.Fatalf("report=%s calls=%d/%d", report["status"], asrCalls.Load(), reportCalls.Load())
 	}
+	observations := report["observations"].([]any)
+	if len(observations) != 1 || !strings.Contains(observations[0].(map[string]any)["suggestion"].(string), "对应位置相加") {
+		t.Fatal("teacher-facing advice lost in the main-project report")
+	}
+	// Follow the actual cloud-generated draft through the existing public review
+	// and export APIs; do not seed a pre-published report directly in the database.
+	observation := observations[0].(map[string]any)
+	if observation["review_status"] != "unreviewed" || len(report["dimensions"].([]any)) != 6 {
+		t.Fatal("generated report must preserve six dimensions and require human review")
+	}
+	segments := map[any]map[string]any{}
+	for _, raw := range results["segments"].([]any) {
+		segment := raw.(map[string]any)
+		segments[segment["start_ms"]] = segment
+	}
+	evidenceByID := map[any]map[string]any{}
+	for _, raw := range results["evidence"].([]any) {
+		evidence := raw.(map[string]any)
+		evidenceByID[evidence["id"]] = evidence
+	}
+	if len(observation["evidence_ids"].([]any)) == 0 {
+		t.Fatal("generated teaching advice requires evidence")
+	}
+	for _, evidenceID := range observation["evidence_ids"].([]any) {
+		evidence := evidenceByID[evidenceID]
+		segment := segments[evidence["start_ms"]]
+		if evidence == nil || segment == nil || evidence["kind"] != "transcript" || evidence["transcript_segment_id"] == nil || evidence["description"] != segment["text_content"] || evidence["run_id"] != id || evidence["session_id"] != lesson || evidence["media_asset_id"] != uploaded["id"] || evidence["availability"] != "available" {
+			t.Fatal("report must cite available transcript evidence from this upload and run")
+		}
+		start, end := evidence["start_ms"].(float64), evidence["end_ms"].(float64)
+		if start < 0 || start >= end || end > 45000 || evidence["start_ms"] != segment["start_ms"] || evidence["end_ms"] != segment["end_ms"] {
+			t.Fatal("report evidence must preserve transcript times on the source video timeline")
+		}
+	}
+	reportURL := server.URL + "/api/v1/reports/" + report["id"].(string)
+	requestWithHeaders(t, client, http.MethodPost, reportURL+"/exports", map[string]any{"format": "json"}, csrf, map[string]string{"Idempotency-Key": "unreviewed-audio-report"}, http.StatusConflict)
+	report = requestJSON(t, client, http.MethodPost, reportURL+"/review", map[string]any{"lock_version": report["lock_version"], "action": "submit", "observation_id": nil, "content_sha256": nil, "reason": "合成报告提交复核"}, csrf, http.StatusOK)
+	supervisor := newTestClient(t)
+	supervisorCSRF := loginTestUser(t, supervisor, server.URL, "supervisor")
+	requestJSON(t, supervisor, http.MethodPost, reportURL+"/publish", map[string]any{"lock_version": report["lock_version"], "expected_current_report_id": nil}, supervisorCSRF, http.StatusUnprocessableEntity)
+	report = requestJSON(t, supervisor, http.MethodPost, reportURL+"/review", map[string]any{"lock_version": report["lock_version"], "action": "accept", "observation_id": observation["id"], "content_sha256": nil, "reason": "合成用例核对引用"}, supervisorCSRF, http.StatusOK)
+	report = requestJSON(t, supervisor, http.MethodPost, reportURL+"/review", map[string]any{"lock_version": report["lock_version"], "action": "confirm_report", "observation_id": nil, "content_sha256": report["content_sha256"], "reason": "合成用例确认整篇"}, supervisorCSRF, http.StatusOK)
+	requestJSON(t, client, http.MethodPost, reportURL+"/publish", map[string]any{"lock_version": report["lock_version"], "expected_current_report_id": nil}, csrf, http.StatusForbidden)
+	published := requestJSON(t, supervisor, http.MethodPost, reportURL+"/publish", map[string]any{"lock_version": report["lock_version"], "expected_current_report_id": nil}, supervisorCSRF, http.StatusOK)
+	if published["status"] != "published" {
+		t.Fatal("reviewed audio report was not published")
+	}
+	exported := requestWithHeaders(t, client, http.MethodPost, reportURL+"/exports", map[string]any{"format": "json"}, csrf, map[string]string{"Idempotency-Key": "published-audio-report"}, http.StatusAccepted)
+	replayed := requestWithHeaders(t, client, http.MethodPost, reportURL+"/exports", map[string]any{"format": "json"}, csrf, map[string]string{"Idempotency-Key": "published-audio-report"}, http.StatusOK)
+	if replayed["id"] != exported["id"] {
+		t.Fatal("export replay created a duplicate task")
+	}
+	if worked, err := gov.ProcessExport(ctx); err != nil || !worked {
+		t.Fatalf("export generated audio report: worked=%v err=%v", worked, err)
+	}
+	exportURL := server.URL + "/api/v1/exports/" + exported["id"].(string)
+	ready := requestJSON(t, client, http.MethodGet, exportURL, nil, "", http.StatusOK)
+	if ready["status"] != "succeeded" || ready["download_url"] == nil {
+		t.Fatal("published audio report export not ready")
+	}
+	response, err := client.Get(server.URL + ready["download_url"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot struct {
+		Report               analysis.Report   `json:"report"`
+		EvidenceAvailability map[string]string `json:"evidence_availability"`
+	}
+	decodeErr := json.NewDecoder(response.Body).Decode(&snapshot)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || decodeErr != nil || snapshot.Report.ID != published["id"] || snapshot.Report.ContentSHA256 == nil || *snapshot.Report.ContentSHA256 != published["content_sha256"] || len(snapshot.Report.Dimensions) != 6 || len(snapshot.Report.Observations) != 1 {
+		t.Fatalf("download must contain the fixed published report: status=%d err=%v", response.StatusCode, decodeErr)
+	}
+	if snapshot.Report.Observations[0].Suggestion != observation["suggestion"] || snapshot.Report.Observations[0].ReviewStatus != "accepted" || len(snapshot.Report.Observations[0].EvidenceIDs) == 0 {
+		t.Fatal("download lost the reviewed teaching advice or its evidence references")
+	}
+	for _, evidenceID := range snapshot.Report.Observations[0].EvidenceIDs {
+		if snapshot.EvidenceAvailability[evidenceID] != "available" || evidenceByID[evidenceID] == nil {
+			t.Fatal("download refers to evidence outside the generated audio report")
+		}
+	}
+	requestJSON(t, supervisor, http.MethodGet, exportURL+"/content", nil, "", http.StatusNotFound)
+	if _, err := pool.Exec(ctx, `UPDATE teaching.source_records SET allowed_uses='["playback","analysis"]',rights_version=rights_version+1 WHERE id=$1`, source); err != nil {
+		t.Fatal(err)
+	}
+	requestJSON(t, client, http.MethodGet, exportURL+"/content", nil, "", http.StatusGone)
+	if asrCalls.Load() != 2 || reportCalls.Load() != 1 {
+		t.Fatal("review, publication or export unexpectedly requested another model call")
+	}
 	if status := rawStatus(http.DefaultClient, "POST", server.URL+"/internal/v1/jobs/00000000-0000-4000-8000-000000000001/asr-chunks", nil, nil); status != 401 {
 		t.Fatalf("anonymous ASR status %d", status)
 	}
@@ -198,7 +299,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 			}
 		}
 	}
-	t.Log("synthetic real-worker upload -> delayed audio extraction -> demo segmentation -> Go cloud ASR -> transcript -> evidence -> draft report; recognition quality not measured")
+	t.Log("synthetic real-worker upload -> delayed audio extraction -> demo segmentation -> Go cloud ASR -> transcript -> evidence -> draft -> review -> publish -> authorized JSON export; recognition quality not measured")
 }
 
 func TestASRChunkHTTPGuards(t *testing.T) {
