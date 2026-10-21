@@ -5934,6 +5934,70 @@
         }
       },
       "additionalProperties": false
+    },
+    "RoleBindingPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RoleBinding"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "ASRChunk": {
+      "type": "object",
+      "properties": {
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wav_base64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1800000
+        }
+      },
+      "required": [
+        "start_ms",
+        "end_ms",
+        "wav_base64"
+      ],
+      "additionalProperties": false
+    },
+    "ASRText": {
+      "type": "object",
+      "properties": {
+        "text_content": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "text_content"
+      ],
+      "additionalProperties": false
     }
   }
 }

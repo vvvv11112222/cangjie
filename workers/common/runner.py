@@ -18,8 +18,9 @@ LOG = logging.getLogger(__name__)
 
 def execute_claim(settings, claim, guard, directory, transport=None, handlers=None, *, report_timeout=True):
     from workers.video.handlers import HANDLERS
+    from workers.audio.handler import audio_analysis
     transport = transport or Transport(settings)
-    handlers = HANDLERS if handlers is None else handlers
+    handlers = {**HANDLERS, 'audio_analysis': audio_analysis} if handlers is None else handlers
     created = False
     try:
         validate_claim(claim, settings)
@@ -101,7 +102,7 @@ class Runner:
             return self._run_claim(claim)
 
     def _run_claim(self, claim):
-        timeout = self.settings.probe_timeout if claim["stage"] == "probe" else self.settings.video_timeout
+        timeout = self.settings.probe_timeout if claim["stage"] == "probe" else self.settings.asr_timeout if claim["stage"] == "audio_analysis" else self.settings.video_timeout
         guard = Guard(claim, timeout=timeout)
         directory = scratch_path(self.settings.temp_root, claim)
         if directory.exists():

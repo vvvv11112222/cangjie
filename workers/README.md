@@ -1,4 +1,8 @@
-# 视频工程师交付
+# 音视频 Worker 交付
+
+## 2026-10-21 主系统音频接入
+
+处理器升级为cangjie-media-worker-1.0.8。新增显式配置的audio_analysis：复用语言模块的停顿切片、由Go内部ASR网关进行许可与预算校验后调用云模型，完成正式AudioResult并进入主系统报告流程。默认能力仍为probe,video_analysis；音频配置、启动、错误处理和验收边界见[统一音视频接入与收尾](../docs/音视频统一接入与收尾.md)。真实准确率及长录像性能另行验收。
 
 ## 2026-10-19 手机式录像与视觉结果包
 
@@ -82,7 +86,7 @@ python -m workers run
 
 `--once` 只领取一次。环境变量与 [配置模板](../.env.example)一致；程序读取进程环境，不自行加载配置文件。后端固定同一 `processor_version`、FFmpeg 摘要和参数摘要到 Claim。参数间隔和上限使用 Claim，不能由本机默认值偷偷替换。
 
-当前 Go 只配置一个 Worker 编号及能力许可集合。Go 的 `WORKER_CAPABILITIES` 保持公共模板的三个阶段；视频进程仅声明 `probe,video_analysis`，音频进程声明自身实际能力。相同凭据与编号须由后端分配，不以在视频配置中添加 `audio_analysis` 假装实现 ASR。
+当前 Go 只配置一个 Worker 编号及能力许可集合。Go 的 `WORKER_CAPABILITIES` 保持公共模板的三个阶段；视频进程仅声明 `probe,video_analysis`，音频进程声明自身实际能力。相同凭据与编号须由后端分配，启用audio_analysis时须按统一接入说明提供真实切片工具、模型配置及Go云网关，不能只增加能力名。
 
 处理器版本已更新为 `cangjie-video-worker-1.0.5`；部署时重新运行 `runtime-info` 并让 Go 固定新版本。持续运行入口遇到 429、5xx 或暂时断网会退避后恢复轮询；若领取结果不确定，至少等待 `JOB_LEASE_SECONDS` 后才开始新的领取，因此该值必须与 Go 初次租约的最大时长一致。`--once` 失败会退出，便于脚本读取错误；401/403/409/410 不继续领取。
 

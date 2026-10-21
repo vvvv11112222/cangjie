@@ -28,6 +28,7 @@ const (
 )
 
 type snapshot struct {
+	CloudASR                *ASRSnapshot         `json:"cloud_asr,omitempty"`
 	StagePlan               []string             `json:"stage_plan"`
 	Parameters              Parameters           `json:"parameters"`
 	Executions              map[string]Execution `json:"executions"`
@@ -1293,6 +1294,11 @@ func (s *Service) validateResult(ctx context.Context, tx pgx.Tx, state lockedJob
 			}
 			previousStart = seg.StartMS
 		}
+		if state.Snapshot.CloudASR != nil {
+			if err := validateCloudAudioResult(ctx, tx, jobID, v); err != nil {
+				return envelope, nil, err
+			}
+		}
 		if v.AudioAssetID != nil {
 			if err := s.requireArtifact(ctx, tx, state, jobID, *v.AudioAssetID, "audio", false); err != nil {
 				return envelope, nil, err
@@ -1520,7 +1526,7 @@ func (s *Service) newSnapshot(mode string) snapshot {
 		plan = []string{"probe", "video_analysis"}
 	}
 	systemPrompt, _, _ := ReportPrompt(s.cfg.ReportPromptVersion) // validated before creating a report run
-	return snapshot{StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
+	return snapshot{CloudASR: s.cfg.CloudASR.snapshot(), StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
 		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},
 		Report: reportSnapshot{Enabled: s.cfg.ReportEnabled, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision},
 			PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion,

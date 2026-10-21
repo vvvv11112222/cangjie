@@ -3,10 +3,13 @@ module github.com/vvvv11112222/cangjie
 go 1.26.0
 
 require (
+	cangjie-demo v0.0.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.57.0
 )
+
+replace cangjie-demo => ./demos/ai-language-analysis
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

@@ -1056,6 +1056,28 @@
       "success_statuses": [
         200
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users/{id}/role-bindings",
+      "request": null,
+      "response": "RoleBindingPage",
+      "transport": "json",
+      "query": "PageQuery",
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/jobs/{id}/asr-chunks",
+      "request": "ASRChunk",
+      "response": "ASRText",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
     }
   ]
 }

@@ -13,6 +13,7 @@ const SchemaVersion = "1.1"
 var mediaStages = map[string]bool{"probe": true, "audio_analysis": true, "video_analysis": true}
 
 type Config struct {
+	CloudASR                                         CloudASRConfig
 	VisionEnabled                                    bool
 	VisionModelRevision                              string
 	Lease, ProbeTimeout, ASRTimeout, VideoTimeout    time.Duration

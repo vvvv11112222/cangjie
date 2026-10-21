@@ -99,6 +99,23 @@ class Transport:
             raise LeaseLost("任务已取消")
         return result
 
+    def transcribe(self, claim, payload, guard):
+        guard.check()
+        # No generic retry wrapper: uncertain provider billing requires reconciliation.
+        try:
+            response = self.client.post(self.job_url(claim, 'asr-chunks'), headers=self.headers(claim),
+                                        json=payload, timeout=195)
+        except httpx.TransportError as error:
+            raise WorkerError('PROCESSING_FAILED', 'ASR 响应未确认；请检查模型账目后人工处理', False) from error
+        if response.status_code == 409 and response.json().get('error', {}).get('code') != 'LEASE_LOST':
+            raise WorkerError('PROCESSING_FAILED', 'ASR 调用受阻；请检查模型账目、预算及固定配置', False)
+        self.check_response(response, (200,))
+        guard.check()
+        text = response.json()['data']['text_content']
+        if not isinstance(text, str):
+            raise WorkerError('INVALID_RESULT', 'ASR 返回文本无效')
+        return text
+
     def claim_cleanup(self):
         from .deletion import validate_cleanup
         payload = {"worker_id": self.settings.worker_id}

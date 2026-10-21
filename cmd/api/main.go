@@ -69,7 +69,12 @@ func run() error {
 	if schemaErr != nil {
 		return schemaErr
 	}
+	cloudASR, err := analysis.LoadCloudASR(os.Getenv)
+	if err != nil {
+		return err
+	}
 	analysisService := analysis.NewService(pool.Pool, mediaStore, analysis.Config{
+		CloudASR:      cloudASR,
 		VisionEnabled: cfg.VisionEnabled, VisionModelRevision: cfg.VisionModelRevision,
 		Lease: cfg.JobLease, ProbeTimeout: cfg.ProbeTimeout, ASRTimeout: cfg.ASRTimeout, VideoTimeout: cfg.VideoTimeout,
 		MediaJobAttempts: cfg.MediaJobAttempts, ProcessorVersion: cfg.ProcessorVersion, FFmpegSHA256: cfg.FFmpegSHA256,

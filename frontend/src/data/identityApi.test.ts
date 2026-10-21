@@ -4,6 +4,8 @@ import {
   createRoleBinding,
   createUser,
   listUsers,
+  listRoleBindings,
+  deleteRoleBinding,
   parseManagedUser,
   parseRoleBinding,
   patchUser,
@@ -77,6 +79,18 @@ describe('账号 DTO 解析', () => {
 });
 
 describe('账号读写', () => {
+  it('读取已有绑定按页解析，撤销携带 CSRF 并接受204', async () => {
+    setCsrfToken('role-csrf');
+    stub(url => url.includes('/role-bindings/') ? respond(204, undefined) : envelope({items: [{id: 'binding', role_code: 'teacher', scope_org_id: null}], next_cursor: 'next-binding'}));
+    const page = await listRoleBindings('user A', 'previous');
+    expect(page.items[0]?.roleCode).toBe('teacher');
+    expect(page.nextCursor).toBe('next-binding');
+    expect(calls[0]?.url).toContain('/users/user%20A/role-bindings?');
+    expect(calls[0]?.url).toContain('cursor=previous');
+    await deleteRoleBinding('user A', 'binding');
+    expect(calls[1]?.init?.method).toBe('DELETE');
+    expect((calls[1]?.init?.headers as Record<string,string>)['X-CSRF-Token']).toBe('role-csrf');
+  });
   it('列表带游标与 limit，解析 items 与 next_cursor', async () => {
     stub((url) => {
       expect(url).toContain('/api/v1/users');

@@ -7,6 +7,7 @@ on:
       - 'cmd/**'
       - 'go.mod'
       - 'go.sum'
+      - 'demos/ai-language-analysis/**'
       - 'tools/check_database.mjs'
       - 'tools/check_schema.mjs'
       - 'tools/upgrade_cases.mjs'

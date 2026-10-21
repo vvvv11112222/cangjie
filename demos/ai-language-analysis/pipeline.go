@@ -1,8 +1,8 @@
 package main
 
 import (
+	"cangjie-demo/integration/asrrequest"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math"
@@ -231,24 +231,7 @@ func analyzeVideo(ctx context.Context, base, key, video string, existing []Segme
 		if e != nil {
 			return AnalysisOutput{}, nil, fmt.Errorf("第 %d 段音频读取失败，检查点已保留：%w", i+1, e)
 		}
-		asrOptions := map[string]any{"enable_itn": false}
-		// Classroom recordings often mix Chinese, English and pinyin.  Keep
-		// this configurable because a monolingual recording may benefit from a
-		// narrower hint.  ITN stays disabled so variables, pinyin letters and
-		// mathematical speech are not silently rewritten.
-		if hints := strings.TrimSpace(env("BAILIAN_ASR_LANGUAGE_HINTS", "zh,en")); hints != "" {
-			parts := strings.Split(hints, ",")
-			clean := make([]string, 0, len(parts))
-			for _, part := range parts {
-				if part = strings.TrimSpace(part); part != "" {
-					clean = append(clean, part)
-				}
-			}
-			if len(clean) > 0 {
-				asrOptions["language_hints"] = clean
-			}
-		}
-		body := map[string]any{"model": env("BAILIAN_ASR_MODEL", "qwen3-asr-flash"), "stream": false, "messages": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_audio", "input_audio": map[string]string{"data": "data:audio/wav;base64," + base64.StdEncoding.EncodeToString(b)}}}}}, "asr_options": asrOptions}
+		body := asrrequest.Body(b, env("BAILIAN_ASR_MODEL", "qwen3-asr-flash"), env("BAILIAN_ASR_LANGUAGE_HINTS", "zh,en"))
 		text, _, e := callModel(ctx, base, key, body, false)
 		if e != nil {
 			if ctx.Err() != nil {

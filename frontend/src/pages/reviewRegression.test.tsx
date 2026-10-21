@@ -11,7 +11,7 @@ import type { Run, Session } from '../types';
 const h = vi.hoisted(() => ({
   auth: {} as AuthContextValue, loaded: {} as SessionTasksResult,
   getRun: vi.fn(), listRuns: vi.fn(), listSources: vi.fn(), createSource: vi.fn(), verifySource: vi.fn(), upload: vi.fn(),
-  users: vi.fn(), units: vi.fn(), createUser: vi.fn(), patchUser: vi.fn(), grant: vi.fn(),
+  users: vi.fn(), units: vi.fn(), createUser: vi.fn(), patchUser: vi.fn(), grant: vi.fn(), roles: vi.fn(), revoke: vi.fn(),
   m1: vi.fn(), writeAcademic: vi.fn(), importAcademic: vi.fn(),
 }));
 vi.mock('../auth', () => ({ useAuth: () => h.auth }));
@@ -19,7 +19,7 @@ vi.mock('../data/hooks', () => ({ useSessionTasks: () => h.loaded }));
 vi.mock('../data/sources', () => ({ isApiMode: () => true, dataSource: { getRun: h.getRun } }));
 vi.mock('../data/m2Api', () => ({ listSessionRuns: h.listRuns, listSessionSources: h.listSources, createSource: h.createSource, verifySource: h.verifySource }));
 vi.mock('../data/sessionOps', () => ({ uploadSessionMedia: h.upload }));
-vi.mock('../data/identityApi', async importOriginal => ({ ...await importOriginal<typeof import('../data/identityApi')>(), listUsers: h.users, createUser: h.createUser, patchUser: h.patchUser, createRoleBinding: h.grant }));
+vi.mock('../data/identityApi', async importOriginal => ({ ...await importOriginal<typeof import('../data/identityApi')>(), listUsers: h.users, createUser: h.createUser, patchUser: h.patchUser, createRoleBinding: h.grant, listRoleBindings: h.roles, deleteRoleBinding: h.revoke }));
 vi.mock('../data/m1Api', async importOriginal => ({ ...await importOriginal<typeof import('../data/m1Api')>(),
   createTerm: (input: unknown) => h.writeAcademic('term', input), patchTerm: (id: string, input: unknown) => h.writeAcademic('term', input, id),
   createCourse: (input: unknown) => h.writeAcademic('course', input), patchCourse: (id: string, input: unknown) => h.writeAcademic('course', input, id),
@@ -66,6 +66,7 @@ beforeEach(() => {
   h.units.mockResolvedValue({ items: [{ id: 'department', kind: 'department', name: '院系', parentId: 'college' }, { id: 'college', kind: 'college', name: '学院', parentId: null }], nextCursor: null });
   h.users.mockResolvedValue({ items: [user], nextCursor: null });
   h.createUser.mockResolvedValue(user); h.patchUser.mockResolvedValue(user); h.grant.mockResolvedValue({});
+  h.roles.mockResolvedValue({items: [], nextCursor: null}); h.revoke.mockResolvedValue(undefined);
   h.m1.mockResolvedValue({ items: [], next_cursor: null });
   h.writeAcademic.mockReset().mockResolvedValue({}); h.importAcademic.mockReset().mockResolvedValue([]);
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
@@ -313,4 +314,32 @@ it('loads all academic pages, exports the final row, filters the week, and clear
   } finally { clickAnchor.mockRestore(); }
   h.auth = { ...h.auth, status: 'anonymous', me: null, capabilities: [], sessionKey: 'anonymous#2' };
   await mount(<App/>); expect(container.textContent).not.toContain('私有课程'); expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
+});
+
+
+it('角色跨页读取并撤销，刷新后显示服务端状态', async () => {
+  h.roles.mockImplementation(async (_id: string, cursor?: string) => cursor ? {items: [{id: 'r2', roleCode: 'supervisor', scopeOrgId: 'college'}], nextCursor: null} : {items: [{id: 'r1', roleCode: 'teacher', scopeOrgId: null}], nextCursor: 'second'});
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await mount(<AccountsPage/>);
+  await click('账号资料 / 授予新角色');
+  expect(h.roles).toHaveBeenCalledWith(user.id, 'second');
+  expect(container.querySelector('[aria-label="已有角色"]')?.textContent).toContain('学院');
+  h.roles.mockResolvedValue({items: [], nextCursor: null});
+  const button = [...container.querySelectorAll('button')].find(b => b.textContent === '撤销角色')!;
+  await act(async () => button.click());
+  expect(h.revoke).toHaveBeenCalledWith(user.id, 'r1');
+  expect(container.textContent).toContain('该账号没有角色绑定');
+  confirm.mockRestore();
+});
+
+it('角色查询失败支持重试，撤销失败保留原绑定', async () => {
+  h.roles.mockRejectedValueOnce(new Error('role read failed')).mockResolvedValue({items: [{id: 'r1', roleCode: 'teacher', scopeOrgId: null}], nextCursor: null});
+  h.revoke.mockRejectedValue(new Error('last role protected'));
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await mount(<AccountsPage/>); await click('账号资料 / 授予新角色');
+  expect(container.textContent).toContain('role read failed');
+  await click('重新读取角色'); await click('撤销角色');
+  expect(container.textContent).toContain('last role protected');
+  expect(container.querySelector('[aria-label="已有角色"]')?.textContent).toContain('教师');
+  confirm.mockRestore();
 });

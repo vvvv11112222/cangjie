@@ -23,6 +23,10 @@ class Settings:
     max_height: int = 1080
     probe_timeout: int = 1800
     video_timeout: int = 3600
+    asr_timeout: int = 14400
+    asr_planner: str = ''
+    asr_model_name: str = ''
+    asr_model_revision: str = ''
     lease_seconds: int = 120
     vision_enabled: bool = False
     cleanup_enabled: bool = False
@@ -35,8 +39,10 @@ class Settings:
             raise ValueError("WORKER_API_BASE 必须是内部 Go API 的 /internal/v1 地址")
         if not self.token or not self.worker_id or self.processor_version != PROCESSOR_VERSION:
             raise ValueError("需要 Worker 凭据及与代码一致的 processor_version")
-        if not self.capabilities or not set(self.capabilities) <= {"probe", "video_analysis"}:
-            raise ValueError("当前视频 Worker 只注册 probe、video_analysis")
+        if not self.capabilities or not set(self.capabilities) <= {"probe", "video_analysis", "audio_analysis"}:
+            raise ValueError("Worker 只注册 probe、video_analysis、audio_analysis")
+        if 'audio_analysis' in self.capabilities and (not Path(self.asr_planner).is_file() or not self.asr_model_name or not self.asr_model_revision or self.asr_timeout < self.lease_seconds):
+            raise ValueError('音频能力要求 ASR_PLANNER、模型名称/修订和有效时限')
         if (not 0 < self.heartbeat_seconds < self.lease_seconds or self.max_input_bytes <= 0 or
             self.max_artifact_bytes <= 0 or self.max_duration_ms <= 0 or self.max_height <= 0 or
             min(self.probe_timeout, self.video_timeout) < self.lease_seconds):
@@ -75,6 +81,10 @@ class Settings:
             max_height=int(os.environ.get("MAX_VIDEO_HEIGHT", "1080")),
             probe_timeout=int(os.environ.get("PROBE_TIMEOUT_SECONDS", "1800")),
             video_timeout=int(os.environ.get("VIDEO_TIMEOUT_SECONDS", "3600")),
+            asr_timeout=int(os.environ.get('ASR_TIMEOUT_SECONDS', '14400')),
+            asr_planner=os.environ.get('ASR_PLANNER', ''),
+            asr_model_name=os.environ.get('ASR_MODEL_NAME', ''),
+            asr_model_revision=os.environ.get('ASR_MODEL_REVISION', ''),
             lease_seconds=int(os.environ.get("JOB_LEASE_SECONDS", "120")),
             vision_enabled=vision_flag == "1",
             cleanup_enabled=cleanup_flag == "1",
