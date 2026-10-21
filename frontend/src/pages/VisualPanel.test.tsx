@@ -36,7 +36,37 @@ afterEach(async () => {
   else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
 });
 async function mount(): Promise<void> { await act(async () => { root.render(<VisualPanel sessionId={run.session_id} currentRun={run} />); }); }
+async function toggleAll(): Promise<void> { await act(async () => container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()); }
 describe('视觉观察页面', () => {
+  it('显示全部人物框，选人不改变颜色，切换显示范围复用缓存', async () => {
+    await mount(); await toggleAll();
+    const colors = () => [...container.querySelectorAll('.visual-overlay g')].map(g => [g.getAttribute('data-track-id'), g.querySelector('rect')?.getAttribute('stroke')]);
+    expect(colors()).toEqual([['T0001', 'var(--danger)'], ['T0002', 'var(--muted)']]);
+    expect(container.textContent).toContain('已读取全部 2 个编号');
+    const requests = api.observations.mock.calls.length;
+    const person = [...container.querySelectorAll<HTMLButtonElement>('.visual-person')].find(b => b.textContent?.includes('T0002'))!;
+    await act(async () => person.click());
+    expect(colors()).toEqual([['T0001', 'var(--danger)'], ['T0002', 'var(--muted)']]);
+    await toggleAll(); expect(container.querySelectorAll('.visual-overlay rect')).toHaveLength(1);
+    await toggleAll(); expect(container.querySelectorAll('.visual-overlay rect')).toHaveLength(2);
+    expect(api.observations).toHaveBeenCalledTimes(requests);
+    const player = container.querySelector('video')!;
+    await act(async () => { player.currentTime = 10; player.dispatchEvent(new Event('timeupdate')); });
+    expect(container.querySelector('.visual-overlay')).toBeNull();
+    expect(container.textContent).toContain('当前画面显示 0 个人的框');
+  });
+  it('全班读取失败不把部分结果说成全部，仍能看个人并重试', async () => {
+    await mount();
+    api.observations.mockRejectedValueOnce(new Error('暂时读取失败'));
+    await toggleAll();
+    expect(container.textContent).toContain('全班画框读取失败');
+    expect(container.textContent).not.toContain('已读取全部');
+    expect(container.querySelectorAll('.visual-overlay rect')).toHaveLength(1);
+    const retry = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '重试读取全班画框')!;
+    await act(async () => retry.click());
+    expect(container.querySelectorAll('.visual-overlay rect')).toHaveLength(2);
+    expect(container.textContent).toContain('已读取全部 2 个编号');
+  });
   it('展示右侧人物与三态记录，切换人物不改变原始结果', async () => {
     await mount();
     expect(container.textContent).toContain('看不清'); expect(container.textContent).toContain('T0001 的画面记录');
