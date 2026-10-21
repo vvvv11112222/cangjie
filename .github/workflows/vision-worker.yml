@@ -12,6 +12,8 @@ on:
       - 'go.sum'
       - 'tools/team_web.py'
       - 'tools/test_team_web.py'
+      - 'tools/vision_runtime.py'
+      - 'tools/test_vision_runtime.py'
       - 'tools/test_capture_dev.py'
       - 'tools/check_docs.py'
       - 'tools/contract_rules.py'
@@ -60,7 +62,7 @@ jobs:
           python tools/check_docs.py
           python -m workers runtime-info
       - name: Test worker and generated media
-        run: python -m pytest -q workers/tests tools/test_team_web.py tools/test_capture_dev.py tools/test_quality.py
+        run: python -m pytest -q workers/tests tools/test_team_web.py tools/test_vision_runtime.py tools/test_capture_dev.py tools/test_quality.py
 
   cpu-container:
     name: CPU container

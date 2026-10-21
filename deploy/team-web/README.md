@@ -45,7 +45,7 @@ Windows 的 PostgreSQL 工具在部分中文路径下无法初始化；使用 AS
 | React 已构建页面与同源代理 | 8088，Vite preview，仅作开发试用 |
 | Go API | 18088，Cookie/CSRF/Origin 校验沿用正式实现 |
 | PostgreSQL | 55437，独立 `cangjie_visual` 数据库 |
-| 视频 Worker | 单进程、单任务，CPU / OpenCV 各4线程、batch=1；固定模型及 FFmpeg 版本 |
+| 视频 Worker | 单进程、单任务；新部署自动检查独显，明确选择 CPU 时4线程、batch=1；模型及 FFmpeg 固定 |
 
 ```powershell
 python tools/team_web.py --data-root D:/cangjie-data/team-web status
@@ -54,7 +54,26 @@ python tools/team_web.py --data-root D:/cangjie-data/team-web stop
 
 分析正在运行时拒绝停止；先在网页取消并等待收口。停止只针对保存了进程身份的本部署进程及其 Worker Job 子进程，不按进程名批量结束。占用端口时拒绝启动，不终止其他服务。`start-detached` 后台启动，关闭启动窗口不会停止分析；电脑重启后需要再次双击 BAT。数据、录像和结果保留在数据目录。
 
-查看 `prepare.log`、`api.log`、`web.log`、`worker.log`、`launcher.log`、`postgres.log` 排障；`deployment.json` 记录提交、模型修订和 CPU 模式。`private.json` 含本机数据库及账号凭据，应留在本地受控目录，不发送给队友或提交仓库。
+查看 `prepare.log`、`api.log`、`web.log`、`worker.log`、`launcher.log`、`postgres.log` 排障；`deployment.json` 记录构建提交和模型修订，`vision-runtime.json` 记录最近启动的设备选择与短测试结果。`private.json` 含本机数据库及账号凭据，应留在本地受控目录，不发送给队友或提交仓库。
+
+## 换电脑与独显加速
+
+模型运行在Python Worker所在的服务器，浏览器只显示结果。老师通过浏览器访问同一服务器时，用的是服务器的计算设备，不是老师笔记本的显卡。本文启动器仍只绑定本机；部署局域网服务器需要另行配置访问地址、HTTPS与网络，不能把127.0.0.1发给另一台电脑。
+
+每台电脑独立安装整套服务时，在原prepare命令末尾追加下列选项（路径均替换为本机实际路径）：
+
+```powershell
+--vision-runtime auto --accelerator-root D:/vision-accelerators
+```
+
+- 新部署默认auto；启动时重新枚举当前DXGI显卡，优先NVIDIA，否则选择专用显存至少1GiB的硬件适配器，排除软件适配器与低显存集显。这是保守的设备选择规则，不保证识别所有硬件架构。
+- DirectML加速环境须已安装：可沿用[Worker加速说明](../../workers/README.md)，在独立目录准备`directml/onnxruntime`，或在当前Python环境中正确安装DirectML版ONNX Runtime。启动器不自动安装依赖或驱动。自动模式找不到设备/依赖、短测试失败或超过45秒时，会明确记录原因并回退CPU，不能据此承诺实时速度。
+- 确认必须用独显时选`--vision-runtime directml`；检测失败则拒绝启动，不悄悄改CPU。`--vision-runtime cpu`用于无独显或故障排查。旧部署在重新prepare明确选择前保留CPU模式。
+- `--vision-batch-size 1|8|16`控制姿态计算批量，默认16；专用显存不足6GiB时上限8。保留原模型、float32、0.5秒采样、人数上限及行为规则。此处没有使用CUDA编号，也不复制另一台机器的设备编号。
+- 短测试真实运行一次固定姿态模型，启动输出显卡名称与批量；结果保存在本机`vision-runtime.json`。这只证明启动检查成功。每次正式视觉任务还核对实际GPU会话，CPU回退或设备不符时报告CONFIG_MISMATCH；`worker.log`记录实际会话与各阶段计算耗时。部分检测模型继续使用CPU，这是原加速配置的正常分工。
+- 每次启动都重新检查；`deployment.json`中的vision_execution是prepare时快照，最近启动状态以`vision-runtime.json`为准。更换配置先等待活动分析结束，再stop、prepare、start；已有结果不重跑、不删除。
+
+显卡驱动故障不能靠网页程序保证避免；先做短片验收，再扩大录像长度。不能通过关闭低头、少检测学生或减少采样来冒充同质量提速。即使自动选择同一种后端，不同显卡的速度与数值误差仍需验收。
 
 ## 本轮验证与边界（2026-10-19）
 
@@ -62,7 +81,7 @@ python tools/team_web.py --data-root D:/cangjie-data/team-web stop
 - 实际 CPU Worker 结果为4次画面检查、49条匿名轨迹、184次人物观察、平均可见人数46.0；有5次人物观察发现举手、持续举手事件0。这些是接口和网页贯通证据，不是人工识别准确率结论；教师、倒影和编号断裂仍可能影响数量。
 - 前端276项测试、类型检查及构建；启动生命周期6项边界测试和 PowerShell 语法检查。CI 最终状态见本轮 PR Checks。
 - 复用既有0.5秒采样、80人姿态和低头模型，没有为了网页接入减少人数或关闭行为检测。算法与模型未改动；本轮 CPU 真实短片分析仍较慢，不能承诺2分钟录像在2分钟内完成。
-- 本机曾发生 NVIDIA 显示驱动故障，本部署固定 CPU，不调用集成或独立显卡推理，不更改驱动、TDR 或系统设置。摄像头、ASR、六维报告和收费模型没有随此启动器启用；原有完整分析入口保留其自身前置条件。
+- 本轮历史验收是在显卡故障后的CPU配置完成；后续设备选择方式见上节。启动器不更改驱动、TDR或系统设置。摄像头及收费模型仍需各自显式配置；原有完整分析入口保留其自身前置条件。
 - 页面提供观察与证据，不生成学生综合质量分；低头可能是阅读书写，“看不清”不算“正常”，轨迹数不等于学生人数。独立人工标注质量验收、长录像速度和行为纠正流程仍待完成。
 
 升级或恢复旧试验环境前先核对迁移历史。带未发布同号迁移的数据库不直接套用新迁移；先备份并保留旧库，在独立数据目录部署正式版本。本机旧试验库与媒体已单独保留，不被本部署修改或重置。

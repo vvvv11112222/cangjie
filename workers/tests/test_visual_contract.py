@@ -53,7 +53,8 @@ def test_formal_adapter_calls_existing_core_without_transcoding(settings,source,
         assert config.duration_s==0 and config.sampling_fps==2 and config.max_pose_people==80 and config.head_down_enabled
         calls.append(job)
         return {'metadata':metadata,'persons':[],'counts':[{'timestamp_ms':0,'visible_count':0,'hand_raise_count':None,'head_down_count':None}],
-            'events':[],'coverage':{'start_ms':0,'end_ms':2000},'limitations':[],'snapshots':[]}
+            'events':[],'coverage':{'start_ms':0,'end_ms':2000},'limitations':[],'snapshots':[],
+            'provenance':{'runtime_status':{'sessions':[]}},'statistics':{'timing_seconds':{}}}
     monkeypatch.setattr('workers.vision_core.analysis.analyze',analyze)
     monkeypatch.setattr('workers.vision_core.media.make_proxy',lambda *args:pytest.fail('duplicate transcode'))
     result=visual_analysis(claim,work,settings,None,Guard(claim))
