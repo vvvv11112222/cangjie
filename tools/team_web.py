@@ -124,7 +124,11 @@ def select_vision(config, state):
 
 def describe_vision(result):
     label = result['device']['name'] if result['device'] else 'CPU'
-    print(f"视觉计算设备：{label}；每批 {result['batch_size']} 人。" + (result.get('reason') or ''),flush=True)
+    message = f"视觉计算设备：{label}；每批 {result['batch_size']} 人。" + (result.get('reason') or '')
+    # Ordinary Windows consoles/CI may use cp1252 instead of UTF-8. Reporting a
+    # valid device must not abort startup just because the console lacks Chinese.
+    encoding = getattr(sys.stdout, 'encoding', None) or 'utf-8'
+    print(message.encode(encoding, errors='backslashreplace').decode(encoding),flush=True)
 
 
 def pg_tools(config):

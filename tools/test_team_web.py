@@ -1,5 +1,6 @@
 """Local website lifecycle boundary tests; no real database or model is started."""
 import os
+import io
 import json
 from pathlib import Path
 import socket
@@ -135,5 +136,13 @@ class TeamWebTests(unittest.TestCase):
                 result=dev.select_vision(config,state)
             self.assertEqual(result['engine'],'cpu')
             self.assertFalse(result['probe_passed'])
+
+    def test_device_message_does_not_fail_in_a_non_chinese_console(self):
+        output=io.BytesIO()
+        stream=io.TextIOWrapper(output,encoding='cp1252')
+        with patch.object(dev.sys,'stdout',stream):
+            dev.describe_vision({'device':{'name':'NVIDIA GPU'},'batch_size':16,'reason':None})
+        stream.flush()
+        self.assertIn(b'NVIDIA GPU',output.getvalue())
 
 if __name__=='__main__': unittest.main()
