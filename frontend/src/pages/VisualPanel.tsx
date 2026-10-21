@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Card, StageFlow, TechDetails } from '../components/ui';
 import { useRunPolling } from '../data/hooks';
@@ -7,10 +7,19 @@ import { getMedia, isApiMode } from '../data/sources';
 import { describeError } from '../data/errors';
 import { getVisualSummary, getVisualPeople, getVisualObservations, observationAt, observationColor, verdictText } from '../data/visualApi';
 import type { Behavior, VisualObservation, VisualPerson, VisualSummary } from '../data/visualApi';
+import { loadVisualOverlay, sampledTimeAt } from '../data/visualOverlay';
+import type { PersonBox, VisualOverlayData } from '../data/visualOverlay';
 import type { Media, Run } from '../types';
 import { formatTimestamp, runStatusBadge } from '../format';
 
 const LABELS: Record<Behavior, string> = { hand_raise: '举手', head_down: '低头', leave_seat: '离座', possible_phone: '疑似持手机' };
+
+function ObservationBoxes({ boxes, selected }: { boxes: PersonBox[]; selected: string | null }): ReactElement {
+  return <>{boxes.map(({ track_id, observation }) => {
+    const box = observation.bbox; const color = observationColor(observation);
+    return <g key={track_id} data-track-id={track_id}><rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} fill="none" stroke={color} strokeWidth={track_id === selected ? 3 : 2} /><text x={box[0]} y={Math.max(12, box[1] - 3)} fill={color} fontSize="13">{track_id}</text></g>;
+  })}</>;
+}
 
 /** The existing classroom page gains one tab; navigation and existing panels stay intact. */
 export function VisualPanel({ sessionId, currentRun }: { sessionId: string; currentRun: Run | null }): ReactElement {
@@ -54,6 +63,12 @@ function VisualResults({ run }: { run: Run }): ReactElement {
   const [peopleCursor, setPeopleCursor] = useState<string | null>(null);
   const [track, setTrack] = useState<string | null>(null);
   const [observations, setObservations] = useState<{ track: string; rows: VisualObservation[]; cursor: string | null } | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [allData, setAllData] = useState<VisualOverlayData | null>(null);
+  const [allBusy, setAllBusy] = useState(false);
+  const [allProgress, setAllProgress] = useState({ completed: 0, total: 0 });
+  const [allError, setAllError] = useState<string | null>(null);
+  const [allRetry, setAllRetry] = useState(0);
   const [media, setMedia] = useState<Media | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [mediaReload, setMediaReload] = useState(0);
@@ -86,13 +101,37 @@ function VisualResults({ run }: { run: Run }): ReactElement {
     }).catch(e => { if (live) setMediaError(describeError(e)); });
     return () => { live = false; };
   }, [run.id, reload, mediaReload]);
+  useEffect(() => { setFilter('all'); }, [track]);
   useEffect(() => {
-    let live = true; setPersonError(null); setFilter('all');
+    let live = true; setPersonError(null);
+    const cached = track ? allData?.byTrack.get(track) : undefined;
+    if (track && cached) {
+      setObservations({ track, rows: cached, cursor: null });
+      return;
+    }
     if (track) void getVisualObservations(run.id, track).then(page => { if (live) { setObservations({ track, rows: page.items, cursor: page.next_cursor }); } }).catch(e => { if (live) setPersonError(describeError(e)); });
     return () => { live = false; };
-  }, [run.id, track, reload]);
+  }, [run.id, track, reload, allData]);
+  useEffect(() => {
+    if (!showAll || allData) { setAllBusy(false); return; }
+    let live = true;
+    setAllBusy(true); setAllError(null); setAllProgress({ completed: 0, total: 0 });
+    void loadVisualOverlay(run.id, {
+      cancelled: () => !live,
+      progress: (completed, total) => { if (live) setAllProgress({ completed, total }); },
+    }).then(data => {
+      if (!live) return;
+      setAllData(data);
+    }).catch(e => { if (live) setAllError(describeError(e)); }).finally(() => { if (live) setAllBusy(false); });
+    return () => { live = false; };
+  }, [run.id, showAll, allData, allRetry]);
   const rows = observations?.track === track ? observations.rows : [];
-  const current = summary ? observationAt(rows, at, summary.sampling.interval_ms) : null;
+  const sampleTimes = useMemo(() => summary?.visual.counts.map(c => c.timestamp_ms).sort((a, b) => a - b) ?? [], [summary]);
+  const sampleTime = summary ? sampledTimeAt(sampleTimes, at, summary.sampling.interval_ms) : null;
+  const allBoxes = allData && sampleTime !== null ? allData.frames.get(sampleTime) ?? [] : [];
+  const current = showAll && allData ? allBoxes.find(p => p.track_id === track)?.observation ?? null : summary ? observationAt(rows, at, summary.sampling.interval_ms) : null;
+  const boxes: PersonBox[] = showAll && allData ? allBoxes : current && track ? [{ track_id: track, observation: current }] : [];
+  const boxByTrack = new Map(boxes.map(p => [p.track_id, p.observation]));
   useEffect(() => { setImageFailed(false); }, [current?.frame_asset_id]);
   useEffect(() => () => { const node = video.current; if (node) { node.pause(); node.removeAttribute('src'); node.load(); } }, []);
   async function morePeople(): Promise<void> {
@@ -117,7 +156,6 @@ function VisualResults({ run }: { run: Run }): ReactElement {
   const known = summary.visual.counts.flatMap(p => p.visible_count === null ? [] : [p.visible_count]);
   const max = (key: 'hand_raise_count' | 'head_down_count'): string => { const n = summary.visual.counts.flatMap(p => p[key] === null ? [] : [p[key]!]); return n.length ? String(Math.max(...n)) : '看不清'; };
   const shown = rows.filter(row => filter === 'all' || (filter === 'unknown' ? row.behaviors.hand_raise === null || row.behaviors.head_down === null : row.behaviors[filter as Behavior] === true));
-  const box = current?.bbox;
   const hasPlayer = Boolean(media?.playback_url) && !playerFailed;
   const records = track && <><h3>{track} 的画面记录</h3><label className="account-field"><span>筛选动作</span><select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部已读取画面</option><option value="hand_raise">发现举手</option><option value="head_down">发现低头</option><option value="unknown">有动作看不清</option></select></label><p className="load-note">已读取 {rows.length} 次观察。每行对应一次实际检查，不代表动作持续了这么多次。{observations?.track === track && observations.cursor ? '还有记录未读取，可继续加载；筛选只作用于已读取部分。' : ''}</p><div className="table-wrap"><table className="table"><thead><tr><th>录像时间</th>{Object.values(LABELS).map(label => <th key={label}>{label}</th>)}<th>核对</th></tr></thead><tbody>{shown.map(row => <tr key={row.timestamp_ms}><td>{formatTimestamp(row.timestamp_ms)}</td>{(Object.keys(LABELS) as Behavior[]).map(kind => <td key={kind}>{verdictText(row.behaviors[kind])}</td>)}<td><button className="btn btn-secondary" onClick={() => jump(row)}>{hasPlayer ? '定位录像' : '查看记录'}</button></td></tr>)}</tbody></table></div>{!shown.length && <p className="empty">已读取的画面中没有符合筛选条件的记录。</p>}{observations?.track === track && observations.cursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void moreObservations()}>继续读取这个人的记录</button>}</>;
   return <>
@@ -127,20 +165,24 @@ function VisualResults({ run }: { run: Run }): ReactElement {
     </Card>
     <Card title="按人物查看与回放" subtitle="编号只属于本次录像。选中人物不会改变行为颜色：红色举手，蓝色低头，绿色未见这两种动作，灰色看不清。">
       {error && <p role="alert" className="load-note load-note-error">{error}</p>}
+      <label className="check-row"><input type="checkbox" checked={showAll} disabled={!hasPlayer && !showAll} onChange={e => setShowAll(e.target.checked)} />显示所有人物框</label>
+      {showAll && allBusy && <p className="load-note" role="status">正在读取全班画框{allProgress.total ? `：已完成 ${allProgress.completed}/${allProgress.total} 个编号` : '…'}；读取完成前暂时只显示选中人物。</p>}
+      {showAll && allError && <p className="notice-strip" role="alert">全班画框读取失败：{allError}。个人记录仍可查看。<button className="btn btn-secondary" onClick={() => setAllRetry(v => v + 1)}>重试读取全班画框</button></p>}
+      {showAll && allData && <p className="load-note" role="status">已读取全部 {allData.people.length} 个编号的记录，当前画面显示 {boxes.length} 个人的框。画框只对应附近实际检查过的画面；选人不会改变行为颜色。</p>}
       {!hasPlayer && <p className="load-note" role="status">分析结果已保存。右侧选择人物，下方表格查看举手、低头的判断；录像不能播放不代表分析结果丢失。</p>}
       <div className="visual-workspace">
         <div>
           {media?.playback_url && !playerFailed ? <div className="visual-video" style={{ aspectRatio: `${summary.visual.width}/${summary.visual.height}` }}>
             <video ref={video} controls preload="metadata" playsInline src={media.playback_url} aria-label="视觉分析录像" onLoadedMetadata={e => { e.currentTarget.currentTime = at / 1000; }} onTimeUpdate={e => setAt(Math.round(e.currentTarget.currentTime * 1000))} onError={() => setPlayerFailed(true)} />
-            {box && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`} aria-label={`当前人物 ${track}`}><rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} fill="none" stroke={observationColor(current!)} strokeWidth="2" /><text x={box[0]} y={Math.max(12, box[1] - 3)} fill={observationColor(current!)} fontSize="13">{track}</text></svg>}
+            {boxes.length > 0 && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`} aria-label={showAll && allData ? '所有人物画框' : `当前人物 ${track}`}><ObservationBoxes boxes={boxes} selected={track} /></svg>}
           </div> : <><p className="load-note">{playerFailed ? '录像播放失败，可以重新检查播放许可。' : '当前录像未开放回放，或播放信息暂不可用。请在“素材与来源”核对是否申请并允许“回放”；人物分析记录仍可查看。'}</p><a className="btn btn-secondary" href="#/sources">核对录像来源与用途</a><button className="btn btn-secondary" onClick={() => setMediaReload(v => v + 1)}>重新检查回放</button></>}
           {mediaError && <p role="alert" className="load-note load-note-error">播放信息读取失败：{mediaError}；已保存的分析结果继续显示。</p>}
           <p className="load-note">{formatTimestamp(at)} · {track ? `当前选中 ${track}` : '未选择人物'} · {current ? `举手：${verdictText(current.behaviors.hand_raise)}；低头：${verdictText(current.behaviors.head_down)}` : '这个时刻没有已加载的观察，不补画框或推测行为。'}</p>
-          {media?.allowed_actions.includes('playback') && current?.frame_asset_id && !imageFailed && <details><summary>查看这个时刻的证据图片</summary><div className="visual-evidence"><img loading="lazy" alt={`${track} 在 ${formatTimestamp(current.timestamp_ms)} 的原画面`} src={`/api/v1/media/${encodeURIComponent(current.frame_asset_id)}/content`} onError={() => setImageFailed(true)} />{box && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`}><rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} fill="none" stroke={observationColor(current)} strokeWidth="2" /></svg>}</div></details>}
+          {media?.allowed_actions.includes('playback') && current?.frame_asset_id && !imageFailed && <details><summary>查看这个时刻的证据图片</summary><div className="visual-evidence"><img loading="lazy" alt={`${track} 在 ${formatTimestamp(current.timestamp_ms)} 的原画面`} src={`/api/v1/media/${encodeURIComponent(current.frame_asset_id)}/content`} onError={() => setImageFailed(true)} />{boxes.length > 0 && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`}><ObservationBoxes boxes={boxes} selected={track} /></svg>}</div></details>}
           {imageFailed && <p role="alert">图片暂不可读取，可以定位原录像核对。</p>}
           {!hasPlayer && records}
         </div>
-        <aside className="visual-people" aria-label="人物列表"><h3>人物编号</h3><p className="muted">已读取 {people.length} 个编号；点击查看该人的记录。</p>{people.map(person => <button key={person.track_id} type="button" className={`visual-person${track === person.track_id ? ' selected' : ''}`} aria-pressed={track === person.track_id} onClick={() => setTrack(person.track_id)}><strong>{person.track_id}</strong><span>检查了 {person.sample_count} 次</span>{person.track_id === track && current && <small>举手{verdictText(current.behaviors.hand_raise)} · 低头{verdictText(current.behaviors.head_down)}</small>}</button>)}{peopleCursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void morePeople()}>加载更多人物</button>}{!people.length && <p>这段录像没有检出可记录的人物。</p>}</aside>
+        <aside className="visual-people" aria-label="人物列表"><h3>人物编号</h3><p className="muted">已读取 {people.length} 个编号；点击查看该人的记录。</p>{people.map(person => <button key={person.track_id} type="button" className={`visual-person${track === person.track_id ? ' selected' : ''}`} aria-pressed={track === person.track_id} onClick={() => setTrack(person.track_id)}><strong>{person.track_id}</strong><span>检查了 {person.sample_count} 次</span>{boxByTrack.has(person.track_id) ? <small>举手{verdictText(boxByTrack.get(person.track_id)!.behaviors.hand_raise)} · 低头{verdictText(boxByTrack.get(person.track_id)!.behaviors.head_down)}</small> : showAll && allData ? <small>此刻没有检查记录</small> : null}</button>)}{peopleCursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void morePeople()}>加载更多人物</button>}{!people.length && <p>这段录像没有检出可记录的人物。</p>}</aside>
       </div>
       {personError && <p role="alert">{personError}</p>}
       {hasPlayer && records}
