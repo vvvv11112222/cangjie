@@ -9,6 +9,7 @@
 import { isUuid, normalizeId } from './ids';
 
 const SESSION_DETAIL = /^#\/sessions\/([^/]+)$/;
+const SESSION_LIST = '#/sessions';
 
 export type SessionRoute =
   | { kind: 'list' }
@@ -31,4 +32,21 @@ export function parseSessionRoute(hash: string): SessionRoute {
   }
   // UUID 按值比较：地址里写成大写也要能命中同一个课堂（F10）。
   return { kind: 'detail', sessionId: normalizeId(decoded) };
+}
+
+/**
+ * 顶栏搜索只把查询词带到课堂档案，不把它当成服务端查询参数。
+ * 列表接口当前没有搜索字段，因此 SessionListPage 仍只筛选已经读取的课堂。
+ */
+export function sessionSearchFromHash(hash: string): string {
+  if (hash !== SESSION_LIST && !hash.startsWith(`${SESSION_LIST}?`)) return '';
+  const query = hash.slice(SESSION_LIST.length + 1);
+  return new URLSearchParams(query).get('query')?.trim() ?? '';
+}
+
+export function sessionSearchHash(query: string): string {
+  const normalized = query.trim();
+  if (normalized === '') return SESSION_LIST;
+  const params = new URLSearchParams({ query: normalized });
+  return `${SESSION_LIST}?${params.toString()}`;
 }

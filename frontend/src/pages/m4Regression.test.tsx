@@ -124,6 +124,17 @@ describe('M4 页面回归', () => {
     else expect(button('核对账目')).toBeTruthy();
   });
 
+  it('刷新失败时保留已经展示的运行状态和账目，并提供重试', async () => {
+    await act(async () => root.render(<OperationsPage />));
+    state.getOperations.mockRejectedValueOnce(new Error('operations unavailable'));
+    state.listModelCalls.mockRejectedValueOnce(new Error('calls unavailable'));
+    await act(async () => button('刷新状态').click());
+    expect(container.textContent).toContain('worker-01');
+    expect(container.textContent).toContain('¥ 0.500000');
+    expect(button('重新读取')).toBeTruthy();
+    expect(button('重新读取账目')).toBeTruthy();
+  });
+
   it('彻底清理要求原因和确认文字，并提交真实课堂 id', async () => {
     const changed = vi.fn();
     await act(async () => root.render(<DeletionPanel session={session} api onSessionChanged={changed} />));

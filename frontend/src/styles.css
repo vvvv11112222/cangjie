@@ -688,6 +688,46 @@ code {
   gap: 10px;
 }
 
+.global-search {
+  width: min(360px, 34vw);
+  min-width: 190px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.global-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(19, 139, 126, 0.1);
+}
+
+.global-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.global-search-submit {
+  align-self: stretch;
+  padding: 0 11px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .bell-wrap {
   position: relative;
 }
@@ -2446,6 +2486,16 @@ code {
     padding: 0 16px;
   }
 
+  .breadcrumb {
+    display: none;
+  }
+
+  .global-search {
+    width: min(420px, 100%);
+    min-width: 0;
+    margin-left: 0;
+  }
+
   #main {
     padding: 18px 16px 8px;
   }
@@ -2609,4 +2659,52 @@ code {
   .visual-workspace { display: flex; flex-wrap: wrap; }
   .visual-workspace > div { flex: 1 1 310px; }
   .visual-people { flex: 1 1 180px; max-height: 400px; }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+
+  .global-search {
+    order: 2;
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .topbar-actions {
+    margin-left: auto;
+  }
+
+  .accounts-editor-backdrop {
+    align-items: end;
+    padding: 8px;
+  }
+
+  .accounts-editor {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+
+  .accounts-editor-head,
+  .accounts-editor-form {
+    padding-inline: 16px;
+  }
+
+  .accounts-editor-head {
+    align-items: flex-start;
+  }
+
+  .accounts-editor-form .form-actions .btn {
+    flex: 1 1 0;
+  }
+
+  .report-dimension-nav [role="tablist"] {
+    grid-template-columns: 1fr;
+  }
 }

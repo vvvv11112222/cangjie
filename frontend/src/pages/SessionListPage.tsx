@@ -15,7 +15,7 @@ import {
   Pill,
   TechDetails,
 } from '../components/ui';
-import { IconAlert, IconPlay, IconPlus, IconRefresh, IconUpload } from '../components/icons';
+import { IconAlert, IconInfo, IconPlay, IconPlus, IconRefresh, IconUpload } from '../components/icons';
 import { describeError } from '../data/errors';
 import { isApiMode } from '../data/sources';
 import { listClassGroups, listCourses, listOfferings, offeringLabel } from '../data/academicApi';
@@ -23,6 +23,7 @@ import type { ClassGroup, Course, Offering } from '../data/academicApi';
 import { createSession, uploadSessionMedia } from '../data/sessionOps';
 import { UploadSourcePicker } from './UploadSourcePicker';
 import { isUuid } from '../data/ids';
+import { sessionSearchFromHash } from '../data/route';
 
 /**
  * 课堂档案（《系统草图.html》的 CLASSROOM ARCHIVE）。
@@ -86,10 +87,15 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const tasks = injectedTasks ?? loaded.data.tasks;
   const origin = loaded.origin;
   const [filter, setFilter] = useState<Filter>('all');
-  const [query, setQuery] = useState('');
+  const routeQuery = injectedTasks === undefined && typeof window !== 'undefined'
+    ? sessionSearchFromHash(window.location.hash)
+    : '';
+  const [query, setQuery] = useState(routeQuery);
   const [compose, setCompose] = useState<Compose>(null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const api = isApiMode();
+
+  useEffect(() => setQuery(routeQuery), [routeQuery]);
 
   // 操作展示以各资源返回的 allowed_actions 为准（协议第 1.1 节：前端按 allowed_actions 展示，
   // 后端逐次授权）。账号级能力只在账号菜单展示，不用来删减服务端已授予的操作。
@@ -137,7 +143,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
-      <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
+      {query.trim() === '' ? <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} /> : null}
     </>
   );
 
@@ -207,6 +213,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
               onClick={() => {
                 setFilter('all');
                 setQuery('');
+                if (injectedTasks === undefined && routeQuery !== '') {
+                  window.location.hash = '#/sessions';
+                }
               }}
             >
               <IconRefresh size={14} />
@@ -214,6 +223,16 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
             </button>
           </div>
       </div>
+
+      {query.trim() !== '' && truncated ? (
+        <div className="notice-strip search-scope-note">
+          <IconInfo size={14} />
+          <span>当前结果只搜索已加载的课堂，后续页面可能还有匹配项。</span>
+          <button type="button" className="btn btn-secondary btn-sm" disabled={loaded.actionLabel === null} onClick={loaded.loadMore}>
+            {loaded.actionLabel ?? '正在读取…'}
+          </button>
+        </div>
+      ) : null}
 
       <section className="card session-archive-card">
         {shown.length === 0 ? (

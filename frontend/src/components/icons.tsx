@@ -321,6 +321,16 @@ export function IconBook(props: IconProps): ReactElement {
   );
 }
 
+/** 搜索：放大镜 */
+export function IconSearch(props: IconProps): ReactElement {
+  return (
+    <Glyph {...props}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </Glyph>
+  );
+}
+
 export function IconPlus(props: IconProps): ReactElement {
   return <Glyph {...props}><path d="M12 5v14M5 12h14" /></Glyph>;
 }

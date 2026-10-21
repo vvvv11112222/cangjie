@@ -59,7 +59,7 @@ export function SourcesPage(): ReactElement {
   }, [sessionId]);
 
   async function submitCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault(); const data = new FormData(event.currentTarget); setLoading(true); setError(null);
+    event.preventDefault(); if (loading) return; const data = new FormData(event.currentTarget); setLoading(true); setError(null);
     const requested = (['playback', 'analysis', 'export'] as SourceUse[]).filter((use) => data.get(use) === 'on');
     try {
       await createSource({ session_id: sessionId, source_type: String(data.get('source_type')) as 'self_recorded', title: String(data.get('title')), attribution: String(data.get('attribution')), source_url: String(data.get('source_url')) || null, authorization_note: String(data.get('authorization_note')), requested_uses: requested, external_processing_requested: data.get('external') === 'on' });
@@ -69,14 +69,14 @@ export function SourcesPage(): ReactElement {
   }
 
   async function submitVerify(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault(); if (target === null) return; const data = new FormData(event.currentTarget); setLoading(true); setError(null);
+    event.preventDefault(); if (target === null || loading) return; const data = new FormData(event.currentTarget); setLoading(true); setError(null);
     const allowed = (['playback', 'analysis', 'export'] as SourceUse[]).filter((use) => data.get(use) === 'on');
-    try { await verifySource(target.id, { rights_status: data.get('decision') as 'verified' | 'rejected', allowed_uses: data.get('decision') === 'verified' ? allowed : [], external_processing_allowed: data.get('decision') === 'verified' && data.get('external') === 'on', reason: String(data.get('reason')) }); if (!isCurrent()) return; setForm(null); setTarget(null); await reload(); }
+    try { await verifySource(target.id, { rights_status: data.get('decision') as 'verified' | 'rejected', allowed_uses: data.get('decision') === 'verified' ? allowed : [], external_processing_allowed: data.get('decision') === 'verified' && data.get('external') === 'on', reason: String(data.get('reason')) }); if (!isCurrent()) return; setForm(null); setTarget(null); setMessage('素材核验结果已保存。'); await reload(); }
     catch (cause) { if (isCurrent()) setError(describeError(cause)); } finally { if (isCurrent()) setLoading(false); }
   }
 
   async function submitUpload(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault(); if (target === null) return; const data = new FormData(event.currentTarget); const file = data.get('file');
+    event.preventDefault(); if (target === null || loading) return; const data = new FormData(event.currentTarget); const file = data.get('file');
     if (!(file instanceof File) || file.size === 0) { setError('请选择 MP4、MOV 或 MKV 录像文件。'); return; }
     setLoading(true); setError(null);
     try { const media = await uploadSessionMedia(sessionId, file, target.id); if (!isCurrent()) return; setUploadedMedia(media.id); setMessage('录像已上传，尚未开始媒体检查。请进入课堂详情，来源取得回放许可后点击“媒体准备”。'); setForm(null); setTarget(null); }
@@ -92,7 +92,7 @@ export function SourcesPage(): ReactElement {
     {form === 'create' ? <Card title="登记新素材" subtitle="用途是申请范围，最终允许范围由核验结果决定。"><form className="source-form" onSubmit={(event) => void submitCreate(event)}><label className="account-field">素材类型<select name="source_type"><option value="self_recorded">本校录制</option><option value="school_authorized">学校授权</option><option value="open_course">公开课程</option></select></label><label className="account-field">素材标题<input name="title" required/></label><label className="account-field">署名 / 来源方<input name="attribution" required/></label><label className="account-field">来源链接<input name="source_url" type="url"/></label><label className="account-field">授权说明<input name="authorization_note" required/></label><fieldset className="source-uses"><legend>申请用途</legend>{(['playback','analysis','export'] as SourceUse[]).map((use) => <label className="check-row" key={use}><input type="checkbox" name={use}/>{useLabel[use]}</label>)}</fieldset><label className="check-row"><input type="checkbox" name="external"/>申请发送外部文本模型</label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>登记素材</button></div></form></Card> : null}
     {form === 'verify' && target !== null ? <Card title={`核验：${target.title}`}><form className="source-form" onSubmit={(event) => void submitVerify(event)}><label className="account-field">核验结论<select name="decision"><option value="verified">通过</option><option value="rejected">拒绝</option></select></label><fieldset className="source-uses"><legend>允许用途</legend>{target.requested_uses.map((use) => <label className="check-row" key={use}><input type="checkbox" name={use} defaultChecked/>{useLabel[use]}</label>)}</fieldset><label className="check-row"><input type="checkbox" name="external"/>允许发送外部文本模型</label><label className="account-field">核验理由<input name="reason" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>保存核验</button></div></form></Card> : null}
     {form === 'upload' && target !== null ? <Card title={`上传录像：${target.title}`} subtitle="上传后先进入 pending，媒体检查完成后才可播放或分析。"><form className="source-form" onSubmit={(event) => void submitUpload(event)}><label className="account-field">录像文件<input name="file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>开始上传</button></div></form></Card> : null}
-    {error ? <p className="load-note load-note-error">{error}</p> : null}{message ? <p className="notice-strip">{message}</p> : null}
+    {error ? <div className="notice-strip"><span className="load-note-error">{error}</span>{sessionId !== '' ? <button type="button" className="btn btn-secondary btn-sm" disabled={loading} onClick={() => void reload()}>{loading ? '重新读取中…' : '重新读取素材'}</button> : null}</div> : null}{message ? <p className="notice-strip" role="status">{message}</p> : null}
     {uploadedMedia ? <a className="btn btn-primary" href={`#/sessions/${sessionId}`}>前往课堂检查媒体</a> : null}
     <Card title="课堂素材登记" subtitle={sessionId === '' ? '先选择课堂' : `${items.length} 条已加载记录`}>
       {loading && items.length === 0 ? <p className="load-note">正在读取数据…</p> : null}

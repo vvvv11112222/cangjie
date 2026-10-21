@@ -94,11 +94,16 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
     assert.fail('Expected request was not issued');
   };
   const login = async name => {
-    await button('登录').click();
+    if (await page.getByRole('dialog', { name: '账号' }).count() === 0) await page.locator('.account-trigger').click();
+    if (await page.getByLabel('用户名').count() === 0) await button('用其他账号登录').click();
     await page.getByLabel('用户名').fill(name);
     await page.getByLabel('密码', { exact: true }).fill('synthetic-password');
-    await button('登录').click();
+    await page.getByRole('dialog', { name: '账号' }).getByRole('button', { name: '登录', exact: true }).click();
     await waitText(`账号${name}`);
+  };
+  const logoutButton = async () => {
+    if (await button('退出登录').count() === 0) await page.locator('.account-trigger').click();
+    return button('退出登录');
   };
   const anonymous = async () => {
     await waitText('当前未登录');
@@ -112,12 +117,24 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   await waitText('A的第一页课堂');
   checks.push('anonymous-to-login reload');
 
+  await page.goto(`${baseURL}/#/sessions`);
+  const globalSearch = page.getByRole('search').getByLabel('搜索课堂');
+  await globalSearch.fill('A的第一页课堂');
+  await page.getByRole('search').getByRole('button', { name: '搜索', exact: true }).click();
+  await page.waitForURL(url => url.hash.includes('/sessions?query='));
+  assert.equal(await page.getByLabel('筛选课堂').inputValue(), 'A的第一页课堂');
+  await page.goto(`${baseURL}/#/accounts`);
+  assert.equal(await page.getByRole('search').count(), 0);
+  await page.goto(`${baseURL}/#/sessions`);
+  await waitText('A的第一页课堂');
+  checks.push('global classroom search submits, syncs and stays off management pages');
+
   // 同一事件循环内两次 DOM click，绕过“只看到按钮禁用”的浅层验证。
   for (const status of [500, 204]) {
     logoutStatus = status;
     logoutGate = gate();
     const before = calls.filter(call => call.path === '/auth/logout').length;
-    await button('退出').evaluate(el => { el.click(); el.click(); });
+    await (await logoutButton()).evaluate(el => { el.click(); el.click(); });
     await waitCalls(() => calls.filter(call => call.path === '/auth/logout').length === before + 1);
     assert.equal(await button('正在退出…').isDisabled(), true);
     assert.equal(calls.filter(call => call.path === '/auth/logout').length, before + 1);
@@ -134,12 +151,12 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   await login('A');
   await waitText('A的第一页课堂');
   logoutStatus = 403;
-  await button('退出').click();
+  await (await logoutButton()).click();
   await waitText('没有执行该操作的权限');
   const badToken = calls.filter(call => call.path === '/auth/logout').at(-1).token;
   logoutStatus = 204;
   const csrfBefore = csrf;
-  await button('退出').click();
+  await (await logoutButton()).click();
   await anonymous();
   assert.notEqual(calls.filter(call => call.path === '/auth/logout').at(-1).token, badToken);
   assert.equal(csrf, csrfBefore + 1); // 只在重试前获取，退出成功后没有预取。
@@ -149,7 +166,7 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   await waitText('A的第一页课堂');
   logoutStatus = 401;
   const beforeExpiredLogout = csrf;
-  await button('退出').click();
+  await (await logoutButton()).click();
   await anonymous();
   assert.equal(csrf, beforeExpiredLogout);
   logoutStatus = 204;
@@ -173,7 +190,7 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   const secondBefore = calls.filter(call => call.path === '/sessions' && call.cursor === 'second').length;
   await button('加载更多').click();
   await waitCalls(() => calls.filter(call => call.path === '/sessions' && call.cursor === 'second').length > secondBefore);
-  await button('退出').click();
+  await (await logoutButton()).click();
   await anonymous();
   await login('B');
   await waitText('B的第一页课堂');
@@ -188,7 +205,7 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
 
   emptyFirst = true;
   await page.reload();
-  await waitText('本页没有课堂');
+  await waitText('本页没有符合条件的课堂');
   assert.equal((await text()).includes('当前账号没有可见的课堂'), false);
   await button('加载更多').click();
   await waitText('B的第二页课堂');

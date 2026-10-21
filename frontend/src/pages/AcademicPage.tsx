@@ -229,6 +229,7 @@ export function AcademicPage(): ReactElement {
     <section className="card m1-table-card">
       <div className="m1-section-head"><div><h2>{TAB_LABELS[tab]}</h2><p className="muted small">{tab === 'schedule' ? '显示本周排课；取消后仍保留记录。' : '维护教学基础资料，已关联课堂的历史记录保留。'}</p></div></div>
       <LoadStateNote status={loading ? 'loading' : error ? 'error' : 'ready'} error={error}/>
+      {error ? <button type="button" className="btn btn-secondary btn-sm" disabled={loading} onClick={() => void reload()}>{loading ? '重新读取中…' : '重新读取教务资料'}</button> : null}
       <div><AcademicTable canEdit={canEditTab} tab={tab} data={data} schedules={visibleSchedules} offerings={visibleOfferings} courseName={courseName} teacherName={teacherName} saving={saving} onEdit={value => { if (canEditTab) { setFormError(null); setShowImport(false); setEditor(value); } }} onCancelSchedule={async item => { if (canManage) setCancelling(item); }}/></div>
     </section>
   </div>;
