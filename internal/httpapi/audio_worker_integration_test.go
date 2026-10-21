@@ -74,7 +74,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 		}
 		text := "合成课堂：请解释矩阵加法的定义。"
 		if body.Model == "synthetic-asr" {
-			asrCalls.Add(1)
+			callNo := asrCalls.Add(1)
 			var content []struct {
 				Audio struct {
 					Data string `json:"data"`
@@ -93,6 +93,9 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 			// This fixture's audio starts one second after video T0. Leading
 			// silence must remain, rather than shifting speech to the origin.
 			for _, b := range wav[44 : 44+16000] {
+				if callNo != 1 {
+					break
+				}
 				if b != 0 {
 					t.Error("delayed audio shifted to video T0")
 					break
@@ -141,14 +144,14 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	prompt, sha, _ := analysis.ReportPrompt("p0-v1")
 	_ = prompt
 	cfg := analysis.Config{Lease: 30 * time.Second, ProbeTimeout: time.Minute, ASRTimeout: time.Minute, VideoTimeout: time.Minute, GoStageTimeout: time.Minute, MediaJobAttempts: 2,
-		ProcessorVersion: runtime["processor_version"].(string), FFmpegSHA256: runtime["ffmpeg_build_sha256"].(string), ASRModelName: "synthetic-asr", ASRModelRevision: "v1", ASRDevice: "cpu", KeyframeIntervalMS: 1000, MaxKeyframes: 10, MaxMediaDurationMS: 60000, MaxVideoHeight: 1080, MaxArtifactBytes: 10 << 20,
+		ProcessorVersion: runtime["processor_version"].(string), FFmpegSHA256: runtime["ffmpeg_build_sha256"].(string), ASRModelName: "synthetic-asr", ASRModelRevision: "v1", ASRDevice: "cpu", KeyframeIntervalMS: 1000, MaxKeyframes: 100, MaxMediaDurationMS: 60000, MaxVideoHeight: 1080, MaxArtifactBytes: 10 << 20,
 		ReportEnabled: true, ReportAPIBase: provider.URL, ReportAPIKey: "synthetic", ReportModel: "synthetic-report", ReportModelRevision: "v1", ReportPromptVersion: "p0-v1", ReportPromptSHA256: sha, ReportSelectionVersion: "time-window-v1", ReportPriceVersion: "synthetic", ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai", ReportMonthlyBudgetMicros: 100000000, ReportInputPriceMicros: 1000000, ReportOutputPriceMicros: 1000000, ReportTimeout: time.Minute, ReportMaxInputTokens: 8000, ReportMaxOutputTokens: 1000,
 		CloudASR: analysis.CloudASRConfig{Enabled: true, APIKey: "synthetic", ASRSnapshot: analysis.ASRSnapshot{APIBase: provider.URL, LanguageHints: "zh,en", RequestVersion: asrrequest.Version, PriceVersion: "synthetic", InputPriceMicros: 1000000, OutputPriceMicros: 1000000, MaxInputTokens: 32768, MaxOutputTokens: 4096}}}
 	svc := analysis.NewService(pool, store, cfg)
 	server := httptest.NewServer(New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: media.NewService(pool, store, 10<<20, 14*24*time.Hour), Analysis: svc, PublicOrigin: "http://frontend.test", WorkerID: "worker-01", WorkerToken: "synthetic-audio-worker", WorkerCapabilities: []string{"probe", "audio_analysis", "video_analysis"}}))
 	defer server.Close()
 	input := filepath.Join(tmp, "delayed.mp4")
-	gen := exec.Command(runtime["ffmpeg_binary"].(string), "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=3", "-itsoffset", "1", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", input)
+	gen := exec.Command(runtime["ffmpeg_binary"].(string), "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=45", "-itsoffset", "1", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=44", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", input)
 	if raw, err := gen.CombinedOutput(); err != nil {
 		t.Fatalf("generate: %v %s", err, raw)
 	}
@@ -175,11 +178,11 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 		t.Fatalf("run: %#v", finished)
 	}
 	results := requestJSON(t, client, "GET", server.URL+"/api/v1/analysis-runs/"+id+"/results", nil, "", 200)
-	if len(results["segments"].([]any)) != 1 || results["transcript_revision_id"] == nil {
+	if len(results["segments"].([]any)) != 2 || results["transcript_revision_id"] == nil {
 		t.Fatal("ASR not stored in main transcript")
 	}
 	report := requestJSON(t, client, "GET", server.URL+"/api/v1/reports/"+finished["report_id"].(string), nil, "", 200)
-	if report["status"] != "draft" || asrCalls.Load() != 1 || reportCalls.Load() != 1 {
+	if report["status"] != "draft" || asrCalls.Load() != 2 || reportCalls.Load() != 1 {
 		t.Fatalf("report=%s calls=%d/%d", report["status"], asrCalls.Load(), reportCalls.Load())
 	}
 	if status := rawStatus(http.DefaultClient, "POST", server.URL+"/internal/v1/jobs/00000000-0000-4000-8000-000000000001/asr-chunks", nil, nil); status != 401 {
@@ -196,4 +199,30 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 		}
 	}
 	t.Log("synthetic real-worker upload -> delayed audio extraction -> demo segmentation -> Go cloud ASR -> transcript -> evidence -> draft report; recognition quality not measured")
+}
+
+func TestASRChunkHTTPGuards(t *testing.T) {
+	svc := analysis.NewService(nil, nil, analysis.Config{})
+	for _, audioAllowed := range []bool{false, true} {
+		caps := []string{"video_analysis"}
+		if audioAllowed {
+			caps = append(caps, "audio_analysis")
+		}
+		server := httptest.NewServer(New(Options{Analysis: svc, WorkerToken: "synthetic-worker", WorkerID: "worker-01", WorkerCapabilities: caps, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+		endpoint := server.URL + "/internal/v1/jobs/00000000-0000-4000-8000-000000000001/asr-chunks"
+		if code := rawStatus(http.DefaultClient, "POST", endpoint, nil, nil); code != 401 {
+			t.Fatalf("anonymous status %d", code)
+		}
+		headers := map[string]string{"Authorization": "Bearer synthetic-worker", "X-Lease-Token": "00000000-0000-4000-8000-000000000002"}
+		want := 403
+		if audioAllowed {
+			want = 400
+		}
+		for _, payload := range []any{map[string]any{"end_ms": 1, "wav_base64": "AA=="}, map[string]any{"start_ms": 0, "end_ms": 1, "wav_base64": "AA==", "url": "https://unused.invalid"}} {
+			if code := rawStatus(http.DefaultClient, "POST", endpoint, payload, headers); code != want {
+				t.Fatalf("shape/capability status=%d want=%d", code, want)
+			}
+		}
+		server.Close()
+	}
 }

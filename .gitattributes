@@ -2,3 +2,4 @@
 /pytest.ini text eol=lf
 /internal/analysis/prompts/*.txt text eol=lf
 /.github/workflows/vision-worker.yml text eol=lf
+/database/011_cloud_asr_chunks.sql text eol=lf
