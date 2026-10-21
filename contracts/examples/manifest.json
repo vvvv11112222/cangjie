@@ -201,6 +201,26 @@
       "file": "claim-visual-request.json",
       "definition": "ClaimRequest",
       "valid": true
+    },
+    {
+      "file": "role-binding-page.json",
+      "definition": "RoleBindingPage",
+      "valid": true
+    },
+    {
+      "file": "asr-chunk.json",
+      "definition": "ASRChunk",
+      "valid": true
+    },
+    {
+      "file": "asr-text.json",
+      "definition": "ASRText",
+      "valid": true
+    },
+    {
+      "file": "invalid-asr-chunk-url.json",
+      "definition": "ASRChunk",
+      "valid": false
     }
   ],
   "case_sets": [

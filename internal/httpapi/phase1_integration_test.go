@@ -109,7 +109,16 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 	requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/users/"+teacherID+"/role-bindings", map[string]any{"role_code": "teacher"}, adminCSRF, http.StatusBadRequest)
 	createdUser := requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/users", map[string]any{"org_unit_id": collegeA, "username": "reviewer", "display_name": "Reviewer", "status": "active", "initial_password": integrationPassword}, academicCSRF, http.StatusCreated)
 	createdRole := requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/users/"+createdUser["id"].(string)+"/role-bindings", map[string]any{"role_code": "supervisor", "scope_org_id": collegeA}, academicCSRF, http.StatusCreated)
+	bindings := requestJSON(t, academicClient, http.MethodGet, server.URL+"/api/v1/users/"+createdUser["id"].(string)+"/role-bindings?limit=1", nil, "", http.StatusOK)
+	if got := bindings["items"].([]any); len(got) != 1 || got[0].(map[string]any)["id"] != createdRole["id"] {
+		t.Fatalf("role bindings: %#v", bindings)
+	}
+	requestJSON(t, academicClient, http.MethodGet, server.URL+"/api/v1/users/"+adminID+"/role-bindings", nil, "", http.StatusNotFound)
 	requestJSON(t, academicClient, http.MethodDelete, server.URL+"/api/v1/users/"+createdUser["id"].(string)+"/role-bindings/"+createdRole["id"].(string), nil, academicCSRF, http.StatusNoContent)
+	bindings = requestJSON(t, academicClient, http.MethodGet, server.URL+"/api/v1/users/"+createdUser["id"].(string)+"/role-bindings", nil, "", http.StatusOK)
+	if len(bindings["items"].([]any)) != 0 {
+		t.Fatal("revoked binding remains")
+	}
 
 	term := requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/terms", map[string]any{"code": "2026-FALL", "name": "Fall 2026", "start_date": "2026-09-01", "end_date": "2027-01-20"}, adminCSRF, http.StatusCreated)
 	requestJSON(t, admin, http.MethodPatch, server.URL+"/api/v1/terms/"+term["id"].(string), map[string]any{"name": "Fall Term 2026"}, adminCSRF, http.StatusOK)

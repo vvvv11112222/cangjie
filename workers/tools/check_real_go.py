@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import time
 from uuid import UUID, uuid4
+from dataclasses import replace
 
 from workers import PROCESSOR_VERSION
 from workers.common.config import Settings
@@ -38,6 +39,9 @@ def work(api_base, expected_stage, expected_run, scratch, visual=False):
     settings = Settings(api_base, "worker-01", os.environ["WORKER_TOKEN"], scratch.resolve(),
                         PROCESSOR_VERSION, digest_file(ffmpeg_executable()), heartbeat_seconds=.25,
                         max_artifact_bytes=10 * 1024**2, vision_enabled=visual)
+    if expected_stage == 'audio_analysis':
+        settings = replace(settings, capabilities=('audio_analysis',), asr_planner=os.environ['ASR_PLANNER'],
+                           asr_model_name=os.environ['ASR_MODEL_NAME'], asr_model_revision=os.environ['ASR_MODEL_REVISION'])
     runner = Runner(settings)
     started = time.perf_counter()
     try:
@@ -63,7 +67,7 @@ def main():
     generation.add_argument("--portrait", action="store_true")
     worker = sub.add_parser("work")
     worker.add_argument("--api-base", required=True)
-    worker.add_argument("--stage", choices=("probe", "video_analysis"), required=True)
+    worker.add_argument("--stage", choices=("probe", "video_analysis", "audio_analysis"), required=True)
     worker.add_argument("--run-id", required=True)
     worker.add_argument("--scratch", type=Path, required=True)
     worker.add_argument("--visual", action="store_true", help="Use pinned formal vision-v1 profile")

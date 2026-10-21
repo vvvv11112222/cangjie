@@ -29,8 +29,6 @@ function Ensure-AsciiAlias([string]$Target) {
     }
     throw 'No free project drive alias; existing mappings were preserved.'
 }
-$runtimeRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($config.go)))
-Ensure-AsciiAlias $runtimeRoot
 Ensure-AsciiAlias $DataRoot
 & $config.python -X utf8 (Join-Path $PSScriptRoot 'team_web.py') --data-root $DataRoot start-detached
 if ($LASTEXITCODE -ne 0) { throw 'Website startup failed; inspect local deployment logs.' }

@@ -470,6 +470,34 @@ func (s *Service) CreateRole(ctx context.Context, actor Principal, userID string
 	return v, nil
 }
 
+func (s *Service) ListRoles(ctx context.Context, actor Principal, userID, after string, limit int) ([]RoleBinding, string, error) {
+	if _, err := s.GetUser(ctx, actor, userID); err != nil {
+		return nil, "", err
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id::text,role_code,scope_org_id::text FROM teaching.role_bindings WHERE user_id=$1 AND ($2='' OR id>$2::uuid) ORDER BY id LIMIT $3`, userID, after, limit+1)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	items := []RoleBinding{}
+	for rows.Next() {
+		var role RoleBinding
+		if err := rows.Scan(&role.ID, &role.RoleCode, &role.ScopeOrgID); err != nil {
+			return nil, "", err
+		}
+		items = append(items, role)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(items) > limit {
+		next = items[limit-1].ID
+		items = items[:limit]
+	}
+	return items, next, nil
+}
+
 func (s *Service) DeleteRole(ctx context.Context, actor Principal, userID, bindingID string) error {
 	user, err := s.GetUser(ctx, actor, userID)
 	if err != nil {

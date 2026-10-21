@@ -5,10 +5,7 @@
  *   User = id / org_unit_id(可空) / username / display_name / status
  *   RoleBinding = id / role_code / scope_org_id(可空)
  *
- * 接口缺口（写在这里免得下次又当成漏做）：**没有读取用户已有角色绑定的端点**。
- * 只有 POST /users/{id}/role-bindings 和 DELETE .../{binding_id}，
- * 而 binding_id 除了创建时的返回值之外没有地方能读到。所以页面上不显示"该用户已有的角色"，
- * 也不能撤销历史绑定；需要这一列时，得后端补一个 GET /users/{id}/role-bindings。
+ * 角色绑定支持按用户读取、授予及撤销，均由服务端检查管理范围。
  */
 
 import { ApiError } from './errors';
@@ -150,4 +147,15 @@ export async function createRoleBinding(
   } catch (error) {
     throw asMalformed(error);
   }
+}
+
+export async function listRoleBindings(userId: string, cursor?: string): Promise<{items: RoleBinding[]; nextCursor: string | null}> {
+  const {data} = await requestJson<unknown>(`/users/${encodeURIComponent(userId)}/role-bindings`, {query: {cursor, limit: 100}});
+  try {
+    const source = asRecord(data, 'RoleBindingPage');
+    return {items: objectList(source, 'items', 'RoleBindingPage').map((item) => parseRoleBinding(item)), nextCursor: asNullableString(source, 'next_cursor', 'RoleBindingPage')};
+  } catch (error) { throw asMalformed(error); }
+}
+export async function deleteRoleBinding(userId: string, bindingId: string): Promise<void> {
+  await requestJson(`/users/${encodeURIComponent(userId)}/role-bindings/${encodeURIComponent(bindingId)}`, {method: 'DELETE', csrf: true});
 }

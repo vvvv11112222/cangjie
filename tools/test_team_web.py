@@ -1,5 +1,6 @@
 """Local website lifecycle boundary tests; no real database or model is started."""
 import os
+import json
 from pathlib import Path
 import socket
 import tempfile
@@ -42,6 +43,28 @@ class TeamWebTests(unittest.TestCase):
              patch('capture_dev.identity') as terminate:
             with self.assertRaisesRegex(RuntimeError,'Analysis is running'): dev.stop({},Path(temp))
             terminate.assert_not_called()
+    def test_standard_go_install_never_receives_cache_or_temp_writes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state)
+            config['go']='C:/Program Files/Go/bin/go.exe'
+            with patch.object(dev,'ascii_root',side_effect=lambda p:p) as alias:
+                env=dev.environment(config,state)
+            alias.assert_called_once_with(state)
+            for key in ('GOCACHE','GOMODCACHE','GOTMPDIR','TMP','TEMP'):
+                self.assertTrue(Path(env[key]).is_relative_to(state), key)
+    def test_full_analysis_is_explicit_and_uses_private_configuration(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state)
+            private=state/'analysis.private.json'
+            private.write_text(json.dumps({'ASR_CLOUD_ENABLED':'true','ASR_API_KEY':'synthetic-private-key','ASR_MODEL_NAME':'synthetic-asr','MODEL_MONTHLY_BUDGET':'1'}),encoding='utf-8')
+            config['analysis_config']=str(private)
+            with patch.object(dev,'ascii_root',side_effect=lambda p:p):
+                env=dev.environment(config,state)
+            self.assertEqual(env['ASR_MODEL_NAME'],'synthetic-asr')
+            self.assertEqual(env['ASR_PLANNER'],str(state/'bin/audio-plan.exe'))
+            private.write_text(json.dumps({'DATABASE_URL':'unapproved override'}),encoding='utf-8')
+            with self.assertRaisesRegex(RuntimeError,'only string'):
+                dev.environment(config,state)
     def test_partial_service_is_not_reported_as_running(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(dev,'records',return_value={'api':{'pid':1}}), \
              patch.object(dev,'alive',return_value=True), patch.object(dev,'wait_ready') as ready:

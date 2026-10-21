@@ -281,6 +281,7 @@ func (s *server) listTranscriptRevisions(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *server) registerWorkerRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /internal/v1/jobs/{id}/asr-chunks", s.transcribeChunk)
 	mux.HandleFunc("POST /internal/v1/jobs/claim", s.claimJob)
 	mux.HandleFunc("POST /internal/v1/jobs/{id}/heartbeat", s.heartbeatJob)
 	mux.HandleFunc("GET /internal/v1/jobs/{id}/input", s.getJobInput)
@@ -291,6 +292,47 @@ func (s *server) registerWorkerRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("POST /internal/v1/deletions/claim-cleanup", s.claimWorkerCleanup)
 		mux.HandleFunc("POST /internal/v1/deletions/{id}/cleanup-complete", s.completeWorkerCleanup)
 	}
+}
+
+func (s *server) transcribeChunk(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorker(w, r) {
+		return
+	}
+	if !s.workerCapabilities["audio_analysis"] {
+		writeError(w, r, 403, "FORBIDDEN", "audio capability required", map[string]any{})
+		return
+	}
+	id, token, ok := workerJob(w, r)
+	if !ok {
+		return
+	}
+	var input struct {
+		StartMS   *int64 `json:"start_ms"`
+		EndMS     *int64 `json:"end_ms"`
+		WAVBase64 string `json:"wav_base64"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeError(w, r, 400, "INVALID_ARGUMENT", "invalid ASR chunk", map[string]any{})
+		return
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		writeError(w, r, 400, "INVALID_ARGUMENT", "invalid trailing JSON", map[string]any{})
+		return
+	}
+	if input.StartMS == nil || input.EndMS == nil || input.WAVBase64 == "" {
+		writeError(w, r, 400, "INVALID_ARGUMENT", "all ASR chunk fields are required", map[string]any{})
+		return
+	}
+	in := analysis.ASRChunk{StartMS: *input.StartMS, EndMS: *input.EndMS, WAVBase64: input.WAVBase64}
+	out, err := s.analysis.TranscribeChunk(r.Context(), id, token, in)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, 200, out)
 }
 
 func (s *server) claimWorkerCleanup(w http.ResponseWriter, r *http.Request) {

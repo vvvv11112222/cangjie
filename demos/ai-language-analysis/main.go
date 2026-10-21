@@ -36,6 +36,13 @@ func env(k, d string) string {
 	return d
 }
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "worker-plan" {
+		if err := workerPlan(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "audio segmentation failed")
+			os.Exit(1)
+		}
+		return
+	}
 	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
 		log.Fatal("无法加载当前目录的 .env，请在 demo 目录启动；检查文件格式（错误详情不输出以避免泄露密钥）")
 	}

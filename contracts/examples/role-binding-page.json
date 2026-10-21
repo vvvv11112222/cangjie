@@ -1,0 +1,10 @@
+{
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "role_code": "teacher",
+      "scope_org_id": null
+    }
+  ],
+  "next_cursor": null
+}

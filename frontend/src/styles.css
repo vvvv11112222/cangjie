@@ -1199,6 +1199,12 @@ code {
 .accounts-editor-head .icon-button { width: 34px; height: 34px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
 .accounts-editor-head .icon-button:hover { background: var(--surface-hover); color: var(--ink); }
 .accounts-editor-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 22px 26px 26px; }
+.account-role-bindings { display: block; border-top: 1px solid var(--line); }
+.account-role-bindings h3 { margin-bottom: 12px; }
+.account-role-bindings ul { margin: 0; padding: 0; list-style: none; }
+.account-role-bindings li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
+.account-role-bindings li span { min-width: 0; overflow-wrap: anywhere; }
+.account-role-bindings li .btn { flex-shrink: 0; }
 .accounts-editor-form .account-field { display: grid; gap: 7px; }
 .accounts-editor-form .accounts-permission-preview, .accounts-editor-form .notice-strip, .accounts-editor-form .form-actions { grid-column: 1 / -1; }
 .accounts-permission-preview { padding: 14px 16px; border: 1px solid var(--accent-edge); border-radius: 8px; background: var(--accent-soft); }

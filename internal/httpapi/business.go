@@ -35,6 +35,7 @@ func (s *server) registerBusinessRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/users", s.createUser)
 	mux.HandleFunc("PATCH /api/v1/users/{id}", s.patchUser)
 	mux.HandleFunc("POST /api/v1/users/{id}/role-bindings", s.createRole)
+	mux.HandleFunc("GET /api/v1/users/{id}/role-bindings", s.listRoles)
 	mux.HandleFunc("DELETE /api/v1/users/{id}/role-bindings/{binding_id}", s.deleteRole)
 
 	registerResource(s, mux, "org-units", s.academic.ListOrgUnits, s.academic.GetOrgUnit, s.academic.CreateOrgUnit, s.academic.PatchOrgUnit)
@@ -495,6 +496,27 @@ func (s *server) patchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	writeData(w, r, http.StatusOK, v)
 }
+func (s *server) listRoles(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.readPrincipal(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	after, limit, ok := s.page(w, r)
+	if !ok {
+		return
+	}
+	items, next, err := s.identity.ListRoles(r.Context(), p, id, after, limit)
+	if err != nil {
+		s.writeServiceError(w, r, err)
+		return
+	}
+	writeData(w, r, http.StatusOK, page(items, next))
+}
+
 func (s *server) createRole(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.writePrincipal(w, r)
 	if !ok {

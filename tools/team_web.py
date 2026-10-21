@@ -73,7 +73,17 @@ def environment(config, state):
         GOMAXPROCS='2', GOTOOLCHAIN='local', GOTELEMETRY='off', PYTHONUTF8='1', PYTHONUNBUFFERED='1')
     for name in list(env):
         if name.startswith('MTX_'): del env[name]
-    runtime_root = ascii_root(Path(config['go']).parents[2])
+    # Optional private configuration enables the unified audio/report flow.
+    # Keep the visual-only default free of external calls and credentials.
+    if config.get('analysis_config'):
+        settings = load(Path(config['analysis_config']))
+        if not isinstance(settings, dict) or any(not isinstance(k, str) or not k.startswith(('ASR_', 'REPORT_', 'MODEL_')) or not isinstance(v, str) for k,v in settings.items()):
+            raise RuntimeError('Analysis config must contain only string ASR_/REPORT_/MODEL_ settings')
+        env.update(settings)
+        if env.get('ASR_CLOUD_ENABLED') != 'true' or not env.get('ASR_API_KEY'):
+            raise RuntimeError('Analysis config requires explicit cloud ASR enablement and credentials')
+        env['ASR_PLANNER'] = str(state / 'bin/audio-plan.exe')
+    runtime_root = ascii_root(state)
     temp = runtime_root / 'tmp'; temp.mkdir(exist_ok=True)
     env.update(GOCACHE=str(runtime_root / 'go-cache'), GOMODCACHE=str(runtime_root / 'go-mod'), GOTMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
     env['PATH'] = str(Path(config['node']).parent) + os.pathsep + env.get('PATH', '')
@@ -163,6 +173,8 @@ def prepare(args, state):
                   go=str(Path(args.go).resolve(strict=True)), pg_bin=str(Path(args.pg_bin).resolve(strict=True)),
                   node=str(Path(args.node).resolve(strict=True)), python=str(Path(args.python).resolve(strict=True)),
                   models=str(Path(args.models).resolve(strict=True)))
+    analysis_config = args.analysis_config or prior.get('analysis_config')
+    if analysis_config: config['analysis_config'] = str(Path(analysis_config).resolve(strict=True))
     if not (ROOT / 'frontend/node_modules/vite/bin/vite.js').exists(): raise RuntimeError('Install frontend locked dependencies with npm ci first')
     for name in ('media', 'worker-tmp', 'ledger', 'bin'): (state / name).mkdir(exist_ok=True)
     env = {**os.environ, 'VISION_RUNTIME': 'cpu', 'PYTHONUTF8': '1'}
@@ -172,6 +184,8 @@ def prepare(args, state):
     save(state / 'private.json', config); env = environment(config, state)
     for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
+    if config.get('analysis_config'):
+        run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')
     run([config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'build'], env, state, cwd=ROOT / 'frontend')
     database_start(config, state)
     if sql(config, state, "SELECT count(*) FROM pg_database WHERE datname='cangjie_visual'", database='postgres') == '0':
@@ -211,11 +225,14 @@ def start(config, state):
     database_start(config, state)
     env = environment(config, state)
     job_name = 'Local\\CangjieTeamVision-' + secrets.token_hex(16)
+    worker_env = {k:v for k,v in env.items() if k not in ('ASR_API_KEY', 'REPORT_API_KEY')}
+    worker_env.update(WORKER_CAPABILITIES='probe,audio_analysis,video_analysis' if config.get('analysis_config') else 'probe,video_analysis',
+                      WORKER_API_BASE=f"http://127.0.0.1:{config['ports']['api']}/internal/v1")
     services = [
         ('api', [state / 'bin/api.exe'], env),
         ('web', [config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'preview', ROOT / 'frontend', '--host', '127.0.0.1', '--port', str(config['ports']['web']), '--strictPort'], env),
         ('worker', [config['python'], Path(__file__).resolve(), '--data-root', state, 'supervise-worker', '--job', job_name],
-         {**env, 'WORKER_CAPABILITIES': 'probe,video_analysis', 'WORKER_API_BASE': f"http://127.0.0.1:{config['ports']['api']}/internal/v1"})]
+         worker_env)]
     save(state / 'processes.json', {})
     try:
         for name, command, child_env in services:
@@ -240,6 +257,7 @@ def main():
     setup = sub.add_parser('prepare')
     for name in ('go', 'pg-bin', 'node', 'python', 'models'): setup.add_argument('--' + name, required=True)
     setup.add_argument('--login-from')
+    setup.add_argument('--analysis-config', help='Private JSON with ASR/REPORT/MODEL settings; enables unified analysis')
     sub.add_parser('start'); sub.add_parser('start-detached'); sub.add_parser('stop'); sub.add_parser('status')
     sub.add_parser('startup-paths')
     worker = sub.add_parser('supervise-worker'); worker.add_argument('--job', required=True)
@@ -251,7 +269,7 @@ def main():
     config = load(state / 'private.json')
     if args.command == 'startup-paths':
         # Only paths are printed for the native BAT wrapper; credentials stay private.
-        for target in (Path(config['go']).parents[2], state):
+        for target in (state,):
             marker = target / '.team-web-alias-owner'
             if not marker.exists(): marker.write_text(secrets.token_hex(16), encoding='ascii')
             print(str(target), flush=True)
