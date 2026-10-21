@@ -72,16 +72,27 @@ func analyzeSegments(ctx context.Context, base, key string, segments []Segment, 
 			return out, ctx.Err()
 		}
 		var rejected *eventContractError
-		if errors.As(err, &rejected) && len(rejected.partial.Events) > 0 && len(rejected.rejected) > 0 {
-			// One invalid activity instruction is isolated, while all other
-			// validated events continue into report generation. The rejected
-			// model output remains available to diagnostics and is never exposed
-			// as report evidence.
+		if errors.As(err, &rejected) && !rejected.fatal && len(rejected.partial.Events) > 0 && len(rejected.rejected) > 0 {
+			// Invalid individual events are isolated, while all other validated
+			// evidence continues into report generation. Rejected model output is
+			// retained only in diagnostics and never used as report evidence.
 			events = rejected.partial
 			out.Events = events
 			out.ReportDiagnostic = failedReportDiagnostic(rejected.raw, nil, "event_contract_partial", err, segments, events, eventMeta)
 			out.ReportDiagnostic.RejectedEvents = cloneValue(rejected.rejected)
-			out.Warnings = append(out.Warnings, fmt.Sprintf("有%d条课堂依据未通过活动任务检查，已隔离；活动组织暂不能判断，其他维度仍基于有效依据生成。", len(rejected.rejected)))
+			activityOnly := true
+			for _, item := range rejected.rejected {
+				if item.Event.Type != "organization" {
+					activityOnly = false
+					break
+				}
+			}
+			warning := fmt.Sprintf("有%d条课堂依据因结构或证据不完整已隔离；以下报告仅基于有效依据生成，相关分析可能不完整。", len(rejected.rejected))
+			if activityOnly {
+				warning = fmt.Sprintf("有%d条课堂依据未通过活动任务检查，已隔离；活动组织暂不能判断，其他维度仍基于有效依据生成。", len(rejected.rejected))
+			}
+			out.Warnings = append(out.Warnings, warning)
+			out.Coverage.EventWindowsCompleted = len(out.Coverage.Windows)
 		} else {
 			out.Warnings = append(out.Warnings, "教学事件提取失败："+err.Error())
 			if errors.As(err, &rejected) {

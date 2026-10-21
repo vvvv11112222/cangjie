@@ -217,6 +217,7 @@ type eventContractError struct {
 	err      error
 	partial  EventSet
 	rejected []RejectedEvent
+	fatal    bool // Evidence ID/source mismatch invalidates the whole analysis window.
 }
 
 func (e *eventContractError) Error() string { return e.err.Error() }
