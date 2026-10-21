@@ -110,6 +110,17 @@ Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
 
 默认创建 `admin`、`academic_demo`、`supervisor_demo` 和 `teacher_demo`；密码只从本地环境读取，不写入仓库。命令在 production 环境会拒绝执行。
 
+如需更完整的非视频联调数据，使用 [非视频测试数据](docs/非视频测试数据.md)：
+
+```powershell
+go run ./cmd/seed-nonvideo
+$env:BOOTSTRAP_TEST_PASSWORD = '<本机设置12至72字节测试密码>'
+go run ./cmd/seed-nonvideo -apply
+Remove-Item Env:BOOTSTRAP_TEST_PASSWORD
+```
+
+不带 `-apply` 仅预览；实际导入仅允许 development/test，幂等追加6个组织、14个账号及角色、3个学期、8门课程、8个班级、5间教室、12个开课实例、48条课表、44个合成课堂和12条待核验来源元数据。不会新增音视频、采集、转写、分析或报告，不覆盖原有账号密码和业务数据。
+
 ### 容器启动
 
 已安装 Docker Compose 时可运行：
