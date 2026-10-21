@@ -37,11 +37,14 @@ def check_port(port):
 
 def ascii_root(state):
     if os.name != 'nt' or str(state).isascii(): return state
+    # Reuse an existing mapping before considering any free drive. A gap (e.g.
+    # free W: with this directory already on Y:) must not trigger a new subst.
     for letter in ('V', 'W', 'Y', 'Z'):
         drive = Path(letter + ':/')
-        if drive.exists():
-            if os.path.samefile(drive, state): return drive
-            continue
+        if drive.exists() and os.path.samefile(drive, state): return drive
+    for letter in ('V', 'W', 'Y', 'Z'):
+        drive = Path(letter + ':/')
+        if drive.exists(): continue
         subprocess.run(['subst.exe', letter + ':', str(state)], check=True, creationflags=HIDDEN)
         return drive
     raise RuntimeError('No free drive alias for PostgreSQL Unicode path compatibility')

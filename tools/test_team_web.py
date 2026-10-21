@@ -4,10 +4,18 @@ from pathlib import Path
 import socket
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import team_web as dev
 
 class TeamWebTests(unittest.TestCase):
+    def test_existing_later_alias_is_reused_before_a_free_drive(self):
+        state=Path('课堂部署')
+        drives={letter:MagicMock(name=letter) for letter in ('V','W','Y','Z')}
+        for letter,drive in drives.items(): drive.exists.return_value=letter in ('V','Y')
+        with patch.object(dev.os,'name','nt'), patch.object(dev,'Path',side_effect=lambda p:drives[p[0]]), \
+             patch.object(dev.os.path,'samefile',side_effect=lambda a,b:a is drives['Y']), patch.object(dev.subprocess,'run') as create:
+            self.assertIs(dev.ascii_root(state),drives['Y'])
+            create.assert_not_called()
     def config(self, directory):
         runtime = directory / 'runtime'; runtime.mkdir(exist_ok=True)
         return {'go':str(runtime / 'go/bin/go.exe'),'pg_bin':str(runtime / 'pgsql/bin'), 'node':'node',

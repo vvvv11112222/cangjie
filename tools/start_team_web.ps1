@@ -19,8 +19,11 @@ function Ensure-AsciiAlias([string]$Target) {
         if (Test-Path -LiteralPath $drive) {
             $candidate = Join-Path $drive '.team-web-alias-owner'
             if ((Test-Path -LiteralPath $candidate) -and [IO.File]::ReadAllText($candidate) -eq $owner) { return }
-            continue
         }
+    }
+    foreach ($letter in @('V','W','Y','Z')) {
+        $drive = $letter + ':\'
+        if (Test-Path -LiteralPath $drive) { continue }
         & subst.exe ($letter + ':') $Target
         if ($LASTEXITCODE -eq 0) { return }
     }

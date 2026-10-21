@@ -15,6 +15,7 @@ vi.mock('../data/visualApi', async importOriginal => ({ ...(await importOriginal
   getVisualSummary: (...args: unknown[]) => api.summary(...args), getVisualPeople: (...args: unknown[]) => api.people(...args),
   getVisualObservations: (...args: unknown[]) => api.observations(...args) }));
 let root: Root; let container: HTMLDivElement;
+const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView');
 const run = { ...parseRun(sampleRun), id: summary.run_id, media_asset_id: summary.media_asset_id, mode: 'visual_only' as const, status: 'succeeded' as const, report_id: null };
 const row = { timestamp_ms: 0, bbox: [10, 10, 40, 50], behaviors: { hand_raise: true, head_down: null, leave_seat: false, possible_phone: null }, frame_asset_id: null };
 beforeEach(() => {
@@ -22,13 +23,18 @@ beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   api.runs.mockResolvedValue({ items: [run], next_cursor: null }); api.summary.mockResolvedValue(summary);
   api.people.mockResolvedValue({ items: [{ track_id: 'T0001', sample_count: 1 }, { track_id: 'T0002', sample_count: 1 }], next_cursor: null });
   api.observations.mockImplementation(async (_run, track) => ({ items: [{ ...row, behaviors: { ...row.behaviors, hand_raise: track === 'T0001' } }], next_cursor: null }));
   api.media.mockResolvedValue({ id: run.media_asset_id, playback_url: `/api/v1/media/${run.media_asset_id}/content` });
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
+afterEach(async () => {
+  await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks();
+  if (originalScroll) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScroll);
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+});
 async function mount(): Promise<void> { await act(async () => { root.render(<VisualPanel sessionId={run.session_id} currentRun={run} />); }); }
 describe('视觉观察页面', () => {
   it('展示右侧人物与三态记录，切换人物不改变原始结果', async () => {
@@ -51,5 +57,16 @@ describe('视觉观察页面', () => {
     api.summary.mockRejectedValue(new Error('暂时不可读取'));
     await mount(); expect(container.querySelector('[role=alert]')).not.toBeNull();
     expect(container.querySelector('.visual-metrics')).toBeNull();
+  });
+  it('定位记录时跳到原录像时间并把播放器带回视野', async () => {
+    api.observations.mockResolvedValue({ items: [{ ...row, timestamp_ms: 1520 }], next_cursor: null });
+    await mount();
+    const player = container.querySelector('video')!;
+    const locate = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '定位录像')!;
+    await act(async () => locate.click());
+    expect(player.currentTime).toBe(1.52);
+    expect(player.scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    expect(container.querySelector('.visual-overlay rect')?.getAttribute('stroke')).toBe('var(--danger)');
+    expect(container.textContent).toContain('00:01.520');
   });
 });
