@@ -139,7 +139,7 @@ func extractEvents(ctx context.Context, base, key string, segments []Segment) (E
 		meta.Requests = append(meta.Requests, request)
 		if err != nil {
 			var contract *eventContractError
-			if errors.As(err, &contract) && len(contract.rejected) > 0 {
+			if errors.As(err, &contract) && !contract.fatal && len(contract.rejected) > 0 {
 				part = contract.partial
 				rejected = append(rejected, contract.rejected...)
 			} else {
@@ -168,7 +168,7 @@ func extractEvents(ctx context.Context, base, key string, segments []Segment) (E
 		return set, meta, err
 	}
 	if len(rejected) > 0 {
-		return set, meta, &eventContractError{err: fmt.Errorf("有%d条活动依据未通过校验，已隔离", len(rejected)), partial: set, rejected: rejected}
+		return set, meta, &eventContractError{err: fmt.Errorf("有%d条课堂依据未通过校验，已隔离", len(rejected)), partial: set, rejected: rejected}
 	}
 	return set, meta, nil
 }

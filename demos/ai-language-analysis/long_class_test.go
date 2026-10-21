@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -389,6 +390,41 @@ func TestWindowsRejectEvidenceFromAnotherPart(t *testing.T) {
 	set, _, err := extractEvents(context.Background(), server.URL, "local-fake", sources)
 	if err == nil || len(set.Events) != 1 || !strings.Contains(err.Error(), "第 2 / 3 部分") {
 		t.Fatal("cross-window evidence accepted", err, len(set.Events))
+	}
+}
+
+func TestLongClassIsolatesOneIncompleteEventWithoutDiscardingWindowEvidence(t *testing.T) {
+	sources := longSegments(30)
+	windows := lessonWindows(sources)
+	if len(windows) != 3 {
+		t.Fatalf("expected three lesson windows, got %d", len(windows))
+	}
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		window := windows[calls-1]
+		segmentByID := map[string]Segment{}
+		for _, source := range sources {
+			segmentByID[source.ID] = source
+		}
+		quote := evidenceCatalog([]Segment{segmentByID[window.IDs[0]]})[0]
+		valid := TeachingEvent{ID: "ev-001", Type: "definition", Summary: "解释本阶段概念", Quotes: []EventQuote{{QuoteID: quote.QuoteID}}}
+		events := []TeachingEvent{valid}
+		if calls == 2 {
+			events = append(events, TeachingEvent{ID: "ev-incomplete", Type: "definition", Summary: "缺少原文依据"})
+		}
+		raw, _ := json.Marshal(EventSet{Events: events})
+		chunk, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": map[string]string{"content": string(raw)}, "finish_reason": "stop"}}})
+		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", chunk)
+	}))
+	defer server.Close()
+	set, _, err := extractEvents(context.Background(), server.URL, "local-fake", sources)
+	var partial *eventContractError
+	if !errors.As(err, &partial) || partial.fatal || len(partial.partial.Events) != 3 || len(partial.rejected) != 1 || calls != 3 {
+		t.Fatalf("valid window evidence was not preserved around one incomplete event: events=%d calls=%d err=%v", len(set.Events), calls, err)
+	}
+	if !reflect.DeepEqual(set, partial.partial) || partial.rejected[0].Event.ID != "ev-incomplete" {
+		t.Fatal("partial result or rejection diagnostic changed", set, partial)
 	}
 }
 

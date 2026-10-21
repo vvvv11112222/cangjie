@@ -333,6 +333,54 @@ func TestInvalidOrganizationIsolatedAndOtherDimensionsStillPublish(t *testing.T)
 	}
 }
 
+func TestMalformedEvidenceEventIsolatedAndOtherEvidenceStillPublishes(t *testing.T) {
+	t.Setenv("BAILIAN_REPORT_AUDIT", "0")
+	segments, validSet, report := coachingFixture()
+	validEvents := cloneValue(validSet.Events)
+	malformed := TeachingEvent{ID: "ev-incomplete", Type: "definition", Summary: "缺少原文引用", Quotes: []EventQuote{}}
+	all := EventSet{Events: append(validEvents, malformed)}
+	draft := draftFixture(report, validEvents)
+	calls := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var answer any
+		switch calls {
+		case 1:
+			answer = map[string]any{"boundaries": []any{}}
+		case 2:
+			answer = all
+		case 3:
+			answer = draft
+		default:
+			t.Errorf("unexpected model request %d", calls)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		raw, _ := json.Marshal(answer)
+		chunk, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": map[string]string{"content": string(raw)}, "finish_reason": "stop"}}})
+		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", chunk)
+	}))
+	defer provider.Close()
+
+	out, err := analyzeSegments(context.Background(), provider.URL, "fake", segments, func(string, string, int) {})
+	if err != nil || out.ReportStatus != reportReady || calls != 3 {
+		t.Fatalf("one malformed event discarded the usable report: err=%v status=%s calls=%d", err, out.ReportStatus, calls)
+	}
+	if len(out.Events.Events) != len(validEvents) {
+		t.Fatalf("malformed event entered published evidence or valid events were lost: got %d want %d", len(out.Events.Events), len(validEvents))
+	}
+	if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "结构或证据不完整已隔离") || !strings.Contains(out.Warnings[0], "相关分析可能不完整") {
+		t.Fatalf("missing clear partial-evidence warning: %+v", out.Warnings)
+	}
+	if out.ReportDiagnostic == nil || len(out.ReportDiagnostic.RejectedEvents) != 1 || out.ReportDiagnostic.RejectedEvents[0].Event.ID != malformed.ID {
+		t.Fatalf("rejected event not retained in internal diagnostics: %+v", out.ReportDiagnostic)
+	}
+	public, _ := json.Marshal(out)
+	if strings.Contains(string(public), malformed.ID) {
+		t.Fatal("internal rejected event leaked into public analysis")
+	}
+}
+
 // Replay the exact saved failed review, without calling a model or changing the
 // archived report. This measures contract checks, not semantic accuracy.
 func TestGroundedSavedReviewSeparatesClassificationApprovals(t *testing.T) {

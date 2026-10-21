@@ -118,6 +118,47 @@ func assignEventDimensions(set *EventSet) error {
 	return nil
 }
 
+// isolateInvalidEvidenceEvents validates model-produced events independently.
+// A single incomplete event must not erase other events whose evidence is
+// valid, but rejected items are retained for internal diagnostics and are
+// never supplied to report generation.
+func isolateInvalidEvidenceEvents(set EventSet, catalog []EventQuote, segments []Segment) (EventSet, []RejectedEvent, bool) {
+	valid := EventSet{Events: make([]TeachingEvent, 0, len(set.Events))}
+	rejected := make([]RejectedEvent, 0)
+	seenIDs := map[string]bool{}
+	fatal := false
+	for i, event := range set.Events {
+		candidate := EventSet{Events: []TeachingEvent{cloneValue(event)}}
+		var err error
+		if id := strings.TrimSpace(event.ID); id != "" && seenIDs[id] {
+			err = fmt.Errorf("事件标识重复")
+		} else {
+			if id := strings.TrimSpace(event.ID); id != "" {
+				seenIDs[id] = true
+			}
+			err = resolveEventQuotes(&candidate, catalog)
+			if err != nil {
+				// A fabricated, cross-window, or source-mismatched quote is not
+				// merely an incomplete event: it invalidates this model response.
+				fatal = true
+			}
+		}
+		if err == nil {
+			repairEventFormatting(&candidate, segments)
+			err = assignEventDimensions(&candidate)
+		}
+		if err == nil {
+			err = validateEvents(candidate, segments)
+		}
+		if err != nil {
+			rejected = append(rejected, RejectedEvent{Index: i + 1, Event: cloneValue(event), Reason: err.Error()})
+			continue
+		}
+		valid.Events = append(valid.Events, candidate.Events[0])
+	}
+	return valid, rejected, fatal
+}
+
 func contains(items []string, s string) bool {
 	for _, x := range items {
 		if x == s {
@@ -383,30 +424,36 @@ func extractEventsWindow(ctx context.Context, base, key string, segments []Segme
 	if err == nil {
 		err = strictJSON(raw, &set)
 	}
-	if err == nil {
-		err = resolveEventQuotes(&set, catalog)
+	var rejected []RejectedEvent
+	fatalEvidence := false
+	if err == nil && (set.Events == nil || len(set.Events) > 80) {
+		err = fmt.Errorf("事件列表为空值或超过80项")
 	}
 	if err == nil {
-		repairEventFormatting(&set, segments)
-		err = assignEventDimensions(&set)
-	}
-	if err == nil {
-		err = validateEvents(set, segments)
+		set, rejected, fatalEvidence = isolateInvalidEvidenceEvents(set, catalog, segments)
 	}
 	if err == nil {
 		// Activity semantics are checked per event. A malformed organization
 		// event must not discard valid content, reasoning, pace, expression or
 		// technology evidence from the same model response.
-		valid, rejected := isolateInvalidActivityEvents(set)
-		if len(rejected) > 0 {
+		baseRejectedCount := len(rejected)
+		valid, activityRejected := isolateInvalidActivityEvents(set)
+		if len(activityRejected) > 0 {
 			set = valid
+			rejected = append(rejected, activityRejected...)
+		}
+		if len(rejected) > 0 {
 			parts := make([]string, 0, len(rejected))
 			for _, item := range rejected {
 				parts = append(parts, item.Reason)
 			}
+			message := fmt.Sprintf("有%d条课堂依据未通过结构或证据校验：%s", len(rejected), strings.Join(parts, "；"))
+			if baseRejectedCount == 0 && len(activityRejected) > 0 {
+				message = fmt.Sprintf("有%d条活动依据未通过校验：%s", len(activityRejected), strings.Join(parts, "；"))
+			}
 			err = &eventContractError{
-				raw: raw, err: fmt.Errorf("有%d条课堂依据未通过活动任务检查：%s", len(rejected), strings.Join(parts, "；")),
-				partial: set, rejected: rejected,
+				raw: raw, err: fmt.Errorf("%s", message),
+				partial: set, rejected: rejected, fatal: fatalEvidence,
 			}
 		}
 	}
