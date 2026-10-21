@@ -67,7 +67,8 @@ export interface JumpTarget {
 
 /**
  * 回放目标媒体：优先课堂主媒体（协议里 Session.primary_media_asset_id 就是当前主媒体），
- * 没有主媒体时退回到媒体列表里第一个"就绪且允许 playback"的媒体。
+ * 没有主媒体时退回到媒体列表里第一个"就绪且允许 playback"的原录像或代理。
+ * 图片、音轨和报告导出不能装入课堂录像播放器。
  * 都没有就返回 null，页面显示空态而不是拿别的媒体冒充。
  */
 export function pickPlaybackMediaId(session: Session, items: readonly MediaLite[]): string | null {
@@ -75,7 +76,7 @@ export function pickPlaybackMediaId(session: Session, items: readonly MediaLite[
     return session.primary_media_asset_id;
   }
   const playable = items.find(
-    (item) => item.status === 'ready' && item.allowed_actions.includes('playback'),
+    (item) => (item.kind === 'source' || item.kind === 'proxy') && item.status === 'ready' && item.allowed_actions.includes('playback'),
   );
   return playable?.id ?? null;
 }

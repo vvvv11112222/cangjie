@@ -55,6 +55,8 @@ function VisualResults({ run }: { run: Run }): ReactElement {
   const [track, setTrack] = useState<string | null>(null);
   const [observations, setObservations] = useState<{ track: string; rows: VisualObservation[]; cursor: string | null } | null>(null);
   const [media, setMedia] = useState<Media | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaReload, setMediaReload] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [personError, setPersonError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,14 +68,24 @@ function VisualResults({ run }: { run: Run }): ReactElement {
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     let live = true;
-    setError(null); setSummary(null); setPeople([]); setMedia(null); setTrack(null); setObservations(null);
-    void Promise.all([getVisualSummary(run.id), getVisualPeople(run.id), getMedia(run.media_asset_id)]).then(([s, p, m]) => {
+    setError(null); setSummary(null); setPeople([]); setTrack(null); setObservations(null);
+    void Promise.all([getVisualSummary(run.id), getVisualPeople(run.id)]).then(([s, p]) => {
       if (!live) return;
-      if (s.run_id !== run.id || s.media_asset_id !== run.media_asset_id || m.id !== run.media_asset_id) throw new Error('结果与当前录像不一致，请重新读取。');
-      setSummary(s); setPeople(p.items); setPeopleCursor(p.next_cursor); setMedia(m); setTrack(p.items[0]?.track_id ?? null);
+      if (s.run_id !== run.id || s.media_asset_id !== run.media_asset_id) throw new Error('结果与当前录像不一致，请重新读取。');
+      setSummary(s); setPeople(p.items); setPeopleCursor(p.next_cursor); setTrack(p.items[0]?.track_id ?? null);
     }).catch(e => { if (live) setError(describeError(e)); });
     return () => { live = false; };
   }, [run.id, reload]);
+  useEffect(() => {
+    let live = true;
+    setMedia(null); setMediaError(null); setPlayerFailed(false);
+    void getMedia(run.media_asset_id).then(m => {
+      if (!live) return;
+      if (m.id !== run.media_asset_id) throw new Error('播放信息与本次分析的录像不一致。');
+      setMedia(m);
+    }).catch(e => { if (live) setMediaError(describeError(e)); });
+    return () => { live = false; };
+  }, [run.id, reload, mediaReload]);
   useEffect(() => {
     let live = true; setPersonError(null); setFilter('all');
     if (track) void getVisualObservations(run.id, track).then(page => { if (live) { setObservations({ track, rows: page.items, cursor: page.next_cursor }); } }).catch(e => { if (live) setPersonError(describeError(e)); });
@@ -106,6 +118,8 @@ function VisualResults({ run }: { run: Run }): ReactElement {
   const max = (key: 'hand_raise_count' | 'head_down_count'): string => { const n = summary.visual.counts.flatMap(p => p[key] === null ? [] : [p[key]!]); return n.length ? String(Math.max(...n)) : '看不清'; };
   const shown = rows.filter(row => filter === 'all' || (filter === 'unknown' ? row.behaviors.hand_raise === null || row.behaviors.head_down === null : row.behaviors[filter as Behavior] === true));
   const box = current?.bbox;
+  const hasPlayer = Boolean(media?.playback_url) && !playerFailed;
+  const records = track && <><h3>{track} 的画面记录</h3><label className="account-field"><span>筛选动作</span><select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部已读取画面</option><option value="hand_raise">发现举手</option><option value="head_down">发现低头</option><option value="unknown">有动作看不清</option></select></label><p className="load-note">已读取 {rows.length} 次观察。每行对应一次实际检查，不代表动作持续了这么多次。{observations?.track === track && observations.cursor ? '还有记录未读取，可继续加载；筛选只作用于已读取部分。' : ''}</p><div className="table-wrap"><table className="table"><thead><tr><th>录像时间</th>{Object.values(LABELS).map(label => <th key={label}>{label}</th>)}<th>核对</th></tr></thead><tbody>{shown.map(row => <tr key={row.timestamp_ms}><td>{formatTimestamp(row.timestamp_ms)}</td>{(Object.keys(LABELS) as Behavior[]).map(kind => <td key={kind}>{verdictText(row.behaviors[kind])}</td>)}<td><button className="btn btn-secondary" onClick={() => jump(row)}>{hasPlayer ? '定位录像' : '查看记录'}</button></td></tr>)}</tbody></table></div>{!shown.length && <p className="empty">已读取的画面中没有符合筛选条件的记录。</p>}{observations?.track === track && observations.cursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void moreObservations()}>继续读取这个人的记录</button>}</>;
   return <>
     <Card title="分析概况" subtitle={`每隔 ${summary.sampling.interval_ms / 1000} 秒检查一次；共检查 ${summary.visual.counts.length} 张画面。可见人数包含画面中的人员，不等于学生出勤人数。`}>
       <div className="visual-metrics"><div><strong>{known.length ? (known.reduce((a, b) => a + b, 0) / known.length).toFixed(1) : '看不清'}</strong><span>平均可见人数</span></div><div><strong>{max('hand_raise_count')}</strong><span>同一画面举手最多人数</span></div><div><strong>{max('head_down_count')}</strong><span>同一画面低头最多人数</span></div></div>
@@ -113,20 +127,23 @@ function VisualResults({ run }: { run: Run }): ReactElement {
     </Card>
     <Card title="按人物查看与回放" subtitle="编号只属于本次录像。选中人物不会改变行为颜色：红色举手，蓝色低头，绿色未见这两种动作，灰色看不清。">
       {error && <p role="alert" className="load-note load-note-error">{error}</p>}
+      {!hasPlayer && <p className="load-note" role="status">分析结果已保存。右侧选择人物，下方表格查看举手、低头的判断；录像不能播放不代表分析结果丢失。</p>}
       <div className="visual-workspace">
         <div>
           {media?.playback_url && !playerFailed ? <div className="visual-video" style={{ aspectRatio: `${summary.visual.width}/${summary.visual.height}` }}>
             <video ref={video} controls preload="metadata" playsInline src={media.playback_url} aria-label="视觉分析录像" onLoadedMetadata={e => { e.currentTarget.currentTime = at / 1000; }} onTimeUpdate={e => setAt(Math.round(e.currentTarget.currentTime * 1000))} onError={() => setPlayerFailed(true)} />
             {box && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`} aria-label={`当前人物 ${track}`}><rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} fill="none" stroke={observationColor(current!)} strokeWidth="2" /><text x={box[0]} y={Math.max(12, box[1] - 3)} fill={observationColor(current!)} fontSize="13">{track}</text></svg>}
-          </div> : <p className="notice-strip">{playerFailed ? '录像播放失败，请重新读取当前授权后再试。' : '当前没有可播放的录像，请检查媒体是否已准备完成及来源许可。'}</p>}
+          </div> : <><p className="load-note">{playerFailed ? '录像播放失败，可以重新检查播放许可。' : '当前录像未开放回放，或播放信息暂不可用。请在“素材与来源”核对是否申请并允许“回放”；人物分析记录仍可查看。'}</p><a className="btn btn-secondary" href="#/sources">核对录像来源与用途</a><button className="btn btn-secondary" onClick={() => setMediaReload(v => v + 1)}>重新检查回放</button></>}
+          {mediaError && <p role="alert" className="load-note load-note-error">播放信息读取失败：{mediaError}；已保存的分析结果继续显示。</p>}
           <p className="load-note">{formatTimestamp(at)} · {track ? `当前选中 ${track}` : '未选择人物'} · {current ? `举手：${verdictText(current.behaviors.hand_raise)}；低头：${verdictText(current.behaviors.head_down)}` : '这个时刻没有已加载的观察，不补画框或推测行为。'}</p>
-          {current?.frame_asset_id && !imageFailed && <details><summary>查看这个时刻的证据图片</summary><div className="visual-evidence"><img loading="lazy" alt={`${track} 在 ${formatTimestamp(current.timestamp_ms)} 的原画面`} src={`/api/v1/media/${encodeURIComponent(current.frame_asset_id)}/content`} onError={() => setImageFailed(true)} />{box && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`}><rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} fill="none" stroke={observationColor(current)} strokeWidth="2" /></svg>}</div></details>}
+          {media?.allowed_actions.includes('playback') && current?.frame_asset_id && !imageFailed && <details><summary>查看这个时刻的证据图片</summary><div className="visual-evidence"><img loading="lazy" alt={`${track} 在 ${formatTimestamp(current.timestamp_ms)} 的原画面`} src={`/api/v1/media/${encodeURIComponent(current.frame_asset_id)}/content`} onError={() => setImageFailed(true)} />{box && <svg className="visual-overlay" viewBox={`0 0 ${summary.visual.width} ${summary.visual.height}`}><rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} fill="none" stroke={observationColor(current)} strokeWidth="2" /></svg>}</div></details>}
           {imageFailed && <p role="alert">图片暂不可读取，可以定位原录像核对。</p>}
+          {!hasPlayer && records}
         </div>
         <aside className="visual-people" aria-label="人物列表"><h3>人物编号</h3><p className="muted">已读取 {people.length} 个编号；点击查看该人的记录。</p>{people.map(person => <button key={person.track_id} type="button" className={`visual-person${track === person.track_id ? ' selected' : ''}`} aria-pressed={track === person.track_id} onClick={() => setTrack(person.track_id)}><strong>{person.track_id}</strong><span>检查了 {person.sample_count} 次</span>{person.track_id === track && current && <small>举手{verdictText(current.behaviors.hand_raise)} · 低头{verdictText(current.behaviors.head_down)}</small>}</button>)}{peopleCursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void morePeople()}>加载更多人物</button>}{!people.length && <p>这段录像没有检出可记录的人物。</p>}</aside>
       </div>
       {personError && <p role="alert">{personError}</p>}
-      {track && <><h3>{track} 的画面记录</h3><label className="account-field"><span>筛选动作</span><select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部已读取画面</option><option value="hand_raise">发现举手</option><option value="head_down">发现低头</option><option value="unknown">有动作看不清</option></select></label><p className="load-note">已读取 {rows.length} 次观察。每行对应一次实际检查，不代表动作持续了这么多次。{observations?.track === track && observations.cursor ? '还有记录未读取，可继续加载；筛选只作用于已读取部分。' : ''}</p><div className="table-wrap"><table><thead><tr><th>录像时间</th>{Object.values(LABELS).map(label => <th key={label}>{label}</th>)}<th>核对</th></tr></thead><tbody>{shown.map(row => <tr key={row.timestamp_ms}><td>{formatTimestamp(row.timestamp_ms)}</td>{(Object.keys(LABELS) as Behavior[]).map(kind => <td key={kind}>{verdictText(row.behaviors[kind])}</td>)}<td><button className="btn btn-secondary" onClick={() => jump(row)}>定位录像</button></td></tr>)}</tbody></table></div>{!shown.length && <p className="empty">已读取的画面中没有符合筛选条件的记录。</p>}{observations?.track === track && observations.cursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void moreObservations()}>继续读取这个人的记录</button>}</>}
+      {hasPlayer && records}
     </Card>
     <Card title="观察范围与限制"><ul>{summary.limitations.map((text, index) => <li key={index}>{text}</li>)}</ul><TechDetails><p>批次：{run.id}；模型：{summary.model.name}；版本：{summary.model.revision}</p></TechDetails></Card>
   </>;
