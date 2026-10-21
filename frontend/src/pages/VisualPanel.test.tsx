@@ -27,7 +27,7 @@ beforeEach(() => {
   api.runs.mockResolvedValue({ items: [run], next_cursor: null }); api.summary.mockResolvedValue(summary);
   api.people.mockResolvedValue({ items: [{ track_id: 'T0001', sample_count: 1 }, { track_id: 'T0002', sample_count: 1 }], next_cursor: null });
   api.observations.mockImplementation(async (_run, track) => ({ items: [{ ...row, behaviors: { ...row.behaviors, hand_raise: track === 'T0001' } }], next_cursor: null }));
-  api.media.mockResolvedValue({ id: run.media_asset_id, playback_url: `/api/v1/media/${run.media_asset_id}/content` });
+  api.media.mockResolvedValue({ id: run.media_asset_id, allowed_actions: ['playback'], playback_url: `/api/v1/media/${run.media_asset_id}/content` });
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => {
@@ -57,6 +57,32 @@ describe('视觉观察页面', () => {
     api.summary.mockRejectedValue(new Error('暂时不可读取'));
     await mount(); expect(container.querySelector('[role=alert]')).not.toBeNull();
     expect(container.querySelector('.visual-metrics')).toBeNull();
+  });
+  it('只允许分析时直接展示记录，不创建播放器或伪造播放地址', async () => {
+    api.media.mockResolvedValue({ id: run.media_asset_id, allowed_actions: ['analyze'], playback_url: null });
+    api.observations.mockResolvedValue({ items: [{ ...row, timestamp_ms: 1520, frame_asset_id: 'frame-id' }], next_cursor: null });
+    await mount();
+    expect(container.textContent).toContain('分析结果已保存');
+    expect(container.querySelector('video')).toBeNull();
+    expect(container.querySelector('.visual-evidence')).toBeNull();
+    expect(container.querySelector('.visual-workspace table')).not.toBeNull();
+    const inspect = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '查看记录')!;
+    await act(async () => inspect.click());
+    expect(container.textContent).toContain('00:01.520');
+    expect(container.textContent).toContain('举手：发现');
+  });
+  it('播放信息请求失败仍能读取分析，重新检查回放不重新分析或清空人物', async () => {
+    api.media.mockRejectedValueOnce(new Error('播放暂不可用'));
+    await mount();
+    expect(container.textContent).toContain('T0001 的画面记录');
+    expect(container.textContent).toContain('播放信息读取失败');
+    const retry = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '重新检查回放')!;
+    await act(async () => retry.click());
+    expect(container.querySelector('video')).not.toBeNull();
+    expect(container.textContent).toContain('T0001 的画面记录');
+    expect(api.summary).toHaveBeenCalledTimes(1);
+    expect(api.observations).toHaveBeenCalledTimes(1);
+    expect(api.media).toHaveBeenCalledTimes(2);
   });
   it('定位记录时跳到原录像时间并把播放器带回视野', async () => {
     api.observations.mockResolvedValue({ items: [{ ...row, timestamp_ms: 1520 }], next_cursor: null });

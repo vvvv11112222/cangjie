@@ -81,6 +81,15 @@ const MEDIA: MediaLite[] = [
 ];
 
 describe('回放目标媒体', () => {
+  it('关键帧和音轨即使可读取，也不能代替课堂录像', () => {
+    const session = { ...SESSION, primary_media_asset_id: null };
+    const images: MediaLite[] = [
+      { ...MEDIA[0]!, id: 'image', kind: 'keyframe' },
+      { ...MEDIA[0]!, id: 'audio', kind: 'audio' },
+    ];
+    expect(pickPlaybackMediaId(session, images)).toBeNull();
+    expect(pickPlaybackMediaId(session, [...images, ...MEDIA])).toBe(MEDIA[0]!.id);
+  });
   it('优先课堂主媒体', () => {
     expect(pickPlaybackMediaId(SESSION, MEDIA)).toBe(SESSION.primary_media_asset_id);
   });
