@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -16,6 +17,29 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vvvv11112222/cangjie/internal/database"
 )
+
+func TestReportProviderRedirectIsNotFollowedOrRetried(t *testing.T) {
+	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var destinationCalls, providerCalls atomic.Int32
+			destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				destinationCalls.Add(1)
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer destination.Close()
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				providerCalls.Add(1)
+				http.Redirect(w, r, destination.URL, status)
+			}))
+			defer provider.Close()
+			s := &Service{cfg: Config{ReportAPIBase: provider.URL, ReportAPIKey: "synthetic-key", ReportTimeout: time.Second}}
+			result, err := s.callReportModel(context.Background(), []byte(`{"model":"synthetic"}`))
+			if err == nil || destinationCalls.Load() != 0 || providerCalls.Load() != 1 || result.UsageKnown {
+				t.Fatalf("redirect dispatched or unknown bill hidden: calls=%d/%d known=%v err=%v", providerCalls.Load(), destinationCalls.Load(), result.UsageKnown, err)
+			}
+		})
+	}
+}
 
 func TestCallReportModelPreservesUsageWhenCandidateIsInvalid(t *testing.T) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
