@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSessionRoute } from './route';
+import { parseSessionRoute, sessionSearchFromHash, sessionSearchHash } from './route';
 
 const ID = 'abcdef00-0000-4000-8000-000000000001';
 
@@ -29,5 +29,19 @@ describe('详情路由解析（评审意见 F09/F10）', () => {
     if (route.kind === 'invalid') {
       expect(route.message).toContain('UUID');
     }
+  });
+});
+
+describe('课堂档案搜索地址', () => {
+  it('生成可分享的搜索地址并还原中文和特殊字符', () => {
+    const hash = sessionSearchHash('  数据结构 & 算法  ');
+    expect(hash).toBe('#/sessions?query=%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84+%26+%E7%AE%97%E6%B3%95');
+    expect(sessionSearchFromHash(hash)).toBe('数据结构 & 算法');
+  });
+
+  it('空搜索回到课堂档案，其它页面不误读查询词', () => {
+    expect(sessionSearchHash('   ')).toBe('#/sessions');
+    expect(sessionSearchFromHash('#/reports?query=test')).toBe('');
+    expect(sessionSearchFromHash('#/sessions')).toBe('');
   });
 });

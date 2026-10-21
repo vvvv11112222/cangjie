@@ -36,6 +36,7 @@ vi.mock('../components/AccountBar', () => ({ AccountBar: () => null }));
 import { TasksPage } from './TasksPage';
 import { SourcesPage } from './SourcesPage';
 import { AccountsPage } from './AccountsPage';
+import { SessionListPage } from './SessionListPage';
 import { App } from '../App';
 import { AcademicPage } from './AcademicPage';
 
@@ -130,11 +131,42 @@ it('offers the real media preparation entry after uploading instead of claiming 
 });
 
 it.each([['teacher', null], ['supervisor', 'college'], ['academic_admin', 'college'], ['sys_admin', null]])('grants %s with the backend scope', async (role, scope) => {
-  await mount(<AccountsPage/>); await click('编辑权限');
+  await mount(<AccountsPage/>); await click('账号资料 / 授予新角色');
   const selects = container.querySelectorAll<HTMLSelectElement>('form select');
   await select(selects[2]!, role!); await submit();
   expect(h.grant).toHaveBeenCalledWith(user.id, role, scope);
-  await click('编辑权限'); await submit(); expect(h.grant).toHaveBeenCalledTimes(1);
+  await click('账号资料 / 授予新角色'); await submit(); expect(h.grant).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the selected classroom after a source read failure and retries in place', async () => {
+  h.listSources.mockRejectedValueOnce(new Error('temporary failure'));
+  await mount(<SourcesPage/>); await select(classroomSelect(), 'A');
+  expect(classroomSelect().value).toBe('A');
+  expect(container.textContent).toContain('重新读取素材');
+  await click('重新读取素材');
+  expect(container.textContent).toContain('来源 A');
+});
+
+it('keeps loaded accounts visible when refresh fails and allows retry', async () => {
+  await mount(<AccountsPage/>);
+  h.users.mockRejectedValueOnce(new Error('temporary failure'));
+  await click('停用');
+  expect(container.textContent).toContain('测试教师');
+  expect(container.textContent).toContain('重新读取');
+  await click('重新读取');
+  expect(container.textContent).toContain('测试教师');
+});
+
+it.each([false, true])('keeps search and retry after a classroom read failure (has data: %s)', async hasData => {
+  window.history.replaceState(null, '', '#/sessions?query=A');
+  h.loaded = { ...h.loaded, data: { tasks: [], nextCursor: null }, hasData, status: 'error', error: 'temporary failure', actionLabel: '重试', origin: { kind: 'api', sources: ['GET /api/v1/sessions'], label: '接口数据', note: '。' } };
+  await mount(<SessionListPage/>);
+  expect(container.textContent).toContain('temporary failure');
+  await click('重试');
+  expect(h.loaded.loadMore).toHaveBeenCalledTimes(1);
+  expect(window.location.hash).toBe('#/sessions?query=A');
+  if (hasData) expect(container.querySelector<HTMLInputElement>('[aria-label="筛选课堂"]')?.value).toBe('A');
+  window.history.replaceState(null, '', '#/sessions');
 });
 
 it('centers the account empty state inside the table card', async () => {
@@ -145,12 +177,42 @@ it('centers the account empty state inside the table card', async () => {
   expect(empty?.textContent).toContain('没有符合条件的账号');
 });
 
+it('keeps keyboard focus inside the account dialog and restores it after Escape', async () => {
+  await mount(<AccountsPage/>);
+  const trigger = button('账号资料 / 授予新角色');
+  trigger.focus();
+  await act(async () => trigger.click());
+  const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!;
+  const name = dialog.querySelector<HTMLInputElement>('form input:not([disabled])')!;
+  expect(dialog.getAttribute('aria-labelledby')).toBe('account-editor-title');
+  expect(document.activeElement).toBe(name);
+
+  const close = dialog.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')!;
+  const save = [...dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])')].at(-1)!;
+  save.focus();
+  await act(async () => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })));
+  expect(document.activeElement).toBe(close);
+
+  await act(async () => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
+
 it('centers empty states across every academic table', async () => {
   await mount(<AcademicPage/>);
   for (const tab of ['本周课表', '开课实例', '课程', '学期', '教室']) {
     await click(tab);
     expect(container.querySelector('.academic-empty-state')).not.toBeNull();
   }
+});
+
+it('retries academic reads without replacing the current page with a fake empty success', async () => {
+  h.m1.mockRejectedValueOnce(new Error('temporary failure'));
+  await mount(<AcademicPage/>);
+  expect(container.textContent).toContain('重新读取教务资料');
+  await click('重新读取教务资料');
+  expect(container.textContent).not.toContain('temporary failure');
 });
 
 it('retries only the role grant after account creation succeeds', async () => {

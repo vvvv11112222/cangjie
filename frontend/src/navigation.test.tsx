@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { NavLinks } from './App';
+import { GlobalSessionSearch, NavLinks } from './App';
 import type { RoleCode } from './data/authApi';
 import { NAV_ITEMS, SKETCH_ROLE_ALIAS, visibleGroups } from './roleNav';
 
@@ -125,5 +125,15 @@ describe('侧栏导航与角色差异', () => {
     expect(narrow).toMatch(/\.sidebar\s*\{[^}]*flex-direction:\s*row/s);
     expect(narrow).toMatch(/\.sidebar nav\s*\{[^}]*display:\s*flex/s);
     expect(narrow).not.toMatch(/\.nav-item\s*\{[^}]*display:\s*none/s);
+  });
+});
+
+describe('顶栏课堂搜索', () => {
+  it('与草图一致提供搜索入口，并回显地址中的查询词', () => {
+    const html = renderToStaticMarkup(<GlobalSessionSearch hash="#/sessions?query=%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84" />);
+    expect(html).toContain('role="search"');
+    expect(html).toContain('aria-label="搜索课堂"');
+    expect(html).toContain('placeholder="搜索已加载课堂"');
+    expect(html).toContain('value="数据结构"');
   });
 });

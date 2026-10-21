@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import type { ReactElement } from 'react';
 import { useAuth } from './auth';
 import { AccountBar } from './components/AccountBar';
@@ -15,6 +16,7 @@ import {
   IconInsights,
   IconList,
   IconReport,
+  IconSearch,
   IconSettings,
   IconShield,
   IconTask,
@@ -23,7 +25,7 @@ import {
   IconUser,
 } from './components/icons';
 import type { RoleCode } from './data/authApi';
-import { parseSessionRoute } from './data/route';
+import { parseSessionRoute, sessionSearchFromHash, sessionSearchHash } from './data/route';
 import { isApiMode } from './data/sources';
 import { roleLabel } from './format';
 import { PLANNED_PAGES, PlaceholderPage } from './pages/PlaceholderPage';
@@ -106,6 +108,15 @@ const PAGE_RENDERERS: Record<string, () => ReactElement> = {
   ...IMPLEMENTED_PAGES,
 };
 
+/** 顶栏课堂搜索只出现在需要频繁切换课堂的教学页面。 */
+const CLASSROOM_SEARCH_PATHS = new Set([
+  '#/dashboard',
+  SESSIONS_PATH,
+  '#/transcript',
+  '#/tasks',
+  '#/reports',
+]);
+
 /**
  * 唯一的页面导航入口，宽屏在侧栏、窄屏在顶部导航条（见 styles.css 的 900px 断点）。
  * 三段分组的入口都从这里渲染，避免出现某一种布局下没有入口的情况。
@@ -141,6 +152,31 @@ function useHashRoute(): string {
     return () => window.removeEventListener('hashchange', onChange);
   }, []);
   return hash;
+}
+
+export function GlobalSessionSearch({ hash }: { hash: string }): ReactElement {
+  const routeQuery = sessionSearchFromHash(hash);
+  const [query, setQuery] = useState(routeQuery);
+  useEffect(() => setQuery(routeQuery), [routeQuery]);
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    window.location.hash = sessionSearchHash(query);
+  }
+
+  return (
+    <form className="global-search" role="search" onSubmit={submit}>
+      <IconSearch size={15} />
+      <input
+        type="search"
+        aria-label="搜索课堂"
+        placeholder="搜索已加载课堂"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <button type="submit" className="global-search-submit">搜索</button>
+    </form>
+  );
 }
 
 /** 一行说明加一个返回入口，用于地址无效和"当前角色看不到这个入口"两种情况。 */
@@ -265,6 +301,7 @@ export function App(): ReactElement {
             <span className="crumb-divider">/</span>
             <strong>{breadcrumbTitle}</strong>
           </div>
+          {CLASSROOM_SEARCH_PATHS.has(currentPath) ? <GlobalSessionSearch hash={hash} /> : null}
           <div className="topbar-actions">
             {/* 待办提醒（草图的 notification-button）。 */}
             <NotificationBell />
