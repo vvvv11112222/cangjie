@@ -102,6 +102,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const truncated = injectedTasks === undefined && loaded.data.nextCursor !== null;
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空数组假装"没有课堂"。
   const ready = injectedTasks !== undefined || loaded.hasData;
+  const showSearchScope = ready && query.trim() !== '' && truncated;
 
   // 筛选与搜索都在已加载的这一页上做：列表接口只有 cursor/limit，没有筛选参数。
   const shown = useMemo(() => {
@@ -143,7 +144,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     <>
       <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
       <LoadStateNote status={loaded.status} error={loaded.error} />
-      {query.trim() === '' ? <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} /> : null}
+      {!showSearchScope ? <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} /> : null}
     </>
   );
 
@@ -224,7 +225,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
           </div>
       </div>
 
-      {query.trim() !== '' && truncated ? (
+      {showSearchScope ? (
         <div className="notice-strip search-scope-note">
           <IconInfo size={14} />
           <span>当前结果只搜索已加载的课堂，后续页面可能还有匹配项。</span>

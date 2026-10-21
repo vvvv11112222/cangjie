@@ -135,6 +135,50 @@ describe('M4 页面回归', () => {
     expect(button('重新读取账目')).toBeTruthy();
   });
 
+  it('运行状态重试等待账目分页结束，保留连续记录和下一页游标', async () => {
+    const second = { ...modelCall, id: 'call-second' };
+    const third = { ...modelCall, id: 'call-third' };
+    let finishThird!: (value: { items: ModelCall[]; next_cursor: string }) => void;
+    state.getOperations.mockRejectedValueOnce(new Error('operations unavailable'));
+    state.listModelCalls
+      .mockResolvedValue({ items: [modelCall], next_cursor: 'second' })
+      .mockResolvedValueOnce({ items: [modelCall], next_cursor: 'second' })
+      .mockResolvedValueOnce({ items: [second], next_cursor: 'third' })
+      .mockReturnValueOnce(new Promise(resolve => { finishThird = resolve; }));
+    await act(async () => root.render(<OperationsPage />));
+    await act(async () => button('加载更多账目').click());
+    await act(async () => button('加载更多账目').click());
+    expect(button('重新读取').disabled).toBe(true);
+    await act(async () => button('重新读取').click());
+    expect(state.getOperations).toHaveBeenCalledTimes(1);
+    expect(state.listModelCalls).toHaveBeenCalledTimes(3);
+    await act(async () => finishThird({ items: [third], next_cursor: 'fourth' }));
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(button('重新读取').disabled).toBe(false);
+    await act(async () => button('加载更多账目').click());
+    expect(state.listModelCalls).toHaveBeenLastCalledWith('fourth', 20);
+    await act(async () => button('重新读取').click());
+    expect(state.getOperations).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('worker-01');
+  });
+
+  it('核对账目提交期间禁止运行状态重试关闭表单', async () => {
+    let finish!: (value: ModelCall) => void;
+    state.getOperations.mockRejectedValueOnce(new Error('operations unavailable'));
+    state.reconcileModelCall.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    await act(async () => root.render(<OperationsPage />));
+    await act(async () => button('核对账目').click());
+    await change(container.querySelectorAll<HTMLInputElement>('form input')[2]!, '核对原因');
+    await act(async () => button('提交核对').click());
+    expect(button('重新读取').disabled).toBe(true);
+    await act(async () => button('重新读取').click());
+    expect(state.getOperations).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('form')).not.toBeNull();
+    await act(async () => finish({ ...modelCall, status: 'failed', actual_cost: '0.000000' }));
+    expect(container.querySelector('form')).toBeNull();
+    expect(container.textContent).toContain('模型调用账目已核对');
+  });
+
   it('彻底清理要求原因和确认文字，并提交真实课堂 id', async () => {
     const changed = vi.fn();
     await act(async () => root.render(<DeletionPanel session={session} api onSessionChanged={changed} />));

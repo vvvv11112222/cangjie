@@ -36,6 +36,7 @@ vi.mock('../components/AccountBar', () => ({ AccountBar: () => null }));
 import { TasksPage } from './TasksPage';
 import { SourcesPage } from './SourcesPage';
 import { AccountsPage } from './AccountsPage';
+import { SessionListPage } from './SessionListPage';
 import { App } from '../App';
 import { AcademicPage } from './AcademicPage';
 
@@ -154,6 +155,18 @@ it('keeps loaded accounts visible when refresh fails and allows retry', async ()
   expect(container.textContent).toContain('重新读取');
   await click('重新读取');
   expect(container.textContent).toContain('测试教师');
+});
+
+it.each([false, true])('keeps search and retry after a classroom read failure (has data: %s)', async hasData => {
+  window.history.replaceState(null, '', '#/sessions?query=A');
+  h.loaded = { ...h.loaded, data: { tasks: [], nextCursor: null }, hasData, status: 'error', error: 'temporary failure', actionLabel: '重试', origin: { kind: 'api', sources: ['GET /api/v1/sessions'], label: '接口数据', note: '。' } };
+  await mount(<SessionListPage/>);
+  expect(container.textContent).toContain('temporary failure');
+  await click('重试');
+  expect(h.loaded.loadMore).toHaveBeenCalledTimes(1);
+  expect(window.location.hash).toBe('#/sessions?query=A');
+  if (hasData) expect(container.querySelector<HTMLInputElement>('[aria-label="筛选课堂"]')?.value).toBe('A');
+  window.history.replaceState(null, '', '#/sessions');
 });
 
 it('centers the account empty state inside the table card', async () => {

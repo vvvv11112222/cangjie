@@ -2661,6 +2661,28 @@ code {
   .visual-people { flex: 1 1 180px; max-height: 400px; }
 }
 
+/* 保留侧栏的中等屏幕：搜索独占第二行，给面包屑和账号入口留出空间。 */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .topbar {
+    height: auto;
+    min-height: 64px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+
+  .global-search {
+    order: 2;
+    flex-basis: 100%;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .topbar-actions {
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 560px) {
   .topbar {
     height: auto;

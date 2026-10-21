@@ -9,7 +9,9 @@ const run = fixture('run-partial');
 const results = fixture('results');
 const revision = fixture('revision');
 const report = fixture('report-draft');
+const operations = fixture('operations');
 const uuid = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const modelCall = n => ({ id: uuid(900 + n), status: 'failed', reserved_cost: `${n}.000000`, actual_cost: '0.000000', currency: 'CNY', billing_period: '2026-10-01', price_version: 'synthetic', lock_version: 1, dispatch_started_at: null, settled_at: null });
 function gate() {
   let release;
   const promise = new Promise(resolve => { release = resolve; });
@@ -24,10 +26,13 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   let scenario = 'list';
   let emptyFirst = false;
   let secondFailure = false;
+  let firstFailure = false;
   let secondGate = null;
   let logoutGate = null;
   let logoutStatus = 204;
   let runError = null;
+  let operationsFailure = false;
+  let thirdCallGate = null;
   let csrf = 0;
   page.on('pageerror', error => failures.push(error.message));
   await page.route('**/api/v1/**', async route => {
@@ -55,6 +60,7 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
     if (path === '/sessions') {
       const cursor = url.searchParams.get('cursor');
       if (scenario === 'list') {
+        if (cursor === null && firstFailure) return fail(503, 'SERVICE_UNAVAILABLE');
         if (cursor !== null && secondGate !== null) await secondGate.promise;
         if (cursor !== null && secondFailure) return fail(503, 'SERVICE_UNAVAILABLE');
         const title = `${who}的第${cursor === null ? '一' : '二'}页课堂`;
@@ -80,6 +86,13 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
     }
     if (path.startsWith('/reports/')) return send({ ...report, session_id: scenario === 'drafts' ? uuid(520) : session.id, run_id: scenario === 'drafts' ? uuid(620) : run.id });
     if (path.startsWith('/transcript-revisions/')) return send(revision);
+    if (path === '/operations') return operationsFailure ? fail(503, 'SERVICE_UNAVAILABLE') : send(operations);
+    if (path === '/model-calls') {
+      const cursor = url.searchParams.get('cursor');
+      const index = cursor === null ? 1 : cursor === 'second' ? 2 : cursor === 'third' ? 3 : 4;
+      if (index === 3 && thirdCallGate !== null) await thirdCallGate.promise;
+      return send({ items: [modelCall(index)], next_cursor: [null, 'second', 'third', 'fourth', null][index] });
+    }
     return fail(404, 'NOT_FOUND');
   });
 
@@ -128,6 +141,19 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   await page.goto(`${baseURL}/#/sessions`);
   await waitText('A的第一页课堂');
   checks.push('global classroom search submits, syncs and stays off management pages');
+
+  firstFailure = true;
+  await page.goto(`${baseURL}/#/sessions?query=${encodeURIComponent('A的第一页课堂')}`);
+  await page.reload();
+  await waitText('服务暂时不可用');
+  firstFailure = false;
+  await button('重试').click();
+  await waitText('A的第一页课堂');
+  assert.equal(await page.getByLabel('筛选课堂').inputValue(), 'A的第一页课堂');
+  await page.getByRole('search').getByLabel('搜索课堂').fill('');
+  await page.getByRole('search').getByRole('button', { name: '搜索', exact: true }).click();
+  await page.waitForURL(url => url.hash === '#/sessions');
+  checks.push('first page failure with URL search retries without losing the search');
 
   // 同一事件循环内两次 DOM click，绕过“只看到按钮禁用”的浅层验证。
   for (const status of [500, 204]) {
@@ -215,10 +241,15 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
   scenario = 'drafts';
   await page.goto(`${baseURL}/#/reports`);
   await waitText('本轮尚未找到结果');
-  const checked = calls.filter(call => call.path.startsWith('/analysis-runs/') && !call.path.endsWith('/results')).length;
+  const draftPaths = new Set(Array.from({ length: 21 }, (_, index) => `/analysis-runs/${uuid(600 + index)}`));
+  const draftLookups = () => calls.filter(call => draftPaths.has(call.path));
+  const checked = draftLookups().length;
   await button('继续查找').click();
   await waitText('草稿课堂21');
-  assert.equal(calls.filter(call => call.path.startsWith('/analysis-runs/') && !call.path.endsWith('/results')).length, checked + 1);
+  // 只统计候选课堂批次；报告页的其他读取不属于搜索进度。
+  const continuedRuns = draftLookups().slice(checked);
+  assert.ok(continuedRuns.length > 0);
+  assert.ok(continuedRuns.every(call => call.path === `/analysis-runs/${uuid(620)}`), JSON.stringify(continuedRuns.map(call => call.path)));
   checks.push('21st draft reachable via continuation');
 
   for (const path of ['transcript', 'reports']) {
@@ -261,6 +292,46 @@ export async function runChecks(page, baseURL = 'http://127.0.0.1:18767') {
     }
   }
   checks.push('narrow navigation remains operable');
+
+  await login('软件工程学院教务管理员');
+  await page.goto(`${baseURL}/#/sessions`);
+  await waitText('软件工程学院教务管理员的第一页课堂');
+  for (const width of [320, 375, 560, 561, 820, 900, 901, 960, 1024, 1100, 1200, 1201, 1280]) {
+    await page.setViewportSize({ width, height: 812 });
+    const layout = await page.evaluate(() => {
+      const account = document.querySelector('.account-trigger').getBoundingClientRect();
+      const search = document.querySelector('.global-search').getBoundingClientRect();
+      return { viewport: innerWidth, scroll: document.documentElement.scrollWidth, accountLeft: account.left, accountRight: account.right, searchLeft: search.left, searchRight: search.right };
+    });
+    assert.ok(layout.scroll <= width, `横向溢出：${JSON.stringify(layout)}`);
+    assert.ok(layout.accountLeft >= 0 && layout.accountRight <= width, `账号入口超出屏幕：${JSON.stringify(layout)}`);
+    assert.ok(layout.searchLeft >= 0 && layout.searchRight <= width, `搜索框超出屏幕：${JSON.stringify(layout)}`);
+  }
+  checks.push('long account name and classroom search fit phone, tablet and desktop widths');
+
+  operationsFailure = true;
+  await page.goto(`${baseURL}/#/settings`);
+  await button('重新读取').waitFor({ state: 'visible' });
+  await button('加载更多账目').click();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 2);
+  thirdCallGate = gate();
+  await button('加载更多账目').click();
+  await waitCalls(() => calls.some(call => call.path === '/model-calls' && call.cursor === 'third'));
+  const firstPages = calls.filter(call => call.path === '/model-calls' && call.cursor === null).length;
+  assert.equal(await button('重新读取').isDisabled(), true);
+  await button('重新读取').evaluate(el => el.click());
+  assert.equal(calls.filter(call => call.path === '/model-calls' && call.cursor === null).length, firstPages);
+  thirdCallGate.release();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 3);
+  thirdCallGate = null;
+  await button('加载更多账目').click();
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length === 4);
+  assert.equal(calls.filter(call => call.path === '/model-calls').at(-1).cursor, 'fourth');
+  assert.equal(await button('重新读取').isEnabled(), true);
+  operationsFailure = false;
+  await button('重新读取').click();
+  await waitText('worker-01');
+  checks.push('operations retry waits for pagination and preserves every model-call page');
   assert.deepEqual(failures, []);
   mkdirSync('output/playwright', { recursive: true });
   await page.setViewportSize({ width: 375, height: 812 });
