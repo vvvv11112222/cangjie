@@ -48,6 +48,39 @@ it('a direct offering link opens the correct academic tab', async () => {
   window.history.replaceState(null, '', '#/academic');
 });
 
+it('opens the read-only role permission matrix and can collapse it', async () => {
+  await mount(<AccountsPage/>); await click('查看角色权限');
+  expect(container.textContent).toContain('角色权限对照表');
+  const matrix = container.querySelector('table caption')?.closest('table');
+  expect(matrix?.textContent).toContain('上传录像、提交或取消分析');
+  expect(matrix?.querySelectorAll('thead th')).toHaveLength(5);
+  expect(matrix?.querySelector('input[type="checkbox"]')).toBeNull();
+  await click('收起权限对照表'); expect(container.textContent).not.toContain('角色权限对照表');
+});
+
+it('creates a typed course and reuses it if saving the offering fails', async () => {
+  let savedCourse: Record<string, string> | null = null;
+  h.m1.mockImplementation(async kind => ({ items: kind === 'courses' && savedCourse ? [savedCourse] : [], next_cursor: null }));
+  h.writeAcademic.mockImplementation(async (kind: string, input: Record<string, string>) => {
+    if (kind === 'course') { savedCourse = { ...input, id: 'new-course' }; return savedCourse; }
+    throw new Error('合成教师范围错误');
+  });
+  await mount(<AcademicPage/>); await click('开课实例'); await click('新增开课实例'); await click('输入新课程名称');
+  const form = container.querySelector('form')!;
+  await fill(form.querySelector('[name="new_course_name"]')!, '操作系统');
+  await fill(form.querySelector('[name="new_course_code"]')!, 'OS-001');
+  await fill(form.querySelector('[name="code"]')!, 'OS-2026');
+  // Synthetic option data is deliberately minimal; supply the selected org.
+  await select(form.querySelector('[name="org_unit_id"]')!, 'college');
+  await submit();
+  expect(container.textContent).toContain('课程已保存，开课尚未保存');
+  expect(form.querySelector<HTMLInputElement>('[name="new_course_name"]')?.value).toBe('操作系统');
+  await submit();
+  expect(h.writeAcademic.mock.calls.filter(call => call[0] === 'course')).toHaveLength(1);
+  expect(h.writeAcademic.mock.calls.filter(call => call[0] === 'offering')).toHaveLength(2);
+  expect(h.writeAcademic.mock.calls.find(call => call[0] === 'course')?.[1]).toMatchObject({ name: '操作系统', code: 'OS-001', org_unit_id: 'college' });
+});
+
 it('academic administrators can choose teacher/supervisor grants without seeing system-wide role choices', async () => {
   h.auth = { ...h.auth, me: { ...h.auth.me!, roles: [{ id: 'academic-role', role_code: 'academic_admin', scope_org_id: 'college' }] } };
   await mount(<AccountsPage/>); await click('账号资料 / 授予新角色');

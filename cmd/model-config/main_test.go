@@ -42,6 +42,32 @@ func TestPrepareUsesMainConfigurationAndExactPriceUnits(t *testing.T) {
 	}
 }
 
+func TestPrepareDurationBillingKeepsSecondsSeparateFromTokens(t *testing.T) {
+	demo, p := fixture()
+	demo["BAILIAN_ASR_LANGUAGE_HINTS"] = ""
+	p.ASRBillingMode = "seconds"
+	p.ASRSecond = "0.00022"
+	p.ASRInput = ""
+	p.ASROutput = ""
+	settings, err := prepareSettings(demo, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings["ASR_BILLING_MODE"] != "seconds" || settings["ASR_PRICE_PER_SECOND_MICROS"] != "220" || settings["ASR_INPUT_PRICE_MICROS"] != "" {
+		t.Fatal("duration price converted into fake token price")
+	}
+	if settings["ASR_LANGUAGE_HINTS"] != "" {
+		t.Fatal("automatic language detection was overridden")
+	}
+	if _, err = checkSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	settings["MODEL_MONTHLY_BUDGET"] = "0.000001"
+	if _, err = checkSettings(settings); err == nil {
+		t.Fatal("insufficient duration reserve accepted")
+	}
+}
+
 func TestPreparationRefusesUnverifiedOrMismatchedPrices(t *testing.T) {
 	for _, scenario := range []string{"unconfirmed", "source", "version", "model", "endpoint", "revision", "zero", "fraction", "exponent", "negative", "tiny-budget", "empty-key"} {
 		t.Run(scenario, func(t *testing.T) {

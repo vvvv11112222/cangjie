@@ -227,7 +227,7 @@ def prepare(args, state):
     config['code_sha'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     config['source_dirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     select_vision(config, state); env = environment(config, state)
-    for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger'):
+    for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger', 'model-config'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
     if config.get('analysis_config'):
         run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')

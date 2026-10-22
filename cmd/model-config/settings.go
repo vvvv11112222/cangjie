@@ -13,7 +13,7 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/config"
 )
 
-// All prices are CNY per million tokens, not per-token or per-minute prices.
+// Token prices are CNY per million tokens; duration billing is explicit.
 // Model and endpoint binding prevents silently applying another model's tier.
 type pricing struct {
 	Confirmed      bool   `json:"confirmed"`
@@ -23,6 +23,8 @@ type pricing struct {
 	APIBase        string `json:"api_base"`
 	ASRModel       string `json:"asr_model"`
 	ASRRevision    string `json:"asr_revision"`
+	ASRBillingMode string `json:"asr_billing_mode,omitempty"`
+	ASRSecond      string `json:"asr_cny_per_second,omitempty"`
 	ASRInput       string `json:"asr_input_cny_per_million_tokens"`
 	ASROutput      string `json:"asr_output_cny_per_million_tokens"`
 	ReportModel    string `json:"report_model"`
@@ -71,11 +73,19 @@ func (p pricing) validate() error {
 			return fmt.Errorf("价格表缺少 %s；修订应使用供应商实际标识，不能编造固定版本", field.name)
 		}
 	}
-	for _, field := range []struct{ name, value string }{
-		{"monthly_budget_cny", p.MonthlyBudget}, {"asr_input_cny_per_million_tokens", p.ASRInput},
-		{"asr_output_cny_per_million_tokens", p.ASROutput}, {"report_input_cny_per_million_tokens", p.ReportInput},
+	if p.ASRBillingMode != "" && p.ASRBillingMode != "tokens" && p.ASRBillingMode != "seconds" {
+		return errors.New("asr_billing_mode 只能为 tokens 或 seconds")
+	}
+	prices := []struct{ name, value string }{
+		{"monthly_budget_cny", p.MonthlyBudget}, {"report_input_cny_per_million_tokens", p.ReportInput},
 		{"report_output_cny_per_million_tokens", p.ReportOutput},
-	} {
+	}
+	if p.ASRBillingMode == "seconds" {
+		prices = append(prices, struct{ name, value string }{"asr_cny_per_second", p.ASRSecond})
+	} else {
+		prices = append(prices, struct{ name, value string }{"asr_input_cny_per_million_tokens", p.ASRInput}, struct{ name, value string }{"asr_output_cny_per_million_tokens", p.ASROutput})
+	}
+	for _, field := range prices {
 		v, err := money(field.value)
 		if err != nil || v <= 0 {
 			return fmt.Errorf("%s 须为已核对的正数（人民币/每百万 token，预算字段除外），最多六位小数", field.name)
@@ -115,6 +125,13 @@ func prepareSettings(demo map[string]string, p pricing) (map[string]string, erro
 		"REPORT_SELECTION_VERSION": "time-window-v1", "REPORT_MAX_INPUT_TOKENS": "8000", "REPORT_MAX_OUTPUT_TOKENS": "6000",
 		"MODEL_BUDGET_CURRENCY": "CNY", "MODEL_BUDGET_TIMEZONE": "Asia/Shanghai", "MODEL_MONTHLY_BUDGET": p.MonthlyBudget,
 		"MODEL_PRICE_VERSION": p.Version, "MODEL_INPUT_PRICE_PER_MILLION": p.ReportInput, "MODEL_OUTPUT_PRICE_PER_MILLION": p.ReportOutput,
+	}
+	if p.ASRBillingMode == "seconds" {
+		perSecond, _ := money(p.ASRSecond)
+		settings["ASR_BILLING_MODE"] = "seconds"
+		settings["ASR_PRICE_PER_SECOND_MICROS"] = strconv.FormatInt(perSecond, 10)
+		delete(settings, "ASR_INPUT_PRICE_MICROS")
+		delete(settings, "ASR_OUTPUT_PRICE_MICROS")
 	}
 	if _, err := checkSettings(settings); err != nil {
 		return nil, err
@@ -166,7 +183,10 @@ func checkSettings(settings map[string]string) (summary, error) {
 	if err := analysis.ValidateReportPrompt(true, cfg.ReportPromptVersion, cfg.ReportPromptSHA256); err != nil {
 		return summary{}, errors.New("报告模板版本/摘要不匹配；使用 go run ./cmd/report-prompt 核对")
 	}
-	asrReserve := (cloud.MaxInputTokens*cloud.InputPriceMicros + cloud.MaxOutputTokens*cloud.OutputPriceMicros + 999999) / 1000000
+	asrReserve, reserveErr := cloud.ReserveMicros(40000)
+	if reserveErr != nil {
+		return summary{}, errors.New("无法预留语音请求费用，请核对计费方式与单价")
+	}
 	reportReserve := (int64(cfg.ReportMaxInputTokens)*cfg.ReportInputPriceMicros + int64(cfg.ReportMaxOutputTokens)*cfg.ReportOutputPriceMicros + 999999) / 1000000
 	if cfg.ReportMonthlyBudgetMicros < asrReserve || cfg.ReportMonthlyBudgetMicros < reportReserve {
 		return summary{}, errors.New("月预算不足以预留单次 ASR 或报告请求；请核对价格与额度，不会自动提高预算")

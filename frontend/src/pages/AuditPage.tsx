@@ -10,12 +10,13 @@ import { formatDateTime } from '../format';
 
 const ACTIONS: Record<string, string> = {
   'academic.delete': '删除未使用资料', 'password.change': '修改本人密码', 'password.reset': '重置账号密码',
+  'model.asr.settle': '语音费用结算',
   'report.publish': '发布报告', 'report.withdraw': '撤回报告', 'report.edit': '编辑报告',
   'report.review': '复核报告', 'report.revise': '创建报告修订', 'source.verify': '核验录像来源',
   'report.export.request': '申请导出报告', 'report.export.complete': '报告导出完成', 'report.export.download': '下载报告',
   'classroom.delete.request': '申请课堂清理', 'classroom.delete.complete': '课堂清理完成', 'model_call.reconcile': '核对模型费用',
 };
-const RESOURCES: Record<string, string> = { user: '账号', source: '录像来源', lesson_session: '课堂', report: '报告', report_export: '报告导出', model_call: '模型调用', 'org-units': '组织', terms: '学期', courses: '课程', 'class-groups': '班级', classrooms: '教室', offerings: '开课', schedules: '课表' };
+const RESOURCES: Record<string, string> = { analysis_run: '分析记录', user: '账号', source: '录像来源', lesson_session: '课堂', report: '报告', report_export: '报告导出', model_call: '模型调用', 'org-units': '组织', terms: '学期', courses: '课程', 'class-groups': '班级', classrooms: '教室', offerings: '开课', schedules: '课表' };
 export function AuditPage(): ReactElement {
   const { status, me, sessionKey } = useAuth();
   const api = isApiMode();

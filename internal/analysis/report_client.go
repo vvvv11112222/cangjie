@@ -43,6 +43,8 @@ type modelCallResult struct {
 	ProviderRequestID string
 	InputTokens       int64
 	OutputTokens      int64
+	BilledSeconds     int64 // ASR duration billing only; never substitutes for tokens.
+	TokensKnown       bool  // Duration-billed ASR can omit token usage.
 	UsageKnown        bool
 }
 
