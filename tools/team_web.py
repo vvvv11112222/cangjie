@@ -70,6 +70,7 @@ def environment(config, state):
         VISION_FFMPEG_BINARY=runtime['ffmpeg_binary'], VISION_ANALYSIS_ENABLED='1', VISION_MODEL_REVISION=runtime['visual_model']['revision'],
         VISION_MODEL_ROOT=config['models'], WORKER_CONCURRENCY='1', WORKER_CLEANUP_ENABLED='1',
         MODEL_MONTHLY_BUDGET='0', REPORT_API_KEY='', CAPTURE_ENABLED='false', ASR_DEVICE='cpu',
+        MODEL_SETTINGS_DIR=str(state / 'model-settings'), ASR_PLANNER=str(state / 'bin/audio-plan.exe'), ASR_MODEL_FROM_CLAIM='1',
         BOOTSTRAP_TEST_PASSWORD=secret['login'], VITE_DATA_SOURCE='api', TEAM_API_TARGET=f"http://127.0.0.1:{ports['api']}",
         GOMAXPROCS='2', GOTOOLCHAIN='local', GOTELEMETRY='off', PYTHONUTF8='1', PYTHONUNBUFFERED='1')
     from vision_runtime import execution_environment
@@ -229,8 +230,7 @@ def prepare(args, state):
     select_vision(config, state); env = environment(config, state)
     for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
-    if config.get('analysis_config'):
-        run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')
+    run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')
     run([config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'build'], env, state, cwd=ROOT / 'frontend')
     database_start(config, state)
     if sql(config, state, "SELECT count(*) FROM pg_database WHERE datname='cangjie_visual'", database='postgres') == '0':
@@ -273,7 +273,7 @@ def start(config, state):
     env = environment(config, state)
     job_name = 'Local\\CangjieTeamVision-' + secrets.token_hex(16)
     worker_env = {k:v for k,v in env.items() if k not in ('ASR_API_KEY', 'REPORT_API_KEY')}
-    worker_env.update(WORKER_CAPABILITIES='probe,audio_analysis,video_analysis' if config.get('analysis_config') else 'probe,video_analysis',
+    worker_env.update(WORKER_CAPABILITIES='probe,audio_analysis,video_analysis',
                       WORKER_API_BASE=f"http://127.0.0.1:{config['ports']['api']}/internal/v1")
     services = [
         ('api', [state / 'bin/api.exe'], env),

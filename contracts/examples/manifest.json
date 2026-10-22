@@ -246,6 +246,31 @@
       "file": "invalid-media-display-name-path.json",
       "definition": "Media",
       "valid": false
+    },
+    {
+      "file": "model-settings.json",
+      "definition": "ModelSettings",
+      "valid": true
+    },
+    {
+      "file": "update-model-settings.json",
+      "definition": "UpdateModelSettings",
+      "valid": true
+    },
+    {
+      "file": "invalid-model-settings-secret.json",
+      "definition": "ModelSettings",
+      "valid": false
+    },
+    {
+      "file": "invalid-model-settings-price.json",
+      "definition": "UpdateModelSettings",
+      "valid": false
+    },
+    {
+      "file": "invalid-model-settings-unconfirmed.json",
+      "definition": "UpdateModelSettings",
+      "valid": false
     }
   ],
   "case_sets": [

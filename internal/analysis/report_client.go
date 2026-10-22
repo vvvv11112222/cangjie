@@ -69,12 +69,13 @@ func buildReportRequest(input modelInput, config reportSnapshot) ([]byte, error)
 }
 
 func (s *Service) callReportModel(ctx context.Context, body []byte) (modelCallResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.ReportAPIBase, "/")+"/chat/completions", bytes.NewReader(body))
+	cfg := s.ModelConfig()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(cfg.ReportAPIBase, "/")+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return modelCallResult{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.cfg.ReportAPIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.ReportAPIKey)
 	// A redirected paid POST must not be replayed to a different endpoint.
 	client := &http.Client{Timeout: s.cfg.ReportTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)

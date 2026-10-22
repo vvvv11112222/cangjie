@@ -1089,6 +1089,28 @@
       "success_statuses": [
         200
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/model-settings",
+      "request": null,
+      "response": "ModelSettings",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/model-settings",
+      "request": "UpdateModelSettings",
+      "response": "ModelSettings",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
     }
   ]
 }
