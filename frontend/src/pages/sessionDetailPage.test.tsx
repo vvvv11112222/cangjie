@@ -114,6 +114,13 @@ beforeEach(() => {
   submitted = [];
 });
 
+it('does not claim a classroom is missing while its request is still pending', async () => {
+  hoisted.getSessions.mockReturnValue(new Promise(() => {}));
+  await renderAndSettle();
+  expect(container.textContent).toContain('正在读取');
+  expect(container.textContent).not.toContain('找不到该课堂');
+});
+
 afterEach(async () => {
   await act(async () => {
     root.unmount();

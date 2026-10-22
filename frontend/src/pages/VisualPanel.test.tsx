@@ -38,6 +38,16 @@ afterEach(async () => {
 async function mount(): Promise<void> { await act(async () => { root.render(<VisualPanel sessionId={run.session_id} currentRun={run} />); }); }
 async function toggleAll(): Promise<void> { await act(async () => container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()); }
 describe('视觉观察页面', () => {
+  it('a history failure is not an empty result and can be retried', async () => {
+    api.runs.mockRejectedValueOnce(new Error('temporary history failure'));
+    await act(async () => root.render(<VisualPanel sessionId={run.session_id} currentRun={null}/>));
+    expect(container.textContent).not.toContain('还没有视觉分析记录');
+    const retry = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '重试读取分析记录');
+    expect(retry).toBeDefined();
+    await act(async () => retry!.click());
+    expect(container.querySelector('.visual-metrics')).not.toBeNull();
+    expect(container.textContent).not.toContain('temporary history failure');
+  });
   it('clearly names the running behavior analysis stage', async () => {
     const running = { ...run, status: 'running' as const, stage_plan: ['probe', 'video_analysis'] as const };
     await act(async () => root.render(<VisualPanel sessionId={run.session_id} currentRun={{ ...running, stage_plan: [...running.stage_plan] }}/>));

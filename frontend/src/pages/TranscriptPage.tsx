@@ -1,5 +1,5 @@
 import { ResultContext } from '../components/ResultContext';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence, Run, Segment, Session } from '../types';
 import { useTranscriptData } from '../data/hooks';
@@ -50,8 +50,9 @@ export function TranscriptPage({
   const view = injectedView ?? loaded.data.view;
   const origin = loaded.origin;
   const { results, revision: incomingRevision, run, evidence, disclosures } = view;
-  const [revision, setRevision] = useState(incomingRevision);
-  useEffect(() => setRevision(incomingRevision), [incomingRevision]);
+  const [revisionState, setRevisionState] = useState({ input: incomingRevision, value: incomingRevision });
+  const revision = revisionState.input === incomingRevision ? revisionState.value : incomingRevision;
+  const setRevision = (value: typeof incomingRevision) => setRevisionState({ input: incomingRevision, value });
   const segments = revision?.segments ?? view.segments;
 
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免把空数组当成"确实没有转写"。
@@ -204,7 +205,7 @@ export function TranscriptPage({
       )}
 
       {isApiMode() && revision !== null && session !== undefined ? (
-        <TranscriptRevisionPanel session={session} initial={revision} onChange={setRevision} onRunCreated={onRunCreated} />
+        <TranscriptRevisionPanel key={`${session.id}:${incomingRevision?.id}`} session={session} initial={revision} onChange={setRevision} onRunCreated={onRunCreated} />
       ) : null}
 
       <Card title="转写片段" subtitle={`${segments.length} 段，按识别顺序排列`}>

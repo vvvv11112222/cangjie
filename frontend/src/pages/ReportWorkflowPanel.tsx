@@ -40,7 +40,9 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   const [historyReady, setHistoryReady] = useState(false);
   const historyGeneration = useRef(0);
   const [exportStopped, setExportStopped] = useState(false);
+  const [exportReadError, setExportReadError] = useState<{ id: string; message: string } | null>(null);
   const blocked = busy || !contextReady;
+  const shownExport = exported?.report_id === report.id && report.allowed_actions.includes('export') ? exported : null;
 
   useEffect(() => {
     setReport(initial); setSummary(initial.summary); setObservations(writable(initial));
@@ -73,21 +75,22 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   }
 
   useEffect(() => {
-    if (exportStopped || exported === null || !['queued', 'running'].includes(exported.status)) return;
+    if (exportStopped || shownExport === null || !['queued', 'running'].includes(shownExport.status)) return;
     let active = true;
     let pending = false;
     const timer = window.setInterval(() => {
       if (pending) return;
       pending = true;
-      void getExport(exported.id).then((next) => { if (active) setExported(next); }).catch((value: unknown) => {
+      void getExport(shownExport.id).then((next) => { if (active) { setExported(next); setExportReadError(null); } }).catch((value: unknown) => {
         if (!active) return;
         const terminal = isTerminalReadError(value);
         if (terminal) { active = false; window.clearInterval(timer); setExportStopped(true); setExported(null); }
-        setError(`${describeError(value)}${terminal ? ' 已停止自动刷新，请重新进入页面。' : ''}`);
+        if (terminal) setError(`${describeError(value)} 已停止自动刷新，请重新进入页面。`);
+        else setExportReadError({ id: shownExport.id, message: describeError(value) });
       }).finally(() => { pending = false; });
     }, 1500);
     return () => { active = false; window.clearInterval(timer); };
-  }, [exported?.id, exported?.status, exportStopped]);
+  }, [shownExport?.id, shownExport?.status, exportStopped]);
 
   async function act(operation: () => Promise<Report>, success: string, after?: (next: Report) => void): Promise<void> {
     setBusy(true); setError(null); setMessage(null);
@@ -125,7 +128,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
       {report.allowed_actions.some(action => ['edit', 'revise', 'submit', 'confirm_report', 'review', 'withdraw'].includes(action)) ? <label className="account-field"><span>操作说明（写操作必填）</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明修改或复核原因" /></label> : null}
     </div>
     <div className="action-row">
-      {report.allowed_actions.includes('edit') ? <button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => setEditing((value) => !value)}>{editing ? '取消编辑' : '编辑草稿'}</button> : null}
+      {report.allowed_actions.includes('edit') ? <button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => { setSummary(report.summary); setObservations(writable(report)); setDimensions(report.dimensions.map(item => ({ ...item }))); setEditing(value => !value); }}>{editing ? '取消编辑' : '编辑草稿'}</button> : null}
       {report.allowed_actions.includes('revise') ? <button type="button" className="btn btn-secondary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => copyReport(report.id, report.lock_version, explanation), '已复制为新的可编辑草稿。')}>新建修订</button> : null}
       {report.allowed_actions.includes('submit') ? <button type="button" className="btn btn-primary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'submit', observation_id: null, content_sha256: null, reason: explanation }), '报告已提交复核。')}>提交复核</button> : null}
       {report.allowed_actions.includes('confirm_report') ? <button type="button" className="btn btn-primary" disabled={blocked || reason.trim() === '' || report.content_sha256 === null} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'confirm_report', observation_id: null, content_sha256: report.content_sha256, reason: explanation }), '整篇内容已确认。')}>确认整篇内容</button> : null}
@@ -140,8 +143,9 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
     </div> : null}
     {report.allowed_actions.includes('review') ? <div className="review-list">{report.observations.map((item, index) => <div className="review-row" key={item.id}><span>观察 {index + 1}：{item.observation_text}</span><div className="action-row"><button type="button" className="btn btn-secondary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'accept', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已确认。')}>确认</button><button type="button" className="btn btn-secondary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'revise', observation_id: item.id, content_sha256: null, reason: explanation }), '已确认该观察经过修正。')}>确认已修正</button><button type="button" className="btn btn-danger" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'reject', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已驳回，发布内容将排除该项。')}>驳回</button></div></div>)}</div> : null}
     {report.allowed_actions.includes('export') ? <div className="export-row"><label className="account-field"><span>导出格式</span><select disabled={blocked} value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}><option value="pdf">PDF</option><option value="json">JSON</option></select></label><button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => void exportReport()}>导出当前发布版</button></div> : null}
-    {exported === null ? null : <p className="notice-strip">导出状态：{({ queued: '排队中', running: '生成中', succeeded: '已生成', failed: '生成失败', expired: '已过期' })[exported.status]}{exported.error_code === null ? '' : ` · ${exported.error_code}`}{exported.download_url === null ? '' : <> · <a href={exported.download_url}>下载文件</a>（有效至 {formatDateTime(exported.expires_at)}）</>}</p>}
+    {shownExport === null ? null : <p className="notice-strip">导出状态：{({ queued: '排队中', running: '生成中', succeeded: '已生成', failed: '生成失败', expired: '已过期' })[shownExport.status]}{shownExport.error_code === null ? '' : ` · ${shownExport.error_code}`}{shownExport.download_url === null ? '' : <> · <a href={shownExport.download_url}>下载文件</a>（有效至 {formatDateTime(shownExport.expires_at)}）</>}</p>}
     {message === null ? null : <p className="notice-strip">{message}</p>}
     {error === null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={error}/></div>}
+    {shownExport && exportReadError?.id === shownExport.id && <div className="notice-strip load-note-error"><ErrorMessage text={exportReadError.message}/> 正在重试读取导出状态。</div>}
   </Card>;
 }

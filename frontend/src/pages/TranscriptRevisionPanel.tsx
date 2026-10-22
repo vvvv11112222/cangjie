@@ -96,7 +96,7 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
           if (selected !== undefined) { setCurrent(selected); setSegments(cloneSegments(selected.segments)); setEditing(false); onChange?.(selected); }
         }}>{history.map((item) => <option key={item.id} value={item.id}>第 {item.revision_no} 版 · {item.source_type} · {formatDateTime(item.created_at)}</option>)}</select></label>
         <div className="action-row">
-          {session.allowed_actions.includes('edit_transcript') ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setEditing((value) => !value)}>{editing ? '取消编辑' : '修订转写'}</button> : null}
+          {session.allowed_actions.includes('edit_transcript') ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setSegments(cloneSegments(current.segments)); setReason(''); setEditing(value => !value); }}>{editing ? '取消编辑' : '修订转写'}</button> : null}
           <button type="button" className="btn btn-primary" disabled={busy || editing || !session.allowed_actions.includes('analyze') || !services.data?.report_generation.available} onClick={() => void regenerate()}>用此版本重新生成报告</button>
         </div>
       </div>

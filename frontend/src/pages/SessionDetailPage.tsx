@@ -391,7 +391,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
 
       {session === null ? (
-        <p className="empty">找不到该课堂，或不在当前账号可见范围。</p>
+        detail.status === 'ready' ? <p className="empty">找不到该课堂，或不在当前账号可见范围。</p> : null
       ) : (
         <>
           <div className="tab-bar" role="tablist" aria-label="课堂详情">
@@ -484,7 +484,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                         ? '该课堂还没有分析批次。'
                         : '批次引用存在，但暂时读不到内容，请重试读取。'
                       : '批次读取失败，暂时无法显示。'
-                    : `${runModeLabel(shownRun.mode)} · 状态 ${shownRun.status}${
+                    : `${runModeLabel(shownRun.mode)} · ${runStatusBadge(shownRun.status).label}${
                         isRunActive(shownRun)
                           ? poll.error === null
                             ? ' · 每 2 秒刷新'
@@ -510,7 +510,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     {/* 与课堂任务页共用同一套阶段流程和错误区，避免同一批次两种样子。 */}
                     <StageFlow run={shownRun} />
                     {shownRun.error_code === null ? (
-                      <RunFields run={shownRun} />
+                      <TechDetails summary="批次编号与状态详情"><RunFields run={shownRun} /></TechDetails>
                     ) : (
                       <RunErrorBox run={shownRun} />
                     )}

@@ -131,7 +131,7 @@ it('latest task reaches terminal state and stops polling despite the original cl
   expect(h.getRun).toHaveBeenCalledTimes(1);
 });
 
-it.each([401, 403, 410])('stops polling after HTTP %s and keeps the reason visible', async status => {
+it.each([401, 403, 404, 410])('stops polling after HTTP %s and keeps the reason visible', async status => {
   vi.useFakeTimers(); h.getRun.mockRejectedValue(new ApiError({ code: 'FORBIDDEN', status, message: 'forbidden' }));
   await mount(<TasksPage/>);
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
@@ -193,8 +193,29 @@ it('keeps the selected classroom after a source read failure and retries in plac
   await mount(<SourcesPage/>); await select(classroomSelect(), 'A');
   expect(classroomSelect().value).toBe('A');
   expect(container.textContent).toContain('重新读取素材');
+  expect(container.textContent).not.toContain('该课堂尚未登记素材');
   await click('重新读取素材');
   expect(container.textContent).toContain('来源 A');
+});
+
+it('switching the source to verify clears the previous source reason', async () => {
+  h.listSources.mockResolvedValue({ items: [source('A'), { ...source('A'), id: 'A-source-2', title: '第二段录像' }], next_cursor: null });
+  await mount(<SourcesPage/>); await select(classroomSelect(), 'A'); await click('核验');
+  const reason = container.querySelector<HTMLInputElement>('input[name="reason"]')!;
+  await fill(reason, '仅适用于第一段录像的许可');
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>('tbody button')].filter(node => node.textContent === '核验')[1]!.click());
+  expect(container.querySelector<HTMLInputElement>('input[name="reason"]')?.value).toBe('');
+  expect(container.querySelector('.source-form')?.closest('.card')?.textContent).toContain('第二段录像');
+});
+
+it('does not claim no analysis tasks when history cannot be read, and retries in place', async () => {
+  h.loaded.data.tasks = [{ ...h.loaded.data.tasks[0]!, session: session('A'), run: null }];
+  h.listRuns.mockRejectedValueOnce(new Error('temporary history failure')).mockResolvedValue({ items: [{ ...run, status: 'succeeded' }], next_cursor: null });
+  await mount(<TasksPage/>);
+  expect(container.textContent).not.toContain('当前没有分析任务');
+  await click('重试读取分析历史');
+  expect(container.textContent).toContain('已完成');
+  expect(container.textContent).not.toContain('temporary history failure');
 });
 
 it('keeps loaded accounts visible when refresh fails and allows retry', async () => {
