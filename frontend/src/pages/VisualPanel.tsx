@@ -124,6 +124,7 @@ function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((med
     }).then(data => {
       if (!live) return;
       setAllData(data);
+      setPeople(data.people); setPeopleCursor(null);
     }).catch(e => { if (live) setAllError(describeError(e)); }).finally(() => { if (live) setAllBusy(false); });
     return () => { live = false; };
   }, [run.id, showAll, allData, allRetry]);

@@ -94,7 +94,7 @@ export function TranscriptPage({
 
       <Card
         title="结果摘要"
-        subtitle="空数组是否因为尚未生成，必须结合批次状态判断，不能仅凭数组为空下结论。"
+        subtitle="查看语音识别进度、文字记录和可核对的画面。"
       >
         <div className="field-grid">
           <Field label="批次状态">
@@ -102,7 +102,7 @@ export function TranscriptPage({
           </Field>
           <Field label="转写修订">
             {results.transcript_revision_id === null ? (
-              <span className="muted">null</span>
+              <span className="muted">暂无</span>
             ) : (
               <IdChip id={results.transcript_revision_id} />
             )}
@@ -143,9 +143,9 @@ export function TranscriptPage({
         ) : null}
       </Card>
 
-      <Card title="关键帧" subtitle={`${results.frames.length} 帧；时间点统一以原录像起点的整数毫秒表示。`}>
+      <Card title="关键帧" subtitle={`${results.frames.length} 张画面；时间从原录像开始计算。`}>
         {results.frames.length === 0 ? (
-          <p className="empty">当前没有关键帧。P0 行为事件可以为空，但关键帧是否生成须结合视频分析阶段状态判断。</p>
+          <p className="empty">当前没有可展示的代表画面，请在“批次与操作”检查录像处理是否已完成。</p>
         ) : (
           <div className="keyframe-grid">
             {results.frames.map((frame, index) => (
@@ -174,7 +174,7 @@ export function TranscriptPage({
             </Field>
             <Field label="父修订">
               {revision.parent_revision_id === null ? (
-                <span className="muted">null</span>
+                <span className="muted">暂无</span>
               ) : (
                 <IdChip id={revision.parent_revision_id} />
               )}
@@ -207,7 +207,7 @@ export function TranscriptPage({
         <TranscriptRevisionPanel session={session} initial={revision} onChange={setRevision} onRunCreated={onRunCreated} />
       ) : null}
 
-      <Card title="转写片段" subtitle={`${segments.length} 段，按 segment_no 升序`}>
+      <Card title="转写片段" subtitle={`${segments.length} 段，按识别顺序排列`}>
         {segments.length === 0 ? (
           <p className="empty">
             {results.run_status === "queued" || results.run_status === "running" ? "转写还在处理中，请到分析进度查看当前阶段。" : "当前记录没有可展示的转写，请核对是否选择语音分析、录像是否有声音，以及任务是否成功。"}
@@ -255,7 +255,7 @@ export function TranscriptPage({
 
       <Card title="证据" subtitle="证据必须归属同一课堂和同一批次，不能跨课堂引用。">
         {evidence.length === 0 ? (
-          <p className="empty">evidence 为空数组，报告与观察将没有可引用依据。</p>
+          <p className="empty">当前没有可供核对的证据，请检查本次分析是否成功。</p>
         ) : (
           <ul className="evidence-list">
             {evidence.map((item) => (

@@ -35,7 +35,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   const [format, setFormat] = useState<ExportFormat>('pdf');
   const [exported, setExported] = useState<ReportExport | null>(null);
   const [expectedCurrent, setExpectedCurrent] = useState(session.current_report_id);
-  const exportKey = useRef(newIdempotencyKey());
+  const exportKeys = useRef(new Map<string, string>());
   const [historyReload, setHistoryReload] = useState(0);
   const [historyReady, setHistoryReady] = useState(false);
   const historyGeneration = useRef(0);
@@ -100,6 +100,21 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   }
   const explanation = reason.trim() || '前端人工复核操作';
 
+  async function exportReport(): Promise<void> {
+    if (blocked) return;
+    // A lost response must reuse its key; a different report/format is a new intent.
+    const intent = `${report.id}:${format}`;
+    const key = exportKeys.current.get(intent) ?? newIdempotencyKey();
+    exportKeys.current.set(intent, key);
+    setBusy(true); setError(null);
+    try {
+      const value = await createExport(report.id, format, key);
+      setExported(value); setExportStopped(false); exportKeys.current.delete(intent);
+      setMessage('导出任务已创建。');
+    } catch (cause) { setError(describeError(cause)); }
+    finally { setBusy(false); }
+  }
+
   return <Card title="复核、发布与导出" subtitle="可查看历史报告；编辑或复核前请填写操作原因。发布前须完成整篇确认。" actions={<BadgeTag badge={reportStatusBadge(report.status)} />}>
     <ReportProgress report={report}/>
     <div className="workflow-toolbar">
@@ -124,8 +139,8 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
       <button type="button" className="btn btn-primary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => patchReport(report.id, { lock_version: report.lock_version, summary, summary_evidence_ids: report.summary_evidence_ids, dimensions, observations, reason: explanation }), '草稿已保存；内容变化后需要重新提交和确认。')}>保存草稿</button>
     </div> : null}
     {report.allowed_actions.includes('review') ? <div className="review-list">{report.observations.map((item, index) => <div className="review-row" key={item.id}><span>观察 {index + 1}：{item.observation_text}</span><div className="action-row"><button type="button" className="btn btn-secondary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'accept', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已确认。')}>确认</button><button type="button" className="btn btn-secondary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'revise', observation_id: item.id, content_sha256: null, reason: explanation }), '已确认该观察经过修正。')}>确认已修正</button><button type="button" className="btn btn-danger" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'reject', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已驳回，发布内容将排除该项。')}>驳回</button></div></div>)}</div> : null}
-    {report.allowed_actions.includes('export') ? <div className="export-row"><label className="account-field"><span>导出格式</span><select value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}><option value="pdf">PDF</option><option value="json">JSON</option></select></label><button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => { setBusy(true); setError(null); void createExport(report.id, format, exportKey.current).then((value) => { setExported(value); setExportStopped(false); exportKey.current = newIdempotencyKey(); setMessage('导出任务已创建。'); }).catch((value: unknown) => setError(describeError(value))).finally(() => setBusy(false)); }}>导出当前发布版</button></div> : null}
-    {exported === null ? null : <p className="notice-strip">导出状态：{exported.status}{exported.error_code === null ? '' : ` · ${exported.error_code}`}{exported.download_url === null ? '' : <> · <a href={exported.download_url}>下载文件</a>（有效至 {formatDateTime(exported.expires_at)}）</>}</p>}
+    {report.allowed_actions.includes('export') ? <div className="export-row"><label className="account-field"><span>导出格式</span><select disabled={blocked} value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}><option value="pdf">PDF</option><option value="json">JSON</option></select></label><button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => void exportReport()}>导出当前发布版</button></div> : null}
+    {exported === null ? null : <p className="notice-strip">导出状态：{({ queued: '排队中', running: '生成中', succeeded: '已生成', failed: '生成失败', expired: '已过期' })[exported.status]}{exported.error_code === null ? '' : ` · ${exported.error_code}`}{exported.download_url === null ? '' : <> · <a href={exported.download_url}>下载文件</a>（有效至 {formatDateTime(exported.expires_at)}）</>}</p>}
     {message === null ? null : <p className="notice-strip">{message}</p>}
     {error === null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={error}/></div>}
   </Card>;

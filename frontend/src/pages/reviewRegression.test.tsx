@@ -340,7 +340,7 @@ it('loads all academic pages, exports the final row, filters the week, and clear
   const rows = Array.from({ length: 101 }, (_, index) => ({ id: `schedule-${index}`, offering_id: 'offering', classroom_id: 'room', teacher_id: user.id, class_group_id: 'group', starts_at: '2026-10-16T00:00:00Z', ends_at: '2026-10-16T01:00:00Z', status: index === 100 ? 'last-row' : 'active' }));
   h.m1.mockImplementation(async (kind: string, cursor?: string) => {
     if (kind === 'schedules') return { items: cursor ? rows.slice(100) : rows.slice(0, 100), next_cursor: cursor ? null : 'page-2' };
-    if (kind === 'courses') return { items: [{ id: 'course', name: '私有课程' }], next_cursor: null };
+    if (kind === 'courses') return { items: [{ id: 'course', name: '=1+1' }], next_cursor: null };
     if (kind === 'offerings') return { items: [{ id: 'offering', course_id: 'course', code: 'C1' }], next_cursor: null };
     return { items: [], next_cursor: null };
   });
@@ -360,9 +360,36 @@ it('loads all academic pages, exports the final row, filters the week, and clear
     await click('导出课表 CSV');
     const csv = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsText(csvBlob!); });
     expect(csv).toContain('last-row'); expect(csv.split('\r\n')).toHaveLength(102);
+    expect(csv).toContain('"\'=1+1"');
   } finally { clickAnchor.mockRestore(); }
   h.auth = { ...h.auth, status: 'anonymous', me: null, capabilities: [], sessionKey: 'anonymous#2' };
-  await mount(<App/>); expect(container.textContent).not.toContain('私有课程'); expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
+  await mount(<App/>); expect(container.textContent).not.toContain('=1+1'); expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
+});
+
+it('locks academic navigation and other row edits while a save is pending', async () => {
+  h.m1.mockImplementation(async kind => ({ items: kind === 'courses' ? [
+    { id: 'c1', name: '课程一', code: 'C1', org_unit_id: 'college', description: '' },
+    { id: 'c2', name: '课程二', code: 'C2', org_unit_id: 'college', description: '' },
+  ] : [], next_cursor: null }));
+  const pending = deferred<unknown>(); h.writeAcademic.mockReturnValue(pending.promise);
+  await mount(<AcademicPage/>); await click('课程'); await click('编辑');
+  await submit();
+  expect(button('新增课程').disabled).toBe(true);
+  expect(button('开课实例').disabled).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>('tbody button')].every(node => node.disabled)).toBe(true);
+  await act(async () => pending.resolve({}));
+  expect(button('新增课程').disabled).toBe(false);
+});
+
+it('validates initial password UTF-8 bytes consistently with reset and backend', async () => {
+  h.createUser.mockResolvedValue({ ...user, id: 'new-user' });
+  await mount(<AccountsPage/>); await click('新增账号');
+  const form = container.querySelector('form')!;
+  await fill(form.querySelector('input[autocomplete="new-password"]')!, 'a'.repeat(73));
+  await submit(); expect(h.createUser).not.toHaveBeenCalled();
+  expect(container.textContent).toContain('12至72字节');
+  await fill(form.querySelector('input[autocomplete="new-password"]')!, '汉字密码');
+  await submit(); expect(h.createUser).toHaveBeenCalledTimes(1);
 });
 
 

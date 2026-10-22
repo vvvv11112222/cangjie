@@ -214,6 +214,21 @@ it.each([401, 403, 404, 410])('stops export polling and clears download data on 
   expect(container.textContent).not.toContain('导出状态');
 });
 
+it('reuses an uncertain export intent but creates a different key for another format', async () => {
+  const report: Report = { ...reportFixture, status: 'published', allowed_actions: ['export'] }; reports = [report];
+  h.createExport.mockRejectedValue(new ApiError({ code: 'NETWORK_ERROR', status: 0 }));
+  await mount(<ReportWorkflowPanel session={session} initial={report}/>);
+  await click('导出当前发布版'); await click('导出当前发布版');
+  expect(h.createExport.mock.calls[0]?.[2]).toBe(h.createExport.mock.calls[1]?.[2]);
+  const format = container.querySelector<HTMLSelectElement>('.export-row select')!;
+  await act(async () => { format.value = 'json'; format.dispatchEvent(new Event('change', { bubbles: true })); });
+  h.createExport.mockResolvedValue({ id: 'json-export', report_id: report.id, status: 'succeeded', error_code: null, download_url: '/synthetic.json', expires_at: '2026-10-23T00:00:00Z' });
+  await click('导出当前发布版');
+  expect(h.createExport.mock.calls[2]?.[1]).toBe('json');
+  expect(h.createExport.mock.calls[2]?.[2]).not.toBe(h.createExport.mock.calls[0]?.[2]);
+  expect(container.textContent).toContain('导出状态：已生成');
+});
+
 it('recovers capture polling after a temporary server failure', async () => {
   vi.useFakeTimers(); h.capture.mockRejectedValueOnce(new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 })).mockResolvedValue({ ...capture, state: 'ready', allowed_actions: ['read'] });
   await mount(<LiveCapturePanel session={session} enabled onUseMedia={() => {}}/>);
