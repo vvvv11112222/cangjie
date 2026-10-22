@@ -3,11 +3,11 @@
   "files": {
     "analysis.py": {
       "source_sha256": "81ea38269dd6a031381c8d1138ebd552f01a548d9b4044c87e05bed35c4840ed",
-      "ported_sha256": "81ea38269dd6a031381c8d1138ebd552f01a548d9b4044c87e05bed35c4840ed"
+      "ported_sha256": "bca7200491463f550b055ecb8033801cc8432aed09fdd4b493b75825e1080c24"
     },
     "behavior.py": {
       "source_sha256": "3cc71ad1a5912a3a753d9255f53167101e36f5d24ee115b783afed4579cd87be",
-      "ported_sha256": "3cc71ad1a5912a3a753d9255f53167101e36f5d24ee115b783afed4579cd87be"
+      "ported_sha256": "18749c85a61e84a0c60fdb354f34ed6a64cb66e7428684fa33e573d91ffbf7e0"
     },
     "camera.py": {
       "source_sha256": "a6c42219c98fb0c3387e8810251e7655330a45b4cd7002a73d541421109ba552",
@@ -61,11 +61,10 @@
     "encode spreadsheet formula prefixes only at the CSV export boundary",
     "separate bounded CPU inference threads from GPU options and disable CPU pool spinning",
     "lazy-load regular pose session without changing model tensors or behavior rules",
-    "report no active GPU during CPU execution"
+    "report no active GPU during CPU execution",
+    "2026-10-21: behavior.py adds scale-relative desk-supported upright forearm rule and uncertainty for marginal face-near joints; analysis.py records rules_version v4.3. Original source hashes retained as migration provenance, these two files no longer claimed unchanged."
   ],
   "unchanged_logic": [
-    "analysis.py",
-    "behavior.py",
     "camera.py",
     "layout.py",
     "pipeline.py",

@@ -45,7 +45,7 @@ Windows 的 PostgreSQL 工具在部分中文路径下无法初始化；使用 AS
 | React 已构建页面与同源代理 | 8088，Vite preview，仅作开发试用 |
 | Go API | 18088，Cookie/CSRF/Origin 校验沿用正式实现 |
 | PostgreSQL | 55437，独立 `cangjie_visual` 数据库 |
-| 视频 Worker | 单进程、单任务；新部署自动检查独显，明确选择 CPU 时4线程、batch=1；模型及 FFmpeg 固定 |
+| 视频 Worker | 单进程、单任务；默认必须检查通过本机独显，明确选择 CPU 时4线程、batch=1；模型及 FFmpeg 固定 |
 
 ```powershell
 python tools/team_web.py --data-root D:/cangjie-data/team-web status
@@ -58,17 +58,19 @@ python tools/team_web.py --data-root D:/cangjie-data/team-web stop
 
 ## 换电脑与独显加速
 
+默认必须独显：没有可确认的独显或加速包时启动器停止并给出原因，不会因没有Codex而悄悄改CPU慢跑。auto和cpu仅供操作者显式选择诊断或低配回退；没有独显的电脑应连接有独显的服务器，或明确接受CPU速度。
+
 模型运行在Python Worker所在的服务器，浏览器只显示结果。老师通过浏览器访问同一服务器时，用的是服务器的计算设备，不是老师笔记本的显卡。本文启动器仍只绑定本机；部署局域网服务器需要另行配置访问地址、HTTPS与网络，不能把127.0.0.1发给另一台电脑。
 
 每台电脑独立安装整套服务时，在原prepare命令末尾追加下列选项（路径均替换为本机实际路径）：
 
 ```powershell
---vision-runtime auto --accelerator-root D:/vision-accelerators
+--vision-runtime directml --accelerator-root D:/vision-accelerators
 ```
 
-- 新部署默认auto；启动时重新枚举当前DXGI显卡，优先NVIDIA，否则选择专用显存至少1GiB的硬件适配器，排除软件适配器与低显存集显。这是保守的设备选择规则，不保证识别所有硬件架构。
+- 新部署默认directml（必须独显）；显式选择auto时，启动时重新枚举当前DXGI显卡，优先NVIDIA，否则选择专用显存至少1GiB的硬件适配器，排除软件适配器与低显存集显。这是保守的设备选择规则，不保证识别所有硬件架构。
 - DirectML加速环境须已安装：可沿用[Worker加速说明](../../workers/README.md)，在独立目录准备`directml/onnxruntime`，或在当前Python环境中正确安装DirectML版ONNX Runtime。启动器不自动安装依赖或驱动。自动模式找不到设备/依赖、短测试失败或超过45秒时，会明确记录原因并回退CPU，不能据此承诺实时速度。
-- 确认必须用独显时选`--vision-runtime directml`；检测失败则拒绝启动，不悄悄改CPU。`--vision-runtime cpu`用于无独显或故障排查。旧部署在重新prepare明确选择前保留CPU模式。
+- 确认必须用独显时选`--vision-runtime directml`；检测失败则拒绝启动，不悄悄改CPU。`--vision-runtime cpu`用于无独显或故障排查。已有明确CPU配置仅在操作者显式重新选择后改变；缺少设备模式的旧配置现在要求独显检查通过。
 - `--vision-batch-size 1|8|16`控制姿态计算批量，默认16；专用显存不足6GiB时上限8。保留原模型、float32、0.5秒采样、人数上限及行为规则。此处没有使用CUDA编号，也不复制另一台机器的设备编号。
 - 短测试真实运行一次固定姿态模型，启动输出显卡名称与批量；结果保存在本机`vision-runtime.json`。这只证明启动检查成功。每次正式视觉任务还核对实际GPU会话，CPU回退或设备不符时报告CONFIG_MISMATCH；`worker.log`记录实际会话与各阶段计算耗时。部分检测模型继续使用CPU，这是原加速配置的正常分工。
 - 每次启动都重新检查；`deployment.json`中的vision_execution是prepare时快照，最近启动状态以`vision-runtime.json`为准。更换配置先等待活动分析结束，再stop、prepare、start；已有结果不重跑、不删除。

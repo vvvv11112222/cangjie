@@ -137,6 +137,15 @@ class TeamWebTests(unittest.TestCase):
             self.assertEqual(result['engine'],'cpu')
             self.assertFalse(result['probe_passed'])
 
+    def test_a_new_install_requires_discrete_gpu_without_a_cpu_fallback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state); config['python']='python'
+            failed=MagicMock(returncode=1,stdout='{"error":"no discrete GPU"}\n',stderr='')
+            with patch.object(dev.subprocess,'run',return_value=failed):
+                with self.assertRaisesRegex(RuntimeError,'要求独显'):
+                    dev.select_vision(config,state)
+            self.assertFalse((state/'vision-runtime.json').exists())
+
     def test_device_message_does_not_fail_in_a_non_chinese_console(self):
         output=io.BytesIO()
         stream=io.TextIOWrapper(output,encoding='cp1252')

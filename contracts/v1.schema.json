@@ -5998,6 +5998,40 @@
         "text_content"
       ],
       "additionalProperties": false
+    },
+    "ChangePassword": {
+      "type": "object",
+      "properties": {
+        "current_password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 72
+        },
+        "new_password": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 72
+        }
+      },
+      "required": [
+        "current_password",
+        "new_password"
+      ],
+      "additionalProperties": false
+    },
+    "ResetPassword": {
+      "type": "object",
+      "properties": {
+        "new_password": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 72
+        }
+      },
+      "required": [
+        "new_password"
+      ],
+      "additionalProperties": false
     }
   }
 }

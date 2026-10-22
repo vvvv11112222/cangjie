@@ -221,6 +221,26 @@
       "file": "invalid-asr-chunk-url.json",
       "definition": "ASRChunk",
       "valid": false
+    },
+    {
+      "file": "change-password.json",
+      "definition": "ChangePassword",
+      "valid": true
+    },
+    {
+      "file": "reset-password.json",
+      "definition": "ResetPassword",
+      "valid": true
+    },
+    {
+      "file": "invalid-change-password.json",
+      "definition": "ChangePassword",
+      "valid": false
+    },
+    {
+      "file": "resource-in-use-error.json",
+      "definition": "ErrorResponse",
+      "valid": true
     }
   ],
   "case_sets": [

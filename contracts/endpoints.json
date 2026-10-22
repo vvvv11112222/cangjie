@@ -1078,6 +1078,105 @@
       "success_statuses": [
         200
       ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/org-units/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/terms/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/courses/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/class-groups/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/classrooms/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/offerings/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/schedules/{id}",
+      "request": null,
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/password",
+      "request": "ChangePassword",
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/{id}/password",
+      "request": "ResetPassword",
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
     }
   ]
 }

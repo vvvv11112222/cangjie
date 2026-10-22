@@ -18,6 +18,7 @@ import { useAuth } from '../auth';
 import { isApiMode } from '../data/sources';
 import { accountActionLabel, roleLabel } from '../format';
 import { IconChevronDown, IconUser } from './icons';
+import { PasswordForm } from './ManagementActions';
 
 /**
  * 开发模式下的演示账号，取自 README 的 seed-dev（密码来自本机环境变量，仓库里没有）。
@@ -56,6 +57,7 @@ export function AccountBar({
   const [step, setStep] = useState<'pick' | 'password'>('pick');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const authenticated = status === 'authenticated' && me !== null;
@@ -192,6 +194,7 @@ export function AccountBar({
                 </>
               ) : null}
               <div className="account-actions">
+                {authenticated && <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setChangingPassword(true)}>修改密码</button>}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -225,6 +228,7 @@ export function AccountBar({
                   取消
                 </button>
               </div>
+              {authenticated && changingPassword && <PasswordForm onCancel={() => setChangingPassword(false)} onDone={async () => { setChangingPassword(false); await logout(); }}/> }
             </>
           ) : (
             <>

@@ -113,6 +113,7 @@ def raised_hand(points, scores, head_box=None, image_width=None):
         if not pose_belongs_to_head(points,scores,head_box):
             return None,None
     supported = False
+    ambiguous = False
     for shoulder, elbow, wrist in ((5, 7, 9), (6, 8, 10)):
         score = float(min(scores[shoulder], scores[elbow], scores[wrist]))
         required=(.45 if h>=35 else .35) if head_box is not None else .45
@@ -134,7 +135,28 @@ def raised_hand(points, scores, head_box=None, image_width=None):
                          and abs(points[elbow,0]-points[shoulder,0])>.35*h
                          and points[0,1]+.1*h<=points[wrist,1]<=points[0,1]+.25*h
                          and abs(points[wrist,0]-points[0,0])>.4*h)
+            # Seated pupils often raise a forearm from a desk without lifting
+            # the upper arm. Wrist distance from the nose alone confuses this
+            # with chin support. Require the elbow to be both down AND out,
+            # a long vertical forearm, and the wrist above its own shoulder.
+            # Face-centred contact and the supported-eye-touch counterexample
+            # remain excluded; geometry is scale-relative, not a track ID rule.
+            desk_raise=(h>=24 and score>=.45 and forearm_length>=.7*h and forearm[1]>.9*forearm_length
+                        and points[elbow,1]>=points[shoulder,1]+.4*h
+                        and abs(points[elbow,0]-points[shoulder,0])>=.35*h
+                        and points[wrist,1]<=points[shoulder,1]-.12*h
+                        and -.35*h<=points[wrist,1]-points[0,1]<=.55*h
+                        and .12*h<=abs(points[wrist,0]-points[0,0])<=.85*h)
+            if desk_raise:
+                return True,score
             if np.linalg.norm(points[wrist]-points[0]) < .6*h and not beside_face:
+                # A nearly supported raised forearm is uncertain, rather than
+                # proof of a negative, when its joint confidence is marginal.
+                if (h>=24 and .35<=score<.45 and upright and forearm_length>.7*h
+                        and points[elbow,1]>points[shoulder,1]+.4*h
+                        and abs(points[elbow,0]-points[shoulder,0])>.35*h
+                        and abs(points[wrist,0]-points[0,0])>.12*h):
+                    ambiguous=True
                 continue
             # Chin support: close to the face, but wrist still below shoulder.
             if np.linalg.norm(points[wrist]-points[0]) < .75*h and points[wrist,1]>points[shoulder,1]:
@@ -148,7 +170,7 @@ def raised_hand(points, scores, head_box=None, image_width=None):
     # result here cannot rule out an out-of-frame raised wrist.
     if head_box is not None and image_width is not None and (head_box[0]<=1 or head_box[2]>=image_width-1):
         return None,None
-    return (False, 0.5) if supported else (None, None)
+    return (False, 0.5) if supported and not ambiguous else (None, None)
 
 
 def head_signal(track, points, scores, timestamp):
