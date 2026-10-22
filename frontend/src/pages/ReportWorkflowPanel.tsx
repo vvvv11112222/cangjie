@@ -1,3 +1,4 @@
+import { ErrorMessage } from '../components/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Dimension, ExportFormat, Report, ReportExport, Session, WritableObservation } from '../types';
@@ -7,6 +8,7 @@ import { describeError, isTerminalReadError } from '../data/errors';
 import { collectPages } from '../data/pagination';
 import { BadgeTag, Card } from '../components/ui';
 import { dimensionLabel, formatDateTime, reportStatusBadge } from '../format';
+import { ReportProgress } from '../components/ReportProgress';
 
 function writable(report: Report): WritableObservation[] {
   return report.observations.map(({ id, dimension_code, observation_type, observation_text, suggestion, evidence_ids }) => ({ id, dimension_code, observation_type, observation_text, suggestion, evidence_ids: [...evidence_ids] }));
@@ -99,6 +101,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   const explanation = reason.trim() || '前端人工复核操作';
 
   return <Card title="复核、发布与导出" subtitle="可查看历史报告；编辑或复核前请填写操作原因。发布前须完成整篇确认。" actions={<BadgeTag badge={reportStatusBadge(report.status)} />}>
+    <ReportProgress report={report}/>
     <div className="workflow-toolbar">
       <label className="account-field"><span>报告版本</span><select disabled={busy} value={report.id} onChange={(event) => {
         const selected = history.find((item) => item.id === event.target.value); if (selected !== undefined) adopt(selected);
@@ -124,6 +127,6 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
     {report.allowed_actions.includes('export') ? <div className="export-row"><label className="account-field"><span>导出格式</span><select value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}><option value="pdf">PDF</option><option value="json">JSON</option></select></label><button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => { setBusy(true); setError(null); void createExport(report.id, format, exportKey.current).then((value) => { setExported(value); setExportStopped(false); exportKey.current = newIdempotencyKey(); setMessage('导出任务已创建。'); }).catch((value: unknown) => setError(describeError(value))).finally(() => setBusy(false)); }}>导出当前发布版</button></div> : null}
     {exported === null ? null : <p className="notice-strip">导出状态：{exported.status}{exported.error_code === null ? '' : ` · ${exported.error_code}`}{exported.download_url === null ? '' : <> · <a href={exported.download_url}>下载文件</a>（有效至 {formatDateTime(exported.expires_at)}）</>}</p>}
     {message === null ? null : <p className="notice-strip">{message}</p>}
-    {error === null ? null : <p className="notice-strip load-note-error">{error}</p>}
+    {error === null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={error}/></div>}
   </Card>;
 }

@@ -4,6 +4,7 @@ from email.utils import parsedate_to_datetime
 import math
 from pathlib import Path
 import time
+import logging
 
 import httpx
 
@@ -13,6 +14,7 @@ from .contracts import LeaseLost, WorkerError, json_bytes, validate
 class Transport:
     def __init__(self, settings, client=None):
         self.settings = settings
+        self._visual_ready = None
         self.client = client or httpx.Client(
             timeout=httpx.Timeout(30, connect=5), follow_redirects=False, trust_env=False)
 
@@ -69,11 +71,20 @@ class Transport:
                 time.sleep(delay)
 
     def claim(self):
+        if self._visual_ready is None:
+            self._visual_ready = False
+            if self.settings.vision_enabled:
+                from workers.video.visual import verify_local_models
+                try:
+                    verify_local_models()
+                    self._visual_ready = True
+                except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                    logging.getLogger(__name__).warning('Visual models are not ready; retaining media preparation capabilities. Prepare pinned models and restart Worker.')
         try:
             response = self.client.post(self.settings.api_base + "/jobs/claim",
                                         headers=self.headers(), json={
                 "worker_id": self.settings.worker_id, "capabilities": list(self.settings.capabilities),
-                **({"visual_enabled": True} if self.settings.vision_enabled else {})})
+                **({"visual_enabled": True} if self._visual_ready else {})})
         except httpx.TransportError as error:
             raise WorkerError("WORKER_API_ERROR", "领取响应未确认，等待可能的租约到期后恢复轮询",
                               True, claim_uncertain=True) from error

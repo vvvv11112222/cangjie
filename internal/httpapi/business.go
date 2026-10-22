@@ -26,6 +26,7 @@ type listData[T any] struct {
 }
 
 func (s *server) registerBusinessRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/service-capabilities", s.getServiceCapabilities)
 	mux.HandleFunc("GET /api/v1/auth/csrf", s.csrf)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("GET /api/v1/auth/me", s.me)

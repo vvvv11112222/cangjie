@@ -244,7 +244,7 @@ def prepare(args, state):
                    processor_version=config['runtime']['processor_version'], visual_model=config['runtime']['visual_model'],
                    execution=config['vision_execution']['engine'], vision_execution=config['vision_execution'])
     save(state / 'deployment.json', receipt)
-    (state / '使用说明.txt').write_text('团队网站：http://127.0.0.1:8088/#/sessions\n账号：admin（或 teacher_demo）\n密码：' + secret['login'] + '\n\n在课堂详情上传录像，再点“举手与低头分析”，到“视觉观察”查看人物记录与回放。\n来源须先在“素材与来源”登记并核验。\n设备见vision-runtime.json和启动提示，每次一个分析任务。旧试验库保留，正式版不连接旧试验库。\n', encoding='utf-8')
+    (state / '使用说明.txt').write_text('团队网站：http://127.0.0.1:8088/#/sessions\n账号：admin（或 teacher_demo）\n密码：' + secret['login'] + '\n\n点击“上传录像并分析”，选择课堂与文件，在上传区域选择或登记来源；核验后再选择分析方式。\n“举手与低头识别”使用本地模型；“语音转写与教学报告”需要配置云端模型、预算，并获准云端音频和文本处理。\n页面会显示服务未就绪原因，上传成功不代表已开始分析。报告需要人工复核后发布。\n设备见vision-runtime.json和启动提示，每次一个分析任务；云端流程须通过私有配置显式启用。旧试验库保留，正式版不连接旧试验库。\n', encoding='utf-8')
     print('Prepared official team website. Private account guide: ' + str(state / '使用说明.txt'), flush=True)
 
 

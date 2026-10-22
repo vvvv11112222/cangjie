@@ -31,6 +31,23 @@ def model_identity():
     return {"name": "classroom-vision", "revision": digest.hexdigest()}
 
 
+def verify_local_models():
+    """Check pinned files before announcing visual readiness; no inference/GPU."""
+    from workers.vision_core.media import digest_file
+    root = Path(__file__).resolve().parents[1]
+    models = Path(os.environ.get('VISION_MODEL_ROOT', root.parent / 'var/vision-models'))
+    pinned = json.loads((root / 'config/models.manifest.json').read_text(encoding='utf-8'))
+    installed = json.loads((models / 'manifest.json').read_text(encoding='utf-8'))
+    if not isinstance(installed, dict):
+        raise ValueError('Invalid installed model registry')
+    for name, item in pinned.items():
+        if installed.get(name, {}).get('sha256') != item['sha256'] or digest_file(models / name) != item['sha256']:
+            raise ValueError('Pinned visual models do not match installed files')
+    for name, item in installed.items():
+        if not isinstance(name, str) or '/' in name or '\\' in name or Path(name).name != name or not isinstance(item, dict) or digest_file(models / name) != item['sha256']:
+            raise ValueError('Installed model registry contains invalid or unverified files')
+
+
 def package_report(report, claim, image_ids):
     """Keep raw positive/negative/unknown decisions; never promote them to reviews."""
     frames = [{"asset_id": asset, "timestamp_ms": timestamp}

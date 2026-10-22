@@ -61,18 +61,19 @@ type Job struct {
 }
 
 type Run struct {
-	ID                        string   `json:"id"`
-	SessionID                 string   `json:"session_id"`
-	MediaAssetID              string   `json:"media_asset_id"`
-	Mode                      string   `json:"mode"`
-	InputTranscriptRevisionID *string  `json:"input_transcript_revision_id"`
-	Status                    string   `json:"status"`
-	Jobs                      []Job    `json:"jobs"`
-	StagePlan                 []string `json:"stage_plan"`
-	ReportID                  *string  `json:"report_id"`
-	ErrorCode                 *string  `json:"error_code"`
-	Limitations               []string `json:"limitations"`
-	AllowedActions            []string `json:"allowed_actions"`
+	CreatedAt                 time.Time `json:"created_at"`
+	ID                        string    `json:"id"`
+	SessionID                 string    `json:"session_id"`
+	MediaAssetID              string    `json:"media_asset_id"`
+	Mode                      string    `json:"mode"`
+	InputTranscriptRevisionID *string   `json:"input_transcript_revision_id"`
+	Status                    string    `json:"status"`
+	Jobs                      []Job     `json:"jobs"`
+	StagePlan                 []string  `json:"stage_plan"`
+	ReportID                  *string   `json:"report_id"`
+	ErrorCode                 *string   `json:"error_code"`
+	Limitations               []string  `json:"limitations"`
+	AllowedActions            []string  `json:"allowed_actions"`
 }
 
 type ClaimRequest struct {

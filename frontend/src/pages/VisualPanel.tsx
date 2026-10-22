@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { formatDateTime } from '../format';
 import type { ReactElement } from 'react';
 import { Card, StageFlow, TechDetails } from '../components/ui';
 import { useRunPolling } from '../data/hooks';
@@ -46,10 +47,11 @@ export function VisualPanel({ sessionId, currentRun }: { sessionId: string; curr
   }
   return <>
     <Card title="视觉观察" subtitle="检查录像中的可见人数与动作。看不清的部分保留为“看不清”，不计为没有动作。">
-      {all.length > 0 && <label className="account-field"><span>选择视觉分析记录</span><select value={selected?.id ?? ''} onChange={event => setChosen(event.target.value)}>{all.map(r => <option key={r.id} value={r.id}>{r.id.slice(0, 8)} · {runStatusBadge(r.status).label}</option>)}</select></label>}
+      <p className="onboarding-next">编号是本次录像的匿名轨迹，可能因遮挡或切镜变化。低头可能是阅读或书写；多条举手观察可能属于同一次持续动作。看不清表示无法判断，不等于未发现动作。<br/>颜色：红色发现举手，蓝色发现低头，绿色未见这两种动作，灰色看不清。记录只覆盖实际检查的画面。</p>
+      {all.length > 0 && <label className="account-field"><span>选择视觉分析记录</span><select value={selected?.id ?? ''} onChange={event => setChosen(event.target.value)}>{all.map(r => <option key={r.id} value={r.id}>{r.created_at ? formatDateTime(r.created_at) : `历史分析 ${all.indexOf(r)+1}`} · {runStatusBadge(r.status).label}</option>)}</select></label>}
       {historyError && <p role="alert" className="load-note load-note-error">{historyError}</p>}
       {historyCursor && <button className="btn btn-secondary" disabled={historyBusy} onClick={() => void moreHistory()}>查找更早的分析</button>}
-      {!run && <p className="empty">还没有视觉分析记录。在“批次与操作”中上传录像后，点击“举手与低头分析”。</p>}
+      {!run && <p className="empty">还没有视觉分析记录。在“批次与操作”中上传录像后，点击“举手与低头识别”。</p>}
       {run && run.status !== 'succeeded' && <><StageFlow run={run} /><p className="load-note">{run.status === 'queued' || run.status === 'running' ? '正在分析。完成后会自动显示结果；可以先切换标签查看其他内容。' : '本次分析未完成，没有可展示的完整结果。请回到“批次与操作”查看原因或重试。'}</p></>}
       {polling.error && <p role="alert">{polling.error}</p>}
     </Card>

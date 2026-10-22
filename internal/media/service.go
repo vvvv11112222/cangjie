@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -74,20 +75,22 @@ type Source struct {
 }
 
 type Media struct {
-	ID              string     `json:"id"`
-	SessionID       string     `json:"session_id"`
-	SourceRecordID  *string    `json:"source_record_id"`
-	ParentAssetID   *string    `json:"parent_asset_id"`
-	Kind            string     `json:"kind"`
-	Status          string     `json:"status"`
-	SHA256          string     `json:"sha256"`
-	MIMEType        string     `json:"mime_type"`
-	ByteSize        int64      `json:"byte_size"`
-	DurationMS      *int64     `json:"duration_ms"`
-	ExpiresAt       *time.Time `json:"expires_at"`
-	PlaybackAssetID *string    `json:"playback_asset_id"`
-	PlaybackURL     *string    `json:"playback_url"`
-	AllowedActions  []string   `json:"allowed_actions"`
+	OriginalFilename *string    `json:"original_filename"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ID               string     `json:"id"`
+	SessionID        string     `json:"session_id"`
+	SourceRecordID   *string    `json:"source_record_id"`
+	ParentAssetID    *string    `json:"parent_asset_id"`
+	Kind             string     `json:"kind"`
+	Status           string     `json:"status"`
+	SHA256           string     `json:"sha256"`
+	MIMEType         string     `json:"mime_type"`
+	ByteSize         int64      `json:"byte_size"`
+	DurationMS       *int64     `json:"duration_ms"`
+	ExpiresAt        *time.Time `json:"expires_at"`
+	PlaybackAssetID  *string    `json:"playback_asset_id"`
+	PlaybackURL      *string    `json:"playback_url"`
+	AllowedActions   []string   `json:"allowed_actions"`
 }
 
 type sessionScope struct {
@@ -348,9 +351,10 @@ func (s *Service) Upload(ctx context.Context, p identity.Principal, sessionID, s
 	if locked.ContentExpiresAt.Before(expires) {
 		expires = locked.ContentExpiresAt
 	}
-	result, err := scanMedia(tx.QueryRow(ctx, `INSERT INTO teaching.media_assets AS m(session_id,source_record_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,status,expires_at)
-		VALUES($1,$2,'source','filesystem',$3,$4,$5,$6,'pending',$7) RETURNING `+mediaColumns,
-		sessionID, sourceID, objectKey, staged.SHA256, mimeType, staged.Size, expires))
+	displayName := cleanDisplayName(filename)
+	result, err := scanMedia(tx.QueryRow(ctx, `INSERT INTO teaching.media_assets AS m(session_id,source_record_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,status,expires_at,original_filename)
+		VALUES($1,$2,'source','filesystem',$3,$4,$5,$6,'pending',$7,NULLIF($8,'')) RETURNING `+mediaColumns,
+		sessionID, sourceID, objectKey, staged.SHA256, mimeType, staged.Size, expires, displayName))
 	if err != nil {
 		return Media{}, storageError(err)
 	}
@@ -511,18 +515,36 @@ func scanSource(row pgx.Row) (Source, error) {
 	return result, err
 }
 
-const mediaColumns = `m.id::text,m.session_id::text,m.source_record_id::text,m.parent_asset_id::text,m.kind,m.status,m.sha256,m.mime_type,m.byte_size,m.duration_ms,m.expires_at,m.playback_asset_id::text`
+const mediaColumns = `m.id::text,m.session_id::text,m.source_record_id::text,m.parent_asset_id::text,m.kind,m.status,m.sha256,m.mime_type,m.byte_size,m.duration_ms,m.expires_at,m.playback_asset_id::text,m.original_filename,m.created_at`
 
 func scanMedia(row pgx.Row) (Media, error) {
 	var result Media
 	err := row.Scan(&result.ID, &result.SessionID, &result.SourceRecordID, &result.ParentAssetID, &result.Kind, &result.Status,
-		&result.SHA256, &result.MIMEType, &result.ByteSize, &result.DurationMS, &result.ExpiresAt, &result.PlaybackAssetID)
+		&result.SHA256, &result.MIMEType, &result.ByteSize, &result.DurationMS, &result.ExpiresAt, &result.PlaybackAssetID, &result.OriginalFilename, &result.CreatedAt)
 	return result, err
 }
 
 func scanMediaFields(row pgx.Row, result *Media, rights *string, allowed *[]byte, playbackAvailable *bool) error {
 	return row.Scan(&result.ID, &result.SessionID, &result.SourceRecordID, &result.ParentAssetID, &result.Kind, &result.Status,
-		&result.SHA256, &result.MIMEType, &result.ByteSize, &result.DurationMS, &result.ExpiresAt, &result.PlaybackAssetID, rights, allowed, playbackAvailable)
+		&result.SHA256, &result.MIMEType, &result.ByteSize, &result.DurationMS, &result.ExpiresAt, &result.PlaybackAssetID, &result.OriginalFilename, &result.CreatedAt, rights, allowed, playbackAvailable)
+}
+
+func cleanDisplayName(filename string) string {
+	name := filepath.Base(strings.ReplaceAll(filename, `\`, "/"))
+	name = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, name))
+	if name == "." || name == "/" {
+		return ""
+	}
+	runes := []rune(name)
+	if len(runes) > 255 {
+		name = string(runes[:255])
+	}
+	return name
 }
 
 func (s *Service) loadMedia(ctx context.Context, id string) (Media, string, []string, bool, error) {

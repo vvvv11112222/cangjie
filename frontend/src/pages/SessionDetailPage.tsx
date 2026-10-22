@@ -30,6 +30,7 @@ import {
 } from '../format';
 import {
   BadgeTag,
+  ErrorMessage,
   Card,
   DataSourceNote,
   Field,
@@ -58,6 +59,11 @@ import { LiveCapturePanel } from './LiveCapturePanel';
 import { DeletionPanel } from './DeletionPanel';
 import { VisualPanel } from './VisualPanel';
 import { UploadSourcePicker } from './UploadSourcePicker';
+import { sessionIntent, parseSessionRoute } from '../data/route';
+import { getServiceCapabilities, useServiceCapabilities, featureProblem } from '../data/serviceCapabilities';
+import { getSource } from '../data/m2Api';
+import { useSourceRecord } from '../data/useSourceRecord';
+import { ServiceChecklist } from '../components/ServiceChecklist';
 
 type Tab = 'run' | 'live' | 'transcript' | 'report' | 'playback' | 'visual';
 
@@ -97,8 +103,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
    * 退出、换账号、换课堂都会改变 scope，渲染时立即按空状态呈现。
    */
   const scope = `${sessionKey}:${sessionId}`;
+  const activeScope=useRef(scope);activeScope.current=scope;
+  useEffect(()=>()=>{activeScope.current="unmounted";},[]);
 
-  const [tab, setTab] = useState<Tab>('run');
+  const [tab, setTab] = useState<Tab>(()=>sessionIntent().tab);
   const [actions, setActions] = useState<ActionState>(() => emptyActionState(scope));
   const uploadFile = useRef<HTMLInputElement>(null);
   const uploadForm = useRef<HTMLDivElement>(null);
@@ -119,6 +127,18 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const detail = useSessionDetail(sessionId, api);
   const fixtureSessionData = api ? null : fixtureSession(sessionId);
   const session = api ? detail.data.session : fixtureSessionData;
+  const services = useServiceCapabilities(api && session !== null && tab === 'run');
+  useEffect(()=>{
+    const applyIntent=()=>{
+      const route=parseSessionRoute(window.location.hash);
+      if(route.kind!=='detail' || route.sessionId!==sessionId) return;
+      const intent=sessionIntent();
+      setTab(intent.tab);
+      setActions(current=>writeActionState(current,scope,base=>({...base,uploadOpen:intent.upload,mediaChoice:intent.mediaId ? {kind:'asset',mediaId:intent.mediaId} : base.mediaChoice})));
+    };
+    applyIntent();window.addEventListener('hashchange',applyIntent);
+    return ()=>window.removeEventListener('hashchange',applyIntent);
+  },[scope,sessionId]);
   const baseRun = api
     ? detail.run
     : fixtureSessionData !== null && fixtureSessionData.latest_run_id === fixtures.run.id
@@ -179,6 +199,16 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       note: null,
     }));
     try {
+      const latest = await getServiceCapabilities();
+      if(activeScope.current!==fromScope)return;
+      const feature = mode === 'full' ? latest.audio_report : mode === 'visual_only' ? latest.visual_analysis : latest.media_prepare;
+      if (!feature.available) { write(fromScope,base=>({...base,busy:false,error:featureProblem(feature)}));services.reload();return; }
+      if (mode === 'full') {
+        const selected = media.data.items.find(item=>item.id===mediaAssetId) ?? selectedDetail.data.media;
+        const source = selected?.source_record_id ? await getSource(selected.source_record_id) : null;
+        if (!source || source.session_id !== session.id || source.rights_status !== 'verified' || !source.allowed_uses.includes('analysis') || !source.external_processing_allowed) { write(fromScope,base=>({...base,busy:false,error:'该录像尚未获准云端音频与文本处理。请联系学院教务或系统管理员核验，完成后重新检查来源。'}));return; }
+      }
+      if(activeScope.current!==fromScope)return;
       const run = await createRun(session.id, input, key);
       if (mode === 'visual_only') setTab('visual');
       // 服务端已受理：清除未确定意图，下一次提交才算新的分析。
@@ -237,6 +267,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
     write(fromScope, (base) => ({ ...base, busy: true, error: null, note: null }));
     try {
+      const latest=await getServiceCapabilities();
+      if(activeScope.current!==fromScope)return;
+      const feature=shownRun.mode==='report_only' ? latest.report_generation : shownRun.mode==='full' ? latest.audio_report : shownRun.mode==='visual_only' ? latest.visual_analysis : latest.media_prepare;
+      if(!feature.available){write(fromScope,base=>({...base,busy:false,error:featureProblem(feature)}));services.reload();return;}
       const run = await createRun(session.id, input, key);
       pendingIntent.resolve(accountScope, session.id, key);
       write(fromScope, (base) => ({
@@ -265,7 +299,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     if (session === null || action.file === null || action.sourceRecordId.trim() === '') {
       write(fromScope, (base) => ({
         ...base,
-        error: '请选择录像文件，并填写已登记来源的 source_record_id。',
+        error: '请选择录像文件和这节课堂已登记的录像来源。可以在上传区域直接登记来源。',
       }));
       return;
     }
@@ -280,7 +314,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       write(fromScope, (base) => ({
         ...base,
         busy: false,
-        note: `录像已上传，已设为处理目标。可以点击“举手与低头分析”。`,
+        note: '录像已上传，尚未开始分析。请选择下方的分析方式；来源待核验时先联系学院教务或系统管理员处理。',
         uploadedMediaId: result.mediaId,
         uploadOpen: false,
         file: null,
@@ -301,7 +335,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
    * 目标媒体必须先在已加载列表里拿到 allowed_actions 才允许提交；
    * 拿不到授权信息时按"不放行"处理（fail-closed），并提示可加载更多媒体页。
    */
-  const targetMedia = mediaTarget === null ? null : media.data.items.find((item) => item.id === mediaTarget) ?? null;
+  const selectedDetail = useMediaDetail(mediaTarget, api && tab === 'run' && mediaTarget !== null && !media.data.items.some(item=>item.id===mediaTarget));
+  const targetMedia = mediaTarget === null ? null : media.data.items.find((item) => item.id === mediaTarget) ?? (selectedDetail.status === 'ready' && selectedDetail.data.media?.id === mediaTarget && selectedDetail.data.media.session_id === session?.id ? selectedDetail.data.media : null);
+  const targetSource = useSourceRecord(targetMedia?.source_record_id ?? null, api && tab === 'run');
   const targetMediaKnown = targetMedia !== null;
   const mediaAllows = (needed: MediaAction): boolean =>
     targetMedia !== null && targetMedia.allowed_actions.includes(needed);
@@ -310,8 +346,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const showPrepare = session !== null && session.allowed_actions.includes('prepare_media');
   const showAnalyze = session !== null && session.allowed_actions.includes('analyze');
   const mediaReadyForActions = api && !action.busy && mediaTarget !== null;
-  const prepareDisabled = !mediaReadyForActions || !mediaAllows('prepare_media');
+  const prepareDisabled = !mediaReadyForActions || !mediaAllows('prepare_media') || !services.data?.media_prepare.available;
   const analyzeDisabled = !mediaReadyForActions || !mediaAllows('analyze');
+  const fullDisabled = (shownRun !== null && isRunActive(shownRun)) || analyzeDisabled || !services.data?.audio_report.available || !targetSource.data?.external_processing_allowed;
+  const visualDisabled = analyzeDisabled || !services.data?.visual_analysis.available || (shownRun !== null && isRunActive(shownRun));
   const canCancel = shownRun !== null && shownRun.allowed_actions.includes('cancel') && isRunActive(shownRun);
   const showRetry = shownRun !== null && shownRun.allowed_actions.includes('retry') && !isRunActive(shownRun);
   // 重试针对批次自己的媒体，授权也按那个媒体判断（不是当前选中的目标）。
@@ -321,7 +359,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     !api || action.busy || retryMedia === null || shownRun === null
       ? true
       : !retryMedia.allowed_actions.includes(requiredMediaAction(shownRun.mode));
-  const sourceMedia = session === null ? [] : media.data.items.filter((item) => item.kind === 'source');
+  const sourceMedia = session === null ? [] : [...media.data.items.filter((item) => item.kind === 'source'), ...(targetMedia?.kind==='source' && !media.data.items.some(item=>item.id===targetMedia.id) ? [targetMedia] : [])];
   const mediaChoiceValue =
     action.mediaChoice.kind === 'asset'
       ? action.mediaChoice.mediaId
@@ -371,7 +409,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
           {tab === 'run' ? (
             <>
-              <Card title="课堂信息" subtitle="跳转目标仍逐次鉴权；前端只展示，能否操作由服务端决定。">
+              <Card title="当前课堂与录像" subtitle="先上传录像，再选择分析方式。回放、转写和报告分别在上方标签中查看。">
+                <p className="result-context">处理目标：{targetMedia?.original_filename || (targetMedia ? `历史录像（${formatDateTime(targetMedia.created_at ?? '')}）` : '尚未选择录像')}。{shownRun && <>最近一次分析：{runModeLabel(shownRun.mode)}，{shownRun.created_at ? formatDateTime(shownRun.created_at) : '旧记录未提供提交时间'}。{mediaTarget !== shownRun.media_asset_id && '所选处理目标与这次分析的录像不同，请核对后再提交。'}</>}</p>
+                <TechDetails summary="课堂与录像编号详情">
                 <div className="field-grid">
                   <Field label="课堂 ID">
                     <IdChip id={session.id} />
@@ -398,6 +438,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     {mediaTarget === null ? <span className="muted">尚无（先上传录像）</span> : <IdChip id={mediaTarget} />}
                   </Field>
                 </div>
+                </TechDetails>
                 {/* 协议字段原样保留，只是从业务视线里下沉到折叠区。 */}
                 <TechDetails>
                   <ul className="tech-list">
@@ -419,10 +460,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
               {detail.runError === null ? null : (
                 <Card title="批次读取失败" subtitle="这是读取错误，不等于该课堂没有批次。">
-                  <p className="notice-strip">
+                  <div className="notice-strip">
                     <IconAlert size={14} aria-hidden="true" />
-                    {detail.runError}
-                  </p>
+                    <ErrorMessage text={detail.runError}/>
+                  </div>
                   <div className="action-row">
                     <button type="button" className="btn btn-secondary" onClick={() => detail.reload()}>
                       重试读取
@@ -481,7 +522,11 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 )}
               </Card>
 
-              <Card title="操作" subtitle="按钮按资源 allowed_actions 显示；样例模式下不可提交。">
+              <Card title="下一步：上传或选择分析" subtitle="举手与低头识别查看画面；语音转写与教学报告处理带声音的录像。上传成功后不会自动调用模型。">
+                {api && <ServiceChecklist data={services.data} error={services.error} onReload={()=>{services.reload();targetSource.reload();selectedDetail.reload();media.reload();}}/>}
+                {mediaTarget === null ? <p className="onboarding-next">还没有选择录像。请先点击“上传录像”，在同一区域登记或选择来源。</p> : targetSource.data && !mediaAllows('analyze') ? <p className="onboarding-next">{targetSource.data.rights_status !== 'verified' ? '录像来源尚未通过核验。' : !targetSource.data.allowed_uses.includes('analysis') ? '该来源尚未获准分析用途。未申请过该用途时，需要重新登记来源。' : '当前录像状态或当前账号授权暂不允许分析。'}请联系学院教务或系统管理员处理。<a href={`#/sources?session=${session.id}`}>前往这节课堂的来源登记与核验</a></p> : null}
+                {targetMedia && !targetSource.data && <div className="field-hint">正在确认录像来源与云端处理许可。{targetSource.error && <>读取失败，请重新检查。<TechDetails><p>{targetSource.error}</p></TechDetails></>}</div>}
+                {targetSource.data && !targetSource.data.external_processing_allowed && <p className="field-hint">语音与报告需要额外的云端音频、文本处理许可；本地举手与低头识别可按已获准的分析用途执行。<a href={`#/sources?session=${session.id}`}>查看或核验来源</a></p>}
                 {/* 主次分明：提交分析是主操作，上传/媒体准备/重试是次操作，取消批次是危险操作。 */}
                 <div className="action-row">
                   {canUpload ? (
@@ -510,13 +555,13 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     <button
                       type="button"
                       className="btn btn-primary"
-                      disabled={analyzeDisabled}
+                      disabled={fullDisabled}
                       onClick={() => void submitAnalyze('full')}
                     >
-                      提交分析
+                      语音转写与教学报告
                     </button>
                   ) : null}
-                  {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={analyzeDisabled || (shownRun !== null && isRunActive(shownRun))} onClick={() => void submitAnalyze('visual_only')}>举手与低头分析</button> : null}
+                  {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={visualDisabled} onClick={() => void submitAnalyze('visual_only')}>举手与低头识别</button> : null}
                   {canCancel ? (
                     <button type="button" className="btn btn-danger" disabled={!api || action.busy} onClick={() => void submitCancel()}>
                       取消批次
@@ -563,8 +608,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                           </option>
                           {sourceMedia.map((item) => (
                             <option key={item.id} value={item.id}>
-                              {shortId(item.id)} · 原媒体 · {item.status}
-                              {item.allowed_actions.length === 0 ? ' · 无可用途' : ` · ${item.allowed_actions.join('/')}`}
+                              {item.original_filename || `历史录像 ${sourceMedia.indexOf(item)+1}`} · {item.created_at ? formatDateTime(item.created_at) : '上传时间未记录'} · {item.status === 'ready' ? '录像就绪' : item.status === 'pending' ? '等待媒体检查' : '暂不可用'}
                             </option>
                           ))}
                         </select>
@@ -583,8 +627,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     ) : null}
                     {targetMedia !== null && targetMedia.status !== 'ready' ? (
                       <p className="load-note">
-                        处理目标状态为 {targetMedia.status}
-                        {targetMedia.status === 'pending' ? '，可直接点击“举手与低头分析”，系统会先准备录像。' : '，暂不能提交。'}
+                        {targetMedia.status === 'pending' ? '录像等待媒体检查。选择可用分析方式后系统会先准备录像；只需回放时可点击“媒体准备”。' : '录像暂不可处理，请检查有效期或联系管理员。'}
                       </p>
                     ) : null}
                     {showRetry && retryDisabled && retryMedia === null ? (
@@ -635,7 +678,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     <button type="button" className="btn btn-secondary" disabled={action.busy} onClick={() => write(scope, base => ({ ...base, uploadOpen: false, file: null }))}>取消上传</button>
                   </div>
                 ) : null}
-                {action.error === null ? null : <p className="load-note load-note-error">{action.error}</p>}
+                {action.error === null ? null : <div className="load-note load-note-error"><ErrorMessage text={action.error}/></div>}
                 {action.note === null ? null : <p className="load-note">{action.note}</p>}
               </Card>
               {session.allowed_actions.includes('delete') || session.status === 'deleting' || session.status === 'deleted' ? (

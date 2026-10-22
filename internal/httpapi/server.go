@@ -48,6 +48,7 @@ type Options struct {
 }
 
 type server struct {
+	announcements      workerAnnouncements
 	capture            *capture.Service
 	logger             *slog.Logger
 	readiness          ReadinessChecks

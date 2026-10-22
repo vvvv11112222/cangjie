@@ -115,6 +115,11 @@ export async function createSource(input: CreateSourceInput): Promise<SourceReco
   return parseSource(data, 'Source');
 }
 
+export async function getSource(id: string): Promise<SourceRecord> {
+  const { data } = await requestJson<unknown>(`/sources/${encodeURIComponent(id)}`);
+  return parseSource(data, 'Source');
+}
+
 export async function verifySource(id: string, input: VerifySourceInput): Promise<SourceRecord> {
   const { data } = await requestJson<unknown>(`/sources/${encodeURIComponent(id)}/verify`, {
     method: 'POST', body: input, csrf: true,

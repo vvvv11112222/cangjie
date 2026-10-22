@@ -17,6 +17,11 @@ const h = vi.hoisted(() => ({
   createExport: vi.fn(), getExport: vi.fn(), listSources: vi.fn(), active: vi.fn(), capture: vi.fn(), viewer: vi.fn(),
   connect: vi.fn(), source: { getResults: vi.fn(), getRun: vi.fn(), getRevision: vi.fn() },
 }));
+vi.mock('../data/serviceCapabilities', async original => {
+  const actual=await original<typeof import('../data/serviceCapabilities')>();
+  const data=(await import('../../../contracts/examples/service-capabilities.json')).default;
+  return {...actual,getServiceCapabilities:async()=>data,useServiceCapabilities:()=>({data,error:null,reload:vi.fn()})};
+});
 vi.mock('../auth', () => ({ useAuth: () => ({ me: { user_id: h.account }, sessionKey: `${h.account}#1` }) }));
 vi.mock('../data/actions', async (original) => ({ ...await original<typeof import('../data/actions')>(), createRun: h.createRun }));
 vi.mock('../data/m3Api', () => ({ ...h }));
@@ -26,7 +31,7 @@ vi.mock('../capture/whep', () => ({ connectWHEP: h.connect }));
 vi.mock('../data/sources', () => ({ isApiMode: () => true, dataSource: h.source }));
 vi.mock('../data/hooks', () => {
   const loaded = () => ({ data: { view: {}, selection: null }, origin: { sources: [], label: 'API', note: '' }, status: 'ready', hasData: true });
-  return { useReportData: loaded, useTranscriptData: loaded };
+  return { useMediaDetail:()=>({status:"ready",data:{media:null},error:null}), useReportData: loaded, useTranscriptData: loaded };
 });
 
 import { TranscriptPage } from './TranscriptPage';

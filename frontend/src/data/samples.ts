@@ -236,6 +236,7 @@ export function parseSessionPage(value: unknown, path = 'SessionPage'): SessionP
 export function parseRun(value: unknown, path = 'Run'): Run {
   const source = asRecord(value, path);
   return {
+    created_at: source['created_at'] === undefined ? undefined : asString(source, 'created_at', path),
     id: asString(source, 'id', path),
     session_id: asString(source, 'session_id', path),
     media_asset_id: asString(source, 'media_asset_id', path),
@@ -338,6 +339,8 @@ export function parseMedia(value: unknown, path = 'Media'): Media {
     guardFail(`${path}.playback_url`, '应为 /api/v1/media/ 开头的地址或 null');
   }
   return {
+    original_filename: source['original_filename'] === undefined ? null : asNullableString(source, 'original_filename', path),
+    created_at: source['created_at'] === undefined ? undefined : asString(source, 'created_at', path),
     id: asString(source, 'id', path),
     session_id: asString(source, 'session_id', path),
     source_record_id: asNullableString(source, 'source_record_id', path),
