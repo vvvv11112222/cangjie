@@ -148,6 +148,19 @@ def raised_hand(points, scores, head_box=None, image_width=None):
                         and -.35*h<=points[wrist,1]-points[0,1]<=.55*h
                         and .12*h<=abs(points[wrist,0]-points[0,0])<=.85*h)
             if desk_raise:
+                # Only the newly rescued face-near case needs this extra gate.
+                # Collapsed/profile eyes or eyes borrowed from another face
+                # cannot distinguish a raised palm from a hand touching the ear.
+                if np.linalg.norm(points[wrist]-points[0]) < .6*h and not beside_face:
+                    eyes=points[[1,2]]
+                    face_supported=(min(scores[[1,2]])>=.4
+                                    and .18*h<=abs(eyes[0,0]-eyes[1,0])<=.7*h
+                                    and abs(eyes[0,1]-eyes[1,1])<=.3*h
+                                    and all(head_box[0]-.2*h<=x<=head_box[2]+.2*h
+                                            and head_box[1]-.2*h<=y<=head_box[3]+.2*h for x,y in eyes))
+                    if not face_supported:
+                        ambiguous=True
+                        continue
                 return True,score
             if np.linalg.norm(points[wrist]-points[0]) < .6*h and not beside_face:
                 # A nearly supported raised forearm is uncertain, rather than

@@ -56,21 +56,19 @@ const FILTERS: readonly { key: Filter; label: string }[] = [
 
 /**
  * 页签口径全部取自协议字段，不自造状态：
- * 待上传 = 还没有主媒体；分析中 = 最新批次在排队或运行；
- * 待复核 = 批次已结束但还没有当前报告；已发布 = 已经有当前报告。
+ * 没有主媒体不能推断没有上传。分析中看真实批次；待复核须已有报告草稿。
+ * 无当前报告的视觉分析保留在全部课堂，不冒充待复核教学报告。
  */
-function bucketOf(task: SessionTaskView): Exclude<Filter, 'all'> {
+export function bucketOf(task: SessionTaskView): Exclude<Filter, 'all'> | 'other' {
   const { session, run } = task;
-  if (session.primary_media_asset_id === null) {
-    return 'empty';
-  }
   if (run !== null && (run.status === 'queued' || run.status === 'running')) {
     return 'processing';
   }
   if (session.current_report_id !== null) {
     return 'published';
   }
-  return 'review';
+  if (run !== null && run.report_id !== null && run.mode !== 'visual_only' && session.current_report_id !== run.report_id) return 'review';
+  return session.primary_media_asset_id === null && run === null ? 'empty' : 'other';
 }
 
 function Reference({ label, id }: { label: string; id: string | null }): ReactElement {
@@ -258,7 +256,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                 </tr>
               </thead>
               <tbody>
-                {shown.map(({ session }) => (
+                {shown.map(({ session, run }) => (
                   <tr key={session.id}>
                     <td>
                       <div className="cell-title">
@@ -289,7 +287,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                     </td>
                     <td>
                       <a className="cell-link" href={`#/sessions/${session.id}`}>
-                        {session.primary_media_asset_id === null
+                        {session.primary_media_asset_id === null && run === null
                           ? '上传录像'
                           : session.current_report_id === null
                             ? '查看详情'
@@ -430,7 +428,7 @@ function CreateSessionForm({
   }
 
   return (
-    <Card title="创建课堂" subtitle="课堂必须挂在开课实例下；计划时间与课表冲突时由服务端拒绝。">
+    <Card title="创建课堂" subtitle="一条课堂记录对应一次具体授课，请填写本次开始和结束时间，而不是整个学期。课堂须关联开课实例；课表冲突由服务端检查。">
       {offerings === null ? (
         <p className="load-note">正在读取开课实例……</p>
       ) : offerings.length === 0 ? (

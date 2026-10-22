@@ -177,6 +177,15 @@ func TestPhaseThreeSourceUploadPlaybackAndAuthorization(t *testing.T) {
 	if got := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/sessions/"+sessionID+"/media", nil, "", http.StatusOK)["items"].([]any); len(got) != 1 {
 		t.Fatalf("media list=%#v", got)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO teaching.media_assets(session_id,parent_asset_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,status) VALUES($1,$2,'keyframe','filesystem','synthetic/frame.jpg',repeat('a',64),'image/jpeg',12,'ready')`, sessionID, mediaID); err != nil {
+		t.Fatal(err)
+	}
+	if got := requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/sessions/"+sessionID+"/media?kind=source", nil, "", http.StatusOK)["items"].([]any); len(got) != 1 || got[0].(map[string]any)["id"] != mediaID {
+		t.Fatalf("source filter included derived frames: %v", got)
+	}
+	requestJSON(t, academic, http.MethodGet, server.URL+"/api/v1/sessions/"+sessionID+"/media?kind=source", nil, "", http.StatusNotFound)
+	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/sessions/"+sessionID+"/media?kind=frame", nil, "", http.StatusBadRequest)
+	requestJSON(t, teacher, http.MethodGet, server.URL+"/api/v1/sessions/"+sessionID+"/media?kind=source&kind=source", nil, "", http.StatusBadRequest)
 	requestContent(t, teacher, server.URL+"/api/v1/media/"+mediaID+"/content", "", http.StatusConflict, nil)
 	if _, err := pool.Exec(ctx, `UPDATE teaching.media_assets SET status='ready',duration_ms=1000,playback_asset_id=id WHERE id=$1`, mediaID); err != nil {
 		t.Fatal(err)

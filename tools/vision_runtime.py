@@ -17,7 +17,7 @@ def discrete_adapter(adapters):
     # every vendor's architecture. Do not automatically select a small UMA GPU.
     candidates = [a for a in adapters if not a['software'] and a['dedicated_mb'] >= 1024]
     if not candidates:
-        raise RuntimeError('没有发现具有至少 1 GiB 专用显存的独立显卡；使用 CPU')
+        raise RuntimeError('没有发现具有至少 1 GiB 专用显存的独立显卡')
     return max(candidates, key=lambda a: ('nvidia' in a['name'].casefold(), a['dedicated_mb']))
 
 

@@ -220,11 +220,11 @@ func (s *server) listMedia(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	after, limit, ok := s.page(w, r)
+	after, limit, ok := s.pageAllowed(w, r, "kind")
 	if !ok {
 		return
 	}
-	items, next, err := s.media.ListMedia(r.Context(), p, id, after, limit)
+	items, next, err := s.media.ListMediaKind(r.Context(), p, id, after, limit, r.URL.Query().Get("kind"))
 	if err != nil {
 		s.writeServiceError(w, r, err)
 		return

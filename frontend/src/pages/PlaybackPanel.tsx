@@ -41,6 +41,7 @@ export function PlaybackPanel({
   transcript,
   mediaList,
   needsMediaList,
+  onSelectMedia,
 }: {
   /** 当前回放目标媒体；为 null 表示该课堂还没有可回放的媒体。 */
   mediaId: string | null;
@@ -48,6 +49,7 @@ export function PlaybackPanel({
   transcript: TranscriptResult;
   mediaList: ReturnType<typeof useSessionMedia>;
   needsMediaList: boolean;
+  onSelectMedia?(mediaId: string): void;
 }): ReactElement {
   const api = isApiMode();
   // 重取许可时保留已失败的节点但暂停操作；许可成功后对同一节点执行 load，清除失败资源。
@@ -140,7 +142,7 @@ export function PlaybackPanel({
     <>
       <Card
         title="回放"
-        subtitle="播放的是课堂当前主媒体的播放代理；时间口径为原录像起点的整数毫秒，代理不裁剪、不变速，所以跳转时间与原录像一致。"
+        subtitle="选择本节课堂的一份录像回放。不同录像各自保留分析结果；切换回放不会覆盖录像或重新分析。"
         actions={
           playbackUrl === null ? undefined : (
             <button
@@ -154,11 +156,16 @@ export function PlaybackPanel({
           )
         }
       >
+        {onSelectMedia && <label className="account-field"><span>选择回放录像</span><select value={mediaId ?? ''} onChange={event => onSelectMedia(event.target.value)}>
+          {mediaId !== null && !mediaList.data.items.some(item => item.id === mediaId && item.kind === 'source' && item.status === 'ready' && item.allowed_actions.includes('playback')) && <option value={mediaId}>当前录像 · {mediaId.slice(0, 8)}</option>}
+          {mediaId === null && <option value="">请选择已就绪且允许回放的录像</option>}
+          {mediaList.data.items.filter(item => item.kind === 'source' && item.status === 'ready' && item.allowed_actions.includes('playback')).map(item => <option key={item.id} value={item.id}>录像 {item.id.slice(0, 8)}</option>)}
+        </select><small className="muted">录像编号与“批次与操作”的媒体编号一致。也可以在“视觉观察”点击“在回放中打开此录像”。</small></label>}
         <LoadStateNote status={detail.status} error={detail.error} />
         <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
         {needsMediaList ? (
           <div>
-            <LoadStateNote status={mediaList.status} error={mediaList.error} />
+            {mediaId !== null && mediaList.error !== null ? <p className="load-note">其他录像列表暂时无法读取，当前录像仍可回放；可重试读取列表。</p> : <LoadStateNote status={mediaList.status} error={mediaList.error} />}
             <LoadControls actionLabel={mediaList.actionLabel} loadMore={mediaList.loadMore} />
             {mediaId === null && mediaList.data.nextCursor !== null && mediaList.status === 'ready' ? (
               <p className="load-note">已读取页面尚无可回放媒体，请继续加载后续页面。</p>

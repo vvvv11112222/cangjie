@@ -385,7 +385,7 @@
       "request": null,
       "response": "MediaPage",
       "transport": "json",
-      "query": "PageQuery",
+      "query": "MediaQuery",
       "success_statuses": [
         200
       ]
@@ -1176,6 +1176,17 @@
       "query": null,
       "success_statuses": [
         204
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs",
+      "request": null,
+      "response": "AuditPage",
+      "transport": "json",
+      "query": "AuditQuery",
+      "success_statuses": [
+        200
       ]
     }
   ]

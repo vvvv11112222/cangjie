@@ -38,6 +38,12 @@ afterEach(async () => {
 async function mount(): Promise<void> { await act(async () => { root.render(<VisualPanel sessionId={run.session_id} currentRun={run} />); }); }
 async function toggleAll(): Promise<void> { await act(async () => container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()); }
 describe('视觉观察页面', () => {
+  it('opens the exact recording belonging to the selected visual run', async () => {
+    const open = vi.fn();
+    await act(async () => root.render(<VisualPanel sessionId={run.session_id} currentRun={run} onReplayMedia={open}/>));
+    await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === '在回放中打开此录像')!.click());
+    expect(open).toHaveBeenCalledWith(run.media_asset_id);
+  });
   it('显示全部人物框，选人不改变颜色，切换显示范围复用缓存', async () => {
     await mount(); await toggleAll();
     const colors = () => [...container.querySelectorAll('.visual-overlay g')].map(g => [g.getAttribute('data-track-id'), g.querySelector('rect')?.getAttribute('stroke')]);

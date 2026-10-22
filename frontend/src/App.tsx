@@ -41,6 +41,7 @@ import { TasksPage } from './pages/TasksPage';
 import { SourcesPage } from './pages/SourcesPage';
 import { DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
 import { AcademicPage } from './pages/AcademicPage';
+import { AuditPage } from './pages/AuditPage';
 import {
   DEFAULT_ROUTE,
   isVisiblePath,
@@ -84,6 +85,7 @@ const IMPLEMENTED_PAGES: Record<string, () => ReactElement> = {
   '#/management': () => <ManagementPage />,
   '#/recordings': () => <RecordingsPage />,
   '#/academic': () => <AcademicPage />,
+  '#/audit': () => <AuditPage />,
   '#/tasks': () => <TasksPage />,
   '#/sources': () => <SourcesPage />,
   '#/devices': () => <DevicesPage />,

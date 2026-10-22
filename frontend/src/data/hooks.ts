@@ -553,17 +553,18 @@ export interface SessionMediaData {
 export function useSessionMedia(
   session: Session | null,
   enabled = true,
+  kind?: 'source',
 ): LoadState<SessionMediaData> & LoadActions & { origin: DataOrigin } {
   const { sessionKey, authStatus } = useSessionContext();
   const initial = useMemo<SessionMediaData>(() => ({ items: [], nextCursor: null }), []);
   const state = useLoaded({
     enabled: enabled && session !== null,
-    sessionKey: session === null ? sessionKey : `${sessionKey}:media:${session.id}`,
+    sessionKey: session === null ? sessionKey : `${sessionKey}:media:${session.id}:${kind ?? 'all'}`,
     authStatus,
     initialData: initial,
     newProgress: () => ({ cursor: undefined as string | undefined, seen: [] as string[] }),
     load: async (progress, previous) => {
-      const page = await getSessionMedia((session as Session).id, progress.cursor);
+      const page = kind ? await getSessionMedia((session as Session).id, progress.cursor, kind) : await getSessionMedia((session as Session).id, progress.cursor);
       // 重复游标（服务端异常循环）要单独报错，不能无限翻页（N04）。
       const seen = [...progress.seen, progress.cursor ?? ''];
       checkNextCursor(page.nextCursor, seen);

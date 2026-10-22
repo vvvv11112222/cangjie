@@ -331,7 +331,7 @@ def analyze(job_id, directory, metadata, config, cancel, progress, preview=None)
     report=build_report(job_id, config.title, metadata, config, points, aggregator.events, snapshots, stats,
                         {**models.provenance, "runtime_status":runtime_status(), "pose_execution_metrics":models.pose_metrics,
                          "detection_pipelined":pipelined,"processor_version": VERSION, "tracking": "short-gap-iou-v1",
-                         "rules_version": "desk-forearm-and-face-contact-gate-v4.3", "head_method":"6d-headpose-negative-pitch-yaw60-v2",
+                         "rules_version": "desk-forearm-and-face-contact-gate-v4.4", "head_method":"6d-headpose-negative-pitch-yaw60-v2",
                          "source_code_sha256":{name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest() for name in ('analysis.py','behavior.py','models.py','review.py')},
                          "tracking":"motion-distance-color-assignment-v2", "pose_crop_strategy": "upper-body-with-competing-face-ownership-and-tight-retry" if classroom else "person-box",
                          "counting_method": 'head' if classroom else 'person',

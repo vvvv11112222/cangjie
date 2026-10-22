@@ -147,6 +147,11 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, false, err
 	}
+	// The local visual-only deployment advertises no audio Worker. Do not queue
+	// an audio stage that nobody can claim, while preserving idempotent history.
+	if in.Mode == "full" && s.cfg.ASRModelName == "not-installed" {
+		return Run{}, false, apperror.WithDetails(http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "audio analysis is not configured", map[string]any{"reason": "本机尚未配置语音转写和报告模型，暂时不能进行完整分析。举手与低头分析可以正常使用；请由部署管理员配置模型、价格和预算后再提交完整分析。"})
+	}
 	if in.Mode == "full" || in.Mode == "report_only" {
 		if err := ValidateReportPrompt(s.cfg.ReportEnabled, s.cfg.ReportPromptVersion, s.cfg.ReportPromptSHA256); err != nil {
 			return Run{}, false, state(err.Error())

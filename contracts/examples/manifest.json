@@ -241,6 +241,31 @@
       "file": "resource-in-use-error.json",
       "definition": "ErrorResponse",
       "valid": true
+    },
+    {
+      "file": "audit-page.json",
+      "definition": "AuditPage",
+      "valid": true
+    },
+    {
+      "file": "audit-query.json",
+      "definition": "AuditQuery",
+      "valid": true
+    },
+    {
+      "file": "invalid-audit-query.json",
+      "definition": "AuditQuery",
+      "valid": false
+    },
+    {
+      "file": "media-query.json",
+      "definition": "MediaQuery",
+      "valid": true
+    },
+    {
+      "file": "invalid-media-query.json",
+      "definition": "MediaQuery",
+      "valid": false
     }
   ],
   "case_sets": [

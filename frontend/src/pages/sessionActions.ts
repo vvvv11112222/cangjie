@@ -85,7 +85,7 @@ export function intentSignature(sessionId: string, input: CreateRun): string {
 }
 
 /** 当前要处理的媒体：按选择意图决定（N06）。 */
-export function processingMediaId(state: ActionState, sessionPrimaryMediaId: string | null): string | null {
+export function processingMediaId(state: ActionState, sessionPrimaryMediaId: string | null, recentMediaId: string | null = null): string | null {
   switch (state.mediaChoice.kind) {
     case 'asset':
       return state.mediaChoice.mediaId;
@@ -93,6 +93,6 @@ export function processingMediaId(state: ActionState, sessionPrimaryMediaId: str
       // 明确选了主媒体：没有主媒体就不能退回刚上传的媒体。
       return sessionPrimaryMediaId;
     default:
-      return state.uploadedMediaId ?? sessionPrimaryMediaId;
+      return state.uploadedMediaId ?? sessionPrimaryMediaId ?? recentMediaId;
   }
 }

@@ -67,6 +67,17 @@ it('F01: mismatched primary keeps video but excludes foreign captions and jumps'
   expect(container.textContent).not.toContain(baseResults.segments[0]!.text_content);
   expect(container.textContent).toContain('当前录像与所选分析结果不同');
 });
+it('a classroom with multiple uploads can explicitly select its other recording', async () => {
+  h.getSessionMedia.mockResolvedValue({ items: [M1, M2].map(id => ({ id, kind: 'source', status: 'ready', allowed_actions: ['playback'] })), nextCursor: null });
+  h.getMedia.mockImplementation(async (id: string) => media(id));
+  await mountDetail();
+  const select = container.querySelector<HTMLSelectElement>('.account-field select')!;
+  expect([...select.options].map(option => option.value)).toContain(M2);
+  await act(async () => { select.value = M2; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  await settle();
+  expect(h.getMedia.mock.calls.at(-1)?.[0]).toBe(M2);
+  expect(container.textContent).toContain('当前录像与所选分析结果不同');
+});
 it('F01: revision for another media cannot supply captions or jumps', async () => {
   h.getRevision.mockResolvedValue({...baseRevision,media_asset_id:M2});
   await mountDetail();
@@ -159,7 +170,7 @@ it('F04: empty page with cursor offers load-more and reaches playable second pag
   const more=Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(b=>b.textContent==='加载更多')!;
   expect(more).toBeDefined();
   await act(async()=>more.click());await settle();
-  expect(h.getSessionMedia).toHaveBeenLastCalledWith(sessionPage.items[0]!.id,'page2');
+  expect(h.getSessionMedia).toHaveBeenLastCalledWith(sessionPage.items[0]!.id,'page2','source');
   expect(container.querySelector('video')).not.toBeNull();
 });
 it('F04: unrelated list failure does not block known primary', async () => {

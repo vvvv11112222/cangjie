@@ -397,6 +397,13 @@ func (s *Service) GetMedia(ctx context.Context, p identity.Principal, id string)
 }
 
 func (s *Service) ListMedia(ctx context.Context, p identity.Principal, sessionID, after string, limit int) ([]Media, string, error) {
+	return s.ListMediaKind(ctx, p, sessionID, after, limit, "")
+}
+
+func (s *Service) ListMediaKind(ctx context.Context, p identity.Principal, sessionID, after string, limit int, kind string) ([]Media, string, error) {
+	if kind != "" && kind != "source" {
+		return nil, "", invalid("unsupported media kind filter")
+	}
 	scope, err := s.loadSession(ctx, s.pool, sessionID, false)
 	if err != nil || !canViewContent(p, scope) {
 		return nil, "", notFound("lesson")
@@ -407,7 +414,7 @@ func (s *Service) ListMedia(ctx context.Context, p identity.Principal, sessionID
 		FROM teaching.media_assets m LEFT JOIN teaching.source_records src ON src.id=m.source_record_id AND src.session_id=m.session_id
 		LEFT JOIN teaching.media_assets parent ON parent.id=m.parent_asset_id AND parent.session_id=m.session_id
 		LEFT JOIN teaching.source_records parent_src ON parent_src.id=parent.source_record_id AND parent_src.session_id=m.session_id
-		WHERE m.session_id=$1 AND m.status<>'deleted' AND ($2='' OR m.id>$2::uuid) ORDER BY m.id LIMIT $3`, sessionID, after, limit+1)
+		WHERE m.session_id=$1 AND m.status<>'deleted' AND ($2='' OR m.id>$2::uuid) AND ($4::text='' OR m.kind=$4) ORDER BY m.id LIMIT $3`, sessionID, after, limit+1, kind)
 	if err != nil {
 		return nil, "", storageError(err)
 	}

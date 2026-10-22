@@ -86,7 +86,7 @@ export interface DataSource {
   readonly kind: DataSourceKind;
   getSessions(query?: SessionQuery): Promise<SessionPage>;
   /** GET /sessions/{id}/media；cursor 为空表示第一页（协议第 1 节：游标不透明）。 */
-  getSessionMedia(sessionId: string, cursor?: string): Promise<MediaPageLite>;
+  getSessionMedia(sessionId: string, cursor?: string, kind?: 'source'): Promise<MediaPageLite>;
   /** GET /media/{id}；播放地址、有效期与 allowed_actions 都以这条响应为准。 */
   getMedia(id: string): Promise<Media>;
   getRun(id: string): Promise<Run>;
@@ -190,9 +190,9 @@ export const apiSource: DataSource = {
       throw malformed(error);
     }
   },
-  async getSessionMedia(sessionId: string, cursor?: string): Promise<MediaPageLite> {
+  async getSessionMedia(sessionId: string, cursor?: string, kind?: 'source'): Promise<MediaPageLite> {
     const { data } = await requestJson<unknown>(`/sessions/${encodeURIComponent(sessionId)}/media`, {
-      query: { cursor },
+      query: { cursor, kind },
     });
     try {
       return parseMediaPage(data);
@@ -262,8 +262,8 @@ export function isApiMode(): boolean {
 }
 
 export const getSessions = (query?: SessionQuery): Promise<SessionPage> => selected.getSessions(query);
-export const getSessionMedia = (sessionId: string, cursor?: string): Promise<MediaPageLite> =>
-  selected.getSessionMedia(sessionId, cursor);
+export const getSessionMedia = (sessionId: string, cursor?: string, kind?: 'source'): Promise<MediaPageLite> =>
+  selected.getSessionMedia(sessionId, cursor, kind);
 export const getMedia = (id: string): Promise<Media> => selected.getMedia(id);
 export const getRun = (id: string): Promise<Run> => selected.getRun(id);
 export const getResults = (runId: string): Promise<Results> => selected.getResults(runId);

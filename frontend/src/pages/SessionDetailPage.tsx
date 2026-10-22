@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ReactElement } from 'react';
 import { useAuth } from '../auth';
 import { cancelRun, createRun, uploadMedia } from '../data/actions';
-import { describeError } from '../data/errors';
+import { ApiError, describeError } from '../data/errors';
 import { isUuid } from '../data/ids';
 import {
   fixtureSession,
@@ -22,6 +22,7 @@ import type { MediaAction } from '../data/sources';
 import type { CreateRun, RunMode } from '../types';
 import {
   formatDateTime,
+  mediaStatusBadge,
   runModeLabel,
   runStatusBadge,
   sessionActionLabel,
@@ -99,6 +100,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const scope = `${sessionKey}:${sessionId}`;
 
   const [tab, setTab] = useState<Tab>('run');
+  const [replayChoice, setReplayChoice] = useState<{ scope: string; mediaId: string } | null>(null);
   const [actions, setActions] = useState<ActionState>(() => emptyActionState(scope));
   const uploadFile = useRef<HTMLInputElement>(null);
   const uploadForm = useRef<HTMLDivElement>(null);
@@ -129,8 +131,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const transcript = useSessionTranscript(session, tab === 'transcript' || tab === 'playback');
   const report = useSessionReport(session, baseRun, tab === 'report');
   // 回放要用媒体列表挑出可播放的目标（没有主媒体时退回到列表里的原媒体），因此也在这里加载。
-  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'live' || tab === 'playback'));
-  const playbackMediaId = session === null ? null : pickPlaybackMediaId(session, media.data.items);
+  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'live' || tab === 'playback'), 'source');
+  const recentMediaId = baseRun !== null && media.data.items.some(item => item.id === baseRun.media_asset_id && item.kind === 'source') ? baseRun.media_asset_id : null;
+  const playbackMediaId = replayChoice?.scope === scope ? replayChoice.mediaId : session === null ? null : pickPlaybackMediaId(session, media.data.items);
   const playback = useMediaDetail(playbackMediaId, tab === 'playback');
 
   const effectiveRun = action.run ?? baseRun;
@@ -162,7 +165,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
   async function submitAnalyze(mode: RunMode): Promise<void> {
     const fromScope = scope;
-    const mediaAssetId = processingMediaId(action, session?.primary_media_asset_id ?? null);
+    const mediaAssetId = processingMediaId(action, session?.primary_media_asset_id ?? null, recentMediaId);
     if (session === null || mediaAssetId === null) {
       write(fromScope, (base) => ({ ...base, error: '该课堂还没有可处理的媒体，请先上传录像。' }));
       return;
@@ -194,7 +197,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       }
     } catch (error) {
       // 失败时保留 pendingIntent：重试（含重进详情）会复用同一个键，避免重复分析。
-      write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
+      write(fromScope, (base) => ({ ...base, busy: false, error: error instanceof ApiError && error.code === 'SERVICE_UNAVAILABLE' && typeof error.details.reason === 'string' ? error.details.reason : describeError(error) }));
     }
   }
 
@@ -294,7 +297,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     }
   }
 
-  const mediaTarget = processingMediaId(action, session?.primary_media_asset_id ?? null);
+  const mediaTarget = processingMediaId(action, session?.primary_media_asset_id ?? null, recentMediaId);
   const canUpload = session !== null && session.allowed_actions.includes('upload');
   /**
    * 评审意见 N05：Session 的授权不能覆盖所选媒体自己的用途。
@@ -513,7 +516,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       disabled={analyzeDisabled}
                       onClick={() => void submitAnalyze('full')}
                     >
-                      提交分析
+                      提交分析（转写与报告）
                     </button>
                   ) : null}
                   {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={analyzeDisabled || (shownRun !== null && isRunActive(shownRun))} onClick={() => void submitAnalyze('visual_only')}>举手与低头分析</button> : null}
@@ -557,20 +560,20 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                             write(scope, (base) => ({ ...base, mediaChoice: choice }));
                           }}
                         >
-                          <option value="__auto__">自动（优先刚上传的媒体）</option>
+                          <option value="__auto__">自动（刚上传录像 → 主录像 → 最近分析录像）</option>
                           <option value="__primary__">
                             使用课堂当前主媒体{session.primary_media_asset_id === null ? '（当前没有）' : ''}
                           </option>
                           {sourceMedia.map((item) => (
                             <option key={item.id} value={item.id}>
-                              {shortId(item.id)} · 原媒体 · {item.status}
-                              {item.allowed_actions.length === 0 ? ' · 无可用途' : ` · ${item.allowed_actions.join('/')}`}
+                              {shortId(item.id)} · 原录像 · {mediaStatusBadge(item.status).label}
+                              {item.allowed_actions.length === 0 ? ' · 暂不可操作' : ''}
                             </option>
                           ))}
                         </select>
                       </label>
                     ) : media.status === 'ready' ? (
-                      <p className="load-note">该课堂还没有可选的原媒体，先上传录像。</p>
+                      <p className="load-note">{media.data.nextCursor !== null ? '已加载页面尚未找到原录像，请点击“加载更多”继续查找。' : '该课堂还没有可选的原录像，先上传录像。'}</p>
                     ) : null}
                     {mediaTarget === null ? (
                       <p className="load-note">{sourceMedia.length > 0 ? '请在“处理目标媒体”中选择已上传的录像，或上传新的录像。' : '请先上传录像。'}</p>
@@ -692,10 +695,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
             )
           ) : null}
 
-          {tab === 'visual' ? api ? <VisualPanel key={scope} sessionId={session.id} currentRun={shownRun} /> : <Card title="视觉观察"><p className="empty">当前是固定样例模式，请连接团队后端后上传录像进行视觉分析。</p></Card> : null}
+          {tab === 'visual' ? api ? <VisualPanel key={scope} sessionId={session.id} currentRun={shownRun} onReplayMedia={mediaId => { setReplayChoice({ scope, mediaId }); setTab('playback'); }} /> : <Card title="视觉观察"><p className="empty">当前是固定样例模式，请连接团队后端后上传录像进行视觉分析。</p></Card> : null}
 
           {tab === 'playback' ? (
-                <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList={session.primary_media_asset_id === null} />
+                <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList onSelectMedia={mediaId => setReplayChoice({ scope, mediaId })} />
           ) : null}
         </>
       )}

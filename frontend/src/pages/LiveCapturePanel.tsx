@@ -43,6 +43,11 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   const [pairing, setPairing] = useState<CapturePairing | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [captureLoading, setCaptureLoading] = useState(true);
+  const [captureUnavailable, setCaptureUnavailable] = useState(false);
+  const [reload, setReload] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -67,21 +72,24 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   useEffect(() => {
     if (!enabled) return;
     let current = true;
-    setError(null);
-    void Promise.all([
-      verifiedSources(session.id),
-      getActiveLiveCapture(session.id).catch((reason: unknown) => {
-        if (reason instanceof ApiError && reason.status === 404) return null;
-        throw reason;
-      }),
-    ]).then(([verified, active]) => {
+    setError(null); setSourceError(null); setSources([]); setSourceId(''); setCapture(null);
+    setSourcesLoading(true); setCaptureLoading(true); setCaptureUnavailable(false);
+    void verifiedSources(session.id).then(verified => {
       if (!current) return;
       setSources(verified);
-      setSourceId((value) => value || verified[0]?.id || '');
-      setCapture(active);
-    }).catch((reason: unknown) => { if (current) setError(describeError(reason)); });
+      setSourceId(verified[0]?.id || '');
+    }).catch((reason: unknown) => { if (current) setSourceError(describeError(reason)); })
+      .finally(() => { if (current) setSourcesLoading(false); });
+    void getActiveLiveCapture(session.id).then(active => { if (current) setCapture(active); })
+      .catch((reason: unknown) => {
+        if (!current || (reason instanceof ApiError && reason.status === 404)) return;
+        setCaptureUnavailable(true);
+        setError(reason instanceof ApiError && reason.status === 503
+          ? '实时采集服务尚未启用或暂时不可用。已登记的录像来源仍可正常使用；手机采集需要部署者启用媒体服务和可信 HTTPS。'
+          : `无法读取采集状态：${describeError(reason)}`);
+      }).finally(() => { if (current) setCaptureLoading(false); });
     return () => { current = false; };
-  }, [enabled, session.id]);
+  }, [enabled, session.id, reload]);
 
   useEffect(() => {
     if (!enabled || pollStopped || capture === null || terminal(capture)) return;
@@ -175,14 +183,14 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
           <div className="capture-create">
             <label className="account-field">
               <span>已核验来源</span>
-              <select value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
-                {sources.length === 0 ? <option value="">没有可用来源</option> : sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}
+              <select value={sourceId} disabled={sourcesLoading || sourceError !== null} onChange={(event) => setSourceId(event.target.value)}>
+                {sources.length === 0 ? <option value="">{sourcesLoading ? '正在读取来源…' : sourceError ? '来源读取失败' : '没有已核验且允许回放的来源'}</option> : sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}
               </select>
             </label>
-            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || sourceId === '' || !session.allowed_actions.includes('upload')} onClick={() => void start()}>
+            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || captureLoading || captureUnavailable || sourceId === '' || !session.allowed_actions.includes('upload')} onClick={() => void start()}>
               创建实时采集
             </button>
-            <p className="field-hint">创建权限由服务端再次校验；页面不会把普通观看权限当作采集权限。</p>
+            <p className="field-hint">在“素材与来源”登记并核验本节课堂的来源，再创建采集。手机采集与上传已有录像可以使用同一项合法来源。</p>
           </div>
         ) : (
           <>
@@ -204,6 +212,8 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
         )}
         {pairing === null ? null : <div className="capture-pairing"><strong>手机配对链接</strong><a href={pairing.phone_url} target="_blank" rel="noreferrer">{pairing.phone_url}</a><span>有效至 {formatDateTime(pairing.expires_at)}</span><button type="button" className="btn btn-secondary" onClick={() => void navigator.clipboard.writeText(pairing.phone_url).then(() => setNotice('配对链接已复制。')).catch(() => setError('浏览器拒绝复制，请手动选择链接。'))}>复制链接</button></div>}
         {error === null ? null : <p className="notice-strip load-note-error">{error}</p>}
+        {sourceError === null ? null : <p role="alert" className="notice-strip load-note-error">来源读取失败：{sourceError}</p>}
+        {(sourceError !== null || captureUnavailable) && <button type="button" className="btn btn-secondary" disabled={sourcesLoading || captureLoading || busy} onClick={() => setReload(value => value + 1)}>重新检查来源与采集服务</button>}
         {notice === null ? null : <p className="notice-strip">{notice}</p>}
         {capture?.error_code == null ? null : <p className="notice-strip load-note-error">采集失败：{capture.error_code}{capture.end_reason === null ? '' : ` · ${capture.end_reason}`}</p>}
         {capture === null ? null : <TechDetails><ul className="tech-list"><li className="mono">live_capture.id = {capture.id}</li><li className="mono">media_asset_id = {capture.media_asset_id ?? 'null'}</li><li className="mono">media_prepare_run_id = {capture.media_prepare_run_id ?? 'null'}</li><li className="mono">allowed_actions = [{capture.allowed_actions.join(', ')}]</li></ul></TechDetails>}
@@ -217,7 +227,7 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
         {!watching ? <p className="empty">尚未建立观看连接。手机可以继续录像，观看状态与录像状态相互独立。</p> : null}
       </Card>
       <Card title="课后分析" subtitle="实时采集只负责录像；转写、关键帧和报告仍走课后分析。">
-        <p className="muted">录像 ready 后选择“用此录像继续处理”，再到“批次与操作”提交完整分析。当前正式契约没有 OCR 与行为字段，不展示模拟算法结果。</p>
+        <p className="muted">录像就绪后选择“用此录像继续处理”，再到“批次与操作”选择“举手与低头分析”。需要转写和六维教学报告时选择“完整分析”，这需要先配置语音与报告模型。实时观看阶段不会自动识别动作。</p>
       </Card>
     </div>
   );

@@ -22,7 +22,7 @@ function ObservationBoxes({ boxes, selected }: { boxes: PersonBox[]; selected: s
 }
 
 /** The existing classroom page gains one tab; navigation and existing panels stay intact. */
-export function VisualPanel({ sessionId, currentRun }: { sessionId: string; currentRun: Run | null }): ReactElement {
+export function VisualPanel({ sessionId, currentRun, onReplayMedia }: { sessionId: string; currentRun: Run | null; onReplayMedia?(mediaId: string): void }): ReactElement {
   const [history, setHistory] = useState<Run[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -53,11 +53,11 @@ export function VisualPanel({ sessionId, currentRun }: { sessionId: string; curr
       {run && run.status !== 'succeeded' && <><StageFlow run={run} /><p className="load-note">{run.status === 'queued' || run.status === 'running' ? '正在分析。完成后会自动显示结果；可以先切换标签查看其他内容。' : '本次分析未完成，没有可展示的完整结果。请回到“批次与操作”查看原因或重试。'}</p></>}
       {polling.error && <p role="alert">{polling.error}</p>}
     </Card>
-    {run?.status === 'succeeded' && <VisualResults key={run.id} run={run} />}
+    {run?.status === 'succeeded' && <VisualResults key={run.id} run={run} onReplayMedia={onReplayMedia} />}
   </>;
 }
 
-function VisualResults({ run }: { run: Run }): ReactElement {
+function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((mediaId: string) => void) | undefined }): ReactElement {
   const [summary, setSummary] = useState<VisualSummary | null>(null);
   const [people, setPeople] = useState<VisualPerson[]>([]);
   const [peopleCursor, setPeopleCursor] = useState<string | null>(null);
@@ -164,6 +164,9 @@ function VisualResults({ run }: { run: Run }): ReactElement {
       <p className="load-note">低头可能是在阅读或书写；这些观察需要结合教学内容核对，不直接评价学生是否认真。</p>
     </Card>
     <Card title="按人物查看与回放" subtitle="编号只属于本次录像。选中人物不会改变行为颜色：红色举手，蓝色低头，绿色未见这两种动作，灰色看不清。">
+      <p className="load-note">正在查看分析 {run.id.slice(0, 8)} 对应的录像（编号 {run.media_asset_id.slice(0, 8)}）。同一课堂上传多份录像时，每条分析仍保留自己的录像。
+        {media?.playback_url && onReplayMedia && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onReplayMedia(run.media_asset_id)}>在回放中打开此录像</button>}
+      </p>
       {error && <p role="alert" className="load-note load-note-error">{error}</p>}
       <label className="check-row"><input type="checkbox" checked={showAll} disabled={!hasPlayer && !showAll} onChange={e => setShowAll(e.target.checked)} />显示所有人物框</label>
       {showAll && allBusy && <p className="load-note" role="status">正在读取全班画框{allProgress.total ? `：已完成 ${allProgress.completed}/${allProgress.total} 个编号` : '…'}；读取完成前暂时只显示选中人物。</p>}
