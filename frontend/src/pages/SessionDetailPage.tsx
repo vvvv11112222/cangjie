@@ -525,6 +525,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
               </Card>
 
               <Card title="下一步：上传或选择分析" subtitle="举手与低头识别查看画面；语音转写与教学报告处理带声音的录像。上传成功后不会自动调用模型。">
+                <p className="field-hint">综合报告会采用课程与课表登记、语音文字，以及这段录像已完成的举手和低头结果。需要综合学生动作时，请先完成“举手与低头识别”，再生成报告；已有转写可在“转写”中直接生成新报告，无需重复识别语音。</p>
                 {api && <ServiceChecklist data={services.data} error={services.error} onReload={()=>{services.reload();targetSource.reload();selectedDetail.reload();media.reload();}}/>}
                 {mediaTarget === null ? <p className="onboarding-next">还没有选择录像。请先点击“上传录像”，在同一区域登记或选择来源。</p> : targetSource.data && !mediaAllows('analyze') ? <p className="onboarding-next">{targetSource.data.rights_status !== 'verified' ? '录像来源尚未通过核验。' : !targetSource.data.allowed_uses.includes('analysis') ? '该来源尚未获准分析用途。未申请过该用途时，需要重新登记来源。' : '当前录像状态或当前账号授权暂不允许分析。'}请联系学院教务或系统管理员处理。<a href={`#/sources?session=${session.id}`}>前往这节课堂的来源登记与核验</a></p> : null}
                 {targetMedia && !targetSource.data && <div className="field-hint">正在确认录像来源与云端处理许可。{targetSource.error && <>读取失败，请重新检查。<TechDetails><p>{targetSource.error}</p></TechDetails></>}</div>}

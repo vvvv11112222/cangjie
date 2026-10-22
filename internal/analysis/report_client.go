@@ -11,6 +11,7 @@ import (
 )
 
 type modelEvidence struct {
+	ContextOnly bool `json:"context_only,omitempty"`
 	ID          string `json:"id"`
 	Kind        string `json:"kind"`
 	StartMS     int64  `json:"start_ms"`

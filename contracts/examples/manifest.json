@@ -291,6 +291,16 @@
       "file": "invalid-media-display-name-path.json",
       "definition": "Media",
       "valid": false
+    },
+    {
+      "file": "report-comprehensive.json",
+      "definition": "Report",
+      "valid": true
+    },
+    {
+      "file": "model-input-comprehensive.json",
+      "definition": "ModelInput",
+      "valid": true
     }
   ],
   "case_sets": [

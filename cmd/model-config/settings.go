@@ -105,7 +105,7 @@ func prepareSettings(demo map[string]string, p pricing) (map[string]string, erro
 	if strings.TrimSpace(demo["DASHSCOPE_API_KEY"]) == "" {
 		return nil, errors.New("指定 demo 配置没有 DASHSCOPE_API_KEY")
 	}
-	_, promptSHA, err := analysis.ReportPrompt(analysis.TeacherPromptVersion)
+	_, promptSHA, err := analysis.ReportPrompt(analysis.ComprehensivePromptVersion)
 	if err != nil {
 		return nil, errors.New("无法读取内置报告模板")
 	}
@@ -121,7 +121,7 @@ func prepareSettings(demo map[string]string, p pricing) (map[string]string, erro
 		"ASR_PRICE_VERSION": p.Version, "ASR_INPUT_PRICE_MICROS": strconv.FormatInt(asrInput, 10),
 		"ASR_OUTPUT_PRICE_MICROS": strconv.FormatInt(asrOutput, 10), "ASR_MAX_INPUT_TOKENS": "32768", "ASR_MAX_OUTPUT_TOKENS": "4096",
 		"REPORT_API_BASE": base, "REPORT_API_KEY": demo["DASHSCOPE_API_KEY"], "REPORT_MODEL": p.ReportModel, "REPORT_MODEL_REVISION": p.ReportRevision,
-		"REPORT_PROMPT_VERSION": analysis.TeacherPromptVersion, "REPORT_PROMPT_SHA256": promptSHA,
+		"REPORT_PROMPT_VERSION": analysis.ComprehensivePromptVersion, "REPORT_PROMPT_SHA256": promptSHA,
 		"REPORT_SELECTION_VERSION": "time-window-v1", "REPORT_MAX_INPUT_TOKENS": "8000", "REPORT_MAX_OUTPUT_TOKENS": "6000",
 		"MODEL_BUDGET_CURRENCY": "CNY", "MODEL_BUDGET_TIMEZONE": "Asia/Shanghai", "MODEL_MONTHLY_BUDGET": p.MonthlyBudget,
 		"MODEL_PRICE_VERSION": p.Version, "MODEL_INPUT_PRICE_PER_MILLION": p.ReportInput, "MODEL_OUTPUT_PRICE_PER_MILLION": p.ReportOutput,

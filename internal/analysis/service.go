@@ -44,18 +44,19 @@ type mediaLimits struct {
 }
 
 type reportSnapshot struct {
-	Enabled           bool   `json:"enabled"`
-	Model             Model  `json:"model"`
-	PromptVersion     string `json:"prompt_version"`
-	PromptSHA256      string `json:"prompt_sha256"`
-	SelectionVersion  string `json:"selection_version"`
-	SystemPrompt      string `json:"system_prompt"`
-	MaxInputTokens    int    `json:"max_input_tokens"`
-	MaxOutputTokens   int    `json:"max_output_tokens"`
-	PriceVersion      string `json:"price_version"`
-	Currency          string `json:"currency"`
-	InputPriceMicros  int64  `json:"input_price_micros"`
-	OutputPriceMicros int64  `json:"output_price_micros"`
+	Context           *reportContextSnapshot `json:"classroom_context,omitempty"`
+	Enabled           bool                   `json:"enabled"`
+	Model             Model                  `json:"model"`
+	PromptVersion     string                 `json:"prompt_version"`
+	PromptSHA256      string                 `json:"prompt_sha256"`
+	SelectionVersion  string                 `json:"selection_version"`
+	SystemPrompt      string                 `json:"system_prompt"`
+	MaxInputTokens    int                    `json:"max_input_tokens"`
+	MaxOutputTokens   int                    `json:"max_output_tokens"`
+	PriceVersion      string                 `json:"price_version"`
+	Currency          string                 `json:"currency"`
+	InputPriceMicros  int64                  `json:"input_price_micros"`
+	OutputPriceMicros int64                  `json:"output_price_micros"`
 }
 
 func NewService(pool *pgxpool.Pool, store storage.Backend, cfg Config) *Service {
@@ -182,6 +183,12 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	snap := s.newSnapshot(in.Mode)
 	snap.InputTranscriptRevision = in.InputTranscriptRevision
 	snap.InputTranscriptSHA256 = revisionSHA
+	if snap.Report.Enabled && snap.Report.PromptVersion == ComprehensivePromptVersion && (in.Mode == "full" || in.Mode == "report_only") {
+		snap.Report.Context, err = s.captureReportContext(ctx, tx, sessionID, in.MediaAssetID, inputSHA)
+		if err != nil {
+			return Run{}, false, err
+		}
+	}
 	snapshotJSON, _ := json.Marshal(snap)
 	configHash := digestBytes(snapshotJSON)
 	var runID string
@@ -1552,7 +1559,7 @@ func (s *Service) reportConfigForRun(ctx context.Context, runID string) (reportS
 	if snap.Report.Enabled && (snap.Report.Model.Name == "" || snap.Report.Model.Revision == "" || snap.Report.SystemPrompt == "" || snap.Report.MaxInputTokens <= 0 || snap.Report.MaxOutputTokens <= 0) {
 		return reportSnapshot{}, fmt.Errorf("analysis run is missing pinned report configuration")
 	}
-	if snap.Report.Enabled && snap.Report.PromptVersion == TeacherPromptVersion && digestBytes([]byte(snap.Report.SystemPrompt)) != snap.Report.PromptSHA256 {
+	if snap.Report.Enabled && (snap.Report.PromptVersion == TeacherPromptVersion || snap.Report.PromptVersion == ComprehensivePromptVersion) && digestBytes([]byte(snap.Report.SystemPrompt)) != snap.Report.PromptSHA256 {
 		return reportSnapshot{}, fmt.Errorf("analysis run report prompt digest does not match its pinned text")
 	}
 	return snap.Report, nil

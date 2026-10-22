@@ -5,6 +5,7 @@ describe('错误码到提示文案', () => {
   it('协议里列出的错误码都有中文提示', () => {
     for (const code of [
       'INVALID_ARGUMENT',
+      'INVALID_REPORT',
       'UNAUTHENTICATED',
       'FORBIDDEN',
       'NOT_FOUND',
@@ -19,6 +20,12 @@ describe('错误码到提示文案', () => {
 
   it('未收录的错误码给出兜底提示而不是空白', () => {
     expect(errorCodeText('SOMETHING_NEW')).toContain('SOMETHING_NEW');
+  });
+
+  it('explains the remaining review steps without showing an unknown-code error', () => {
+    const error = new ApiError({ code: 'INVALID_REPORT', status: 422, details: { unreviewed_count: 3 } });
+    expect(describeError(error)).toContain('还有 3 条观察未复核');
+    expect(describeError(error)).not.toContain('未收录');
   });
 
   it('describeError 对服务端错误同时给出提示和错误码', () => {

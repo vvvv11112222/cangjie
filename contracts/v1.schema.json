@@ -1736,6 +1736,26 @@
     "ReportProvenance": {
       "type": "object",
       "properties": {
+        "included_materials": {
+          "type": "object",
+          "properties": {
+            "academic_schedule": {
+              "type": "boolean"
+            },
+            "speech": {
+              "type": "boolean"
+            },
+            "visual": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "academic_schedule",
+            "speech",
+            "visual"
+          ],
+          "additionalProperties": false
+        },
         "media_asset_id": {
           "type": "string",
           "format": "uuid"
@@ -4830,6 +4850,48 @@
             "session_title": {
               "type": "string",
               "minLength": 1
+            },
+            "course_description": {
+              "type": "string"
+            },
+            "teacher_name": {
+              "type": "string"
+            },
+            "class_name": {
+              "type": "string"
+            },
+            "expected_class_size": {
+              "type": "string"
+            },
+            "term_name": {
+              "type": "string"
+            },
+            "offering_code": {
+              "type": "string"
+            },
+            "organization_name": {
+              "type": "string"
+            },
+            "planned_start_at": {
+              "type": "string"
+            },
+            "planned_end_at": {
+              "type": "string"
+            },
+            "schedule_start_at": {
+              "type": "string"
+            },
+            "schedule_end_at": {
+              "type": "string"
+            },
+            "schedule_status": {
+              "type": "string"
+            },
+            "classroom_name": {
+              "type": "string"
+            },
+            "context_note": {
+              "type": "string"
             }
           },
           "required": [
@@ -4865,7 +4927,8 @@
               "kind": {
                 "enum": [
                   "transcript",
-                  "manual"
+                  "manual",
+                  "behavior"
                 ]
               },
               "start_ms": {
@@ -4883,6 +4946,9 @@
               "text_sha256": {
                 "type": "string",
                 "pattern": "^[a-f0-9]{64}$"
+              },
+              "context_only": {
+                "type": "boolean"
               }
             },
             "required": [

@@ -199,7 +199,7 @@ it('loads evidence and disclosures for the selected report run and discards late
 });
 
 it('refreshes publication state across tab reentry and after withdrawal', async () => {
-  const a: Report = { ...reportFixture, status: 'in_review', allowed_actions: ['publish'] };
+  const a: Report = { ...reportFixture, status: 'in_review', allowed_actions: ['publish'], content_sha256: 'confirmed-content', reviewed_content_sha256: 'confirmed-content', observations: reportFixture.observations.map(item => ({ ...item, review_status: 'accepted' })) };
   const b: Report = { ...a, id: 'report-b', revision: 2 };
   reports = [a, b]; let current: string | null = null;
   h.publishReport.mockImplementation(async (id, input) => {
@@ -220,6 +220,23 @@ it('refreshes publication state across tab reentry and after withdrawal', async 
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '撤回测试'); input.dispatchEvent(new Event('input', { bubbles: true })); });
   await click('撤回报告'); expect(refresh).toHaveBeenCalledTimes(3);
   expect(container.textContent).not.toContain('导出当前发布版');
+});
+
+it('requires observation review before whole confirmation, and whole confirmation before publication', async () => {
+  const reviewable: Report = { ...reportFixture, status: 'in_review', content_sha256: 'current-content', reviewed_content_sha256: null, allowed_actions: ['review', 'confirm_report', 'publish'], observations: reportFixture.observations.map(item => ({ ...item, review_status: 'unreviewed' })) };
+  reports = [reviewable];
+  await mount(<ReportWorkflowPanel session={session} initial={reviewable}/>);
+  const input = container.querySelector('.workflow-toolbar input')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '已核对依据'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(button('确认整篇内容').disabled).toBe(true);
+  expect(button('发布报告').disabled).toBe(true);
+  const reviewed: Report = { ...reviewable, observations: reviewable.observations.map(item => ({ ...item, review_status: 'accepted' })) };
+  reports = [reviewed]; await mount(<ReportWorkflowPanel session={session} initial={reviewed}/>);
+  expect(button('确认整篇内容').disabled).toBe(false);
+  expect(button('发布报告').disabled).toBe(true);
+  const confirmed = { ...reviewed, reviewed_content_sha256: reviewed.content_sha256 };
+  reports = [confirmed]; await mount(<ReportWorkflowPanel session={session} initial={confirmed}/>);
+  expect(button('发布报告').disabled).toBe(false);
 });
 
 it.each(['report', 'revision', 'source'])('loads beyond ten pages of %s data', async (kind) => {

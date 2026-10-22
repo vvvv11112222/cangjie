@@ -27,6 +27,7 @@ export type ApiErrorCode =
   | 'RANGE_NOT_SATISFIABLE'
   | 'TIMELINE_INVALID'
   | 'INVALID_RESULT'
+  | 'INVALID_REPORT'
   | 'EVIDENCE_UNAVAILABLE'
   | 'TOO_MANY_REQUESTS'
   | 'SERVICE_UNAVAILABLE'
@@ -95,6 +96,7 @@ const CODE_TEXT: Partial<Record<ApiErrorCode, string>> = {
   RANGE_NOT_SATISFIABLE: '请求的播放区间无效。',
   TIMELINE_INVALID: '时间轴无法映射到原录像，处理被拒绝。',
   INVALID_RESULT: '结果与任务或来源关联不一致，服务端拒绝了本次提交。',
+  INVALID_REPORT: '报告尚未满足确认或发布条件。请先逐条处理观察，再确认整篇内容；内容修改后需要重新确认。',
   EVIDENCE_UNAVAILABLE: '引用的证据已不可用。',
   TOO_MANY_REQUESTS: '请求过于频繁，请稍后再试。',
   SERVICE_UNAVAILABLE: '服务暂时不可用。请重新检查服务状态；持续失败时联系系统管理员。',
@@ -120,6 +122,9 @@ export function errorCodeText(code: string): string {
  */
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'INVALID_REPORT' && Number.isSafeInteger(error.details['unreviewed_count']) && Number(error.details['unreviewed_count']) > 0) {
+      return `还有 ${error.details['unreviewed_count']} 条观察未复核。请逐条选择“确认”“确认已修正”或“驳回”，完成后再确认整篇内容。`;
+    }
     // status 0 表示错误由前端本地产生（例如"当前账号没有可见批次"），
     // message 已经是写给用户看的中文说明，直接使用。
     const localText =

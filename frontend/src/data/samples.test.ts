@@ -19,6 +19,12 @@ import { buildReportView, buildSessionTasks, buildTranscriptView } from './viewM
 import reportDraft from '../../../contracts/examples/report-draft.json';
 
 describe('固定样例解析', () => {
+  it('reads optional comprehensive material flags while retaining older report compatibility', () => {
+    const source = { ...reportDraft, provenance: { ...reportDraft.provenance, included_materials: { academic_schedule: true, speech: true, visual: false } } };
+    expect(parseReport(source).provenance?.included_materials?.speech).toBe(true);
+    expect(parseReport(reportDraft).provenance?.included_materials).toBeUndefined();
+    expect(() => parseReport({ ...source, provenance: { ...source.provenance, included_materials: { ...source.provenance.included_materials, visual: 'true' } } })).toThrow();
+  });
   it('支持独立视觉任务而不要求教学报告', () => {
     const visual = parseRun({ ...run, mode: 'visual_only', stage_plan: ['probe', 'video_analysis'],
       jobs: run.jobs.filter(job => ['probe', 'video_analysis'].includes(job.stage)), report_id: null });

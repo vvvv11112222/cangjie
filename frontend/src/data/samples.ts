@@ -203,7 +203,13 @@ function parseObservation(source: Record<string, unknown>, path: string): Observ
 function parseProvenance(source: Record<string, unknown>, path: string): ReportProvenance {
   const model = asRecord(source['model'], `${path}.model`);
   const origin = asRecord(source['source'], `${path}.source`);
+  const materials = source['included_materials'] === undefined ? undefined : asRecord(source['included_materials'], `${path}.included_materials`);
   return {
+    ...(materials === undefined ? {} : { included_materials: {
+      academic_schedule: asBoolean(materials, 'academic_schedule', `${path}.included_materials`),
+      speech: asBoolean(materials, 'speech', `${path}.included_materials`),
+      visual: asBoolean(materials, 'visual', `${path}.included_materials`),
+    } }),
     media_asset_id: asString(source, 'media_asset_id', path),
     input_sha256: asString(source, 'input_sha256', path),
     transcript_revision_id: asNullableString(source, 'transcript_revision_id', path),
