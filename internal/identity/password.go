@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
@@ -24,7 +25,7 @@ func (s *Service) ChangePassword(ctx context.Context, actor Principal, input Cha
 	return s.updatePassword(ctx, actor, actor.UserID, input.CurrentPassword, input.NewPassword, false)
 }
 func (s *Service) ResetPassword(ctx context.Context, actor Principal, id string, input ResetPassword) error {
-	if actor.UserID == id {
+	if strings.EqualFold(actor.UserID, id) {
 		return apperror.New(http.StatusBadRequest, "INVALID_ARGUMENT", "use self-service password change")
 	}
 	if !actor.Has("sys_admin") && !actor.Has("academic_admin") {

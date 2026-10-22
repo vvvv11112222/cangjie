@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,6 +102,9 @@ func TestManagementDeletionAndPasswords(t *testing.T) {
 	remove("class-groups", otherGroup, http.StatusNoContent)
 	remove("org-units", other, http.StatusNoContent)
 	// Incorrect current password and cross-scope resets cannot change credentials.
+	for _, id := range []string{adminID, strings.ToUpper(adminID)} {
+		requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/users/"+id+"/password", map[string]any{"new_password": "cannot-bypass-old-password-123"}, csrf, http.StatusBadRequest)
+	}
 	change := server.URL + "/api/v1/auth/password"
 	requestJSON(t, teacher, http.MethodPost, change, map[string]any{"current_password": "wrong", "new_password": "new-test-password-123"}, teacherCSRF, http.StatusBadRequest)
 	requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/users/"+adminID+"/password", map[string]any{"new_password": "new-test-password-123"}, academicCSRF, http.StatusNotFound)
