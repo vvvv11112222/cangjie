@@ -40,6 +40,55 @@ import { SessionListPage } from './SessionListPage';
 import { App } from '../App';
 import { AcademicPage } from './AcademicPage';
 
+it('a direct offering link opens the correct academic tab', async () => {
+  window.history.replaceState(null, '', '#/academic?tab=offerings');
+  await mount(<AcademicPage/>);
+  expect(container.querySelector('.academic-toolbar .tab.active')?.textContent).toBe('开课实例');
+  expect(container.textContent).toContain('新增开课实例');
+  window.history.replaceState(null, '', '#/academic');
+});
+
+it('opens the read-only role permission matrix and can collapse it', async () => {
+  await mount(<AccountsPage/>); await click('查看角色权限');
+  expect(container.textContent).toContain('角色权限对照表');
+  const matrix = container.querySelector('table caption')?.closest('table');
+  expect(matrix?.textContent).toContain('上传录像、提交或取消分析');
+  expect(matrix?.querySelectorAll('thead th')).toHaveLength(5);
+  expect(matrix?.querySelector('input[type="checkbox"]')).toBeNull();
+  await click('收起权限对照表'); expect(container.textContent).not.toContain('角色权限对照表');
+});
+
+it('creates a typed course and reuses it if saving the offering fails', async () => {
+  let savedCourse: Record<string, string> | null = null;
+  h.m1.mockImplementation(async kind => ({ items: kind === 'courses' && savedCourse ? [savedCourse] : [], next_cursor: null }));
+  h.writeAcademic.mockImplementation(async (kind: string, input: Record<string, string>) => {
+    if (kind === 'course') { savedCourse = { ...input, id: 'new-course' }; return savedCourse; }
+    throw new Error('合成教师范围错误');
+  });
+  await mount(<AcademicPage/>); await click('开课实例'); await click('新增开课实例'); await click('输入新课程名称');
+  const form = container.querySelector('form')!;
+  await fill(form.querySelector('[name="new_course_name"]')!, '操作系统');
+  await fill(form.querySelector('[name="new_course_code"]')!, 'OS-001');
+  await fill(form.querySelector('[name="code"]')!, 'OS-2026');
+  // Synthetic option data is deliberately minimal; supply the selected org.
+  await select(form.querySelector('[name="org_unit_id"]')!, 'college');
+  await submit();
+  expect(container.textContent).toContain('课程已保存，开课尚未保存');
+  expect(form.querySelector<HTMLInputElement>('[name="new_course_name"]')?.value).toBe('操作系统');
+  await submit();
+  expect(h.writeAcademic.mock.calls.filter(call => call[0] === 'course')).toHaveLength(1);
+  expect(h.writeAcademic.mock.calls.filter(call => call[0] === 'offering')).toHaveLength(2);
+  expect(h.writeAcademic.mock.calls.find(call => call[0] === 'course')?.[1]).toMatchObject({ name: '操作系统', code: 'OS-001', org_unit_id: 'college' });
+});
+
+it('academic administrators can choose teacher/supervisor grants without seeing system-wide role choices', async () => {
+  h.auth = { ...h.auth, me: { ...h.auth.me!, roles: [{ id: 'academic-role', role_code: 'academic_admin', scope_org_id: 'college' }] } };
+  await mount(<AccountsPage/>); await click('账号资料 / 授予新角色');
+  const options = [...container.querySelectorAll('form select')][2]!.querySelectorAll('option');
+  expect([...options].map(option => option.value)).toEqual(['', 'supervisor', 'teacher']);
+  expect(container.textContent).toContain('暂不支持自定义角色或逐项勾选功能');
+});
+
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const run = { id: 'run-a', session_id: 'A', mode: 'full', status: 'running', jobs: [], stage_plan: [], error_code: null, limitations: [], allowed_actions: [] } as unknown as Run;
@@ -82,7 +131,7 @@ it('latest task reaches terminal state and stops polling despite the original cl
   expect(h.getRun).toHaveBeenCalledTimes(1);
 });
 
-it.each([401, 403, 410])('stops polling after HTTP %s and keeps the reason visible', async status => {
+it.each([401, 403, 404, 410])('stops polling after HTTP %s and keeps the reason visible', async status => {
   vi.useFakeTimers(); h.getRun.mockRejectedValue(new ApiError({ code: 'FORBIDDEN', status, message: 'forbidden' }));
   await mount(<TasksPage/>);
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
@@ -144,8 +193,29 @@ it('keeps the selected classroom after a source read failure and retries in plac
   await mount(<SourcesPage/>); await select(classroomSelect(), 'A');
   expect(classroomSelect().value).toBe('A');
   expect(container.textContent).toContain('重新读取素材');
+  expect(container.textContent).not.toContain('该课堂尚未登记素材');
   await click('重新读取素材');
   expect(container.textContent).toContain('来源 A');
+});
+
+it('switching the source to verify clears the previous source reason', async () => {
+  h.listSources.mockResolvedValue({ items: [source('A'), { ...source('A'), id: 'A-source-2', title: '第二段录像' }], next_cursor: null });
+  await mount(<SourcesPage/>); await select(classroomSelect(), 'A'); await click('核验');
+  const reason = container.querySelector<HTMLInputElement>('input[name="reason"]')!;
+  await fill(reason, '仅适用于第一段录像的许可');
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>('tbody button')].filter(node => node.textContent === '核验')[1]!.click());
+  expect(container.querySelector<HTMLInputElement>('input[name="reason"]')?.value).toBe('');
+  expect(container.querySelector('.source-form')?.closest('.card')?.textContent).toContain('第二段录像');
+});
+
+it('does not claim no analysis tasks when history cannot be read, and retries in place', async () => {
+  h.loaded.data.tasks = [{ ...h.loaded.data.tasks[0]!, session: session('A'), run: null }];
+  h.listRuns.mockRejectedValueOnce(new Error('temporary history failure')).mockResolvedValue({ items: [{ ...run, status: 'succeeded' }], next_cursor: null });
+  await mount(<TasksPage/>);
+  expect(container.textContent).not.toContain('当前没有分析任务');
+  await click('重试读取分析历史');
+  expect(container.textContent).toContain('已完成');
+  expect(container.textContent).not.toContain('temporary history failure');
 });
 
 it('keeps loaded accounts visible when refresh fails and allows retry', async () => {
@@ -291,7 +361,7 @@ it('loads all academic pages, exports the final row, filters the week, and clear
   const rows = Array.from({ length: 101 }, (_, index) => ({ id: `schedule-${index}`, offering_id: 'offering', classroom_id: 'room', teacher_id: user.id, class_group_id: 'group', starts_at: '2026-10-16T00:00:00Z', ends_at: '2026-10-16T01:00:00Z', status: index === 100 ? 'last-row' : 'active' }));
   h.m1.mockImplementation(async (kind: string, cursor?: string) => {
     if (kind === 'schedules') return { items: cursor ? rows.slice(100) : rows.slice(0, 100), next_cursor: cursor ? null : 'page-2' };
-    if (kind === 'courses') return { items: [{ id: 'course', name: '私有课程' }], next_cursor: null };
+    if (kind === 'courses') return { items: [{ id: 'course', name: '=1+1' }], next_cursor: null };
     if (kind === 'offerings') return { items: [{ id: 'offering', course_id: 'course', code: 'C1' }], next_cursor: null };
     return { items: [], next_cursor: null };
   });
@@ -311,9 +381,36 @@ it('loads all academic pages, exports the final row, filters the week, and clear
     await click('导出课表 CSV');
     const csv = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsText(csvBlob!); });
     expect(csv).toContain('last-row'); expect(csv.split('\r\n')).toHaveLength(102);
+    expect(csv).toContain('"\'=1+1"');
   } finally { clickAnchor.mockRestore(); }
   h.auth = { ...h.auth, status: 'anonymous', me: null, capabilities: [], sessionKey: 'anonymous#2' };
-  await mount(<App/>); expect(container.textContent).not.toContain('私有课程'); expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
+  await mount(<App/>); expect(container.textContent).not.toContain('=1+1'); expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
+});
+
+it('locks academic navigation and other row edits while a save is pending', async () => {
+  h.m1.mockImplementation(async kind => ({ items: kind === 'courses' ? [
+    { id: 'c1', name: '课程一', code: 'C1', org_unit_id: 'college', description: '' },
+    { id: 'c2', name: '课程二', code: 'C2', org_unit_id: 'college', description: '' },
+  ] : [], next_cursor: null }));
+  const pending = deferred<unknown>(); h.writeAcademic.mockReturnValue(pending.promise);
+  await mount(<AcademicPage/>); await click('课程'); await click('编辑');
+  await submit();
+  expect(button('新增课程').disabled).toBe(true);
+  expect(button('开课实例').disabled).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>('tbody button')].every(node => node.disabled)).toBe(true);
+  await act(async () => pending.resolve({}));
+  expect(button('新增课程').disabled).toBe(false);
+});
+
+it('validates initial password UTF-8 bytes consistently with reset and backend', async () => {
+  h.createUser.mockResolvedValue({ ...user, id: 'new-user' });
+  await mount(<AccountsPage/>); await click('新增账号');
+  const form = container.querySelector('form')!;
+  await fill(form.querySelector('input[autocomplete="new-password"]')!, 'a'.repeat(73));
+  await submit(); expect(h.createUser).not.toHaveBeenCalled();
+  expect(container.textContent).toContain('12至72字节');
+  await fill(form.querySelector('input[autocomplete="new-password"]')!, '汉字密码');
+  await submit(); expect(h.createUser).toHaveBeenCalledTimes(1);
 });
 
 

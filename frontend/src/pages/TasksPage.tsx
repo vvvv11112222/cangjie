@@ -92,7 +92,7 @@ export function TasksPage(): ReactElement {
           if (result.status === 'fulfilled') delete next[id];
           else next[id] = {
             message: describeError(result.reason),
-            terminal: result.reason instanceof ApiError && [401, 403, 410].includes(result.reason.status ?? 0),
+            terminal: result.reason instanceof ApiError && [401, 403, 404, 410].includes(result.reason.status ?? 0),
           };
         });
         return next;
@@ -111,10 +111,26 @@ export function TasksPage(): ReactElement {
     try {
       const page = await listSessionRuns(sessionId, current.nextCursor);
       if (generation !== historyGeneration.current) return;
+      if (page.next_cursor === current.nextCursor) throw new Error('历史分页没有继续，请重试读取分析历史。');
       setHistory((all) => ({ ...all, [sessionId]: { items: mergeRuns(page.items, all[sessionId]?.items ?? []), nextCursor: page.next_cursor, loading: false, error: null } }));
     } catch (error) {
       if (generation !== historyGeneration.current) return;
       setHistory((all) => ({ ...all, [sessionId]: { ...(all[sessionId] ?? current), loading: false, error: describeError(error) } }));
+    }
+  }
+
+  async function retryHistory(sessionId: string): Promise<void> {
+    const current = history[sessionId];
+    if (!current || current.loading) return;
+    const generation = historyGeneration.current;
+    setHistory(all => ({ ...all, [sessionId]: { ...current, loading: true, error: null } }));
+    try {
+      const page = await listSessionRuns(sessionId);
+      if (generation !== historyGeneration.current) return;
+      setHistory(all => ({ ...all, [sessionId]: { items: mergeRuns(page.items, all[sessionId]?.items ?? []), nextCursor: page.next_cursor, loading: false, error: null } }));
+    } catch (cause) {
+      if (generation !== historyGeneration.current) return;
+      setHistory(all => ({ ...all, [sessionId]: { ...(all[sessionId] ?? current), loading: false, error: describeError(cause) } }));
     }
   }
 
@@ -159,12 +175,12 @@ export function TasksPage(): ReactElement {
     <div className="task-list">
       {visibleGroups.map(({ session, runs, state }) => <div className="task-group" key={session.id}>
         {runs.map((run) => runCard(session, run))}
-        {state?.error ? <p className="load-note load-note-error">{session.title} 的历史批次读取失败：{state.error}</p> : null}
+        {state?.error ? <p className="load-note load-note-error">{session.title} 的历史批次读取失败：{state.error} <button type="button" className="btn btn-secondary btn-sm" disabled={state.loading} onClick={() => void retryHistory(session.id)}>重试读取分析历史</button></p> : null}
         {state?.loading && runs.length === 0 ? <p className="load-note">正在读取“{session.title}”的分析历史…</p> : null}
         {state?.nextCursor ? <button className="btn btn-secondary btn-sm" type="button" disabled={state.loading} onClick={() => void loadMoreRuns(session.id)}>{state.loading ? '加载中…' : `加载“${session.title}”更早批次`}</button> : null}
       </div>)}
     </div>
-    {loaded.status === 'ready' && runCount === 0 && !visibleGroups.some(({ state }) => state?.loading) ? <section className="card"><EmptyState text="当前没有分析任务，可以从课堂档案上传录像并发起分析。"/></section> : null}
+    {loaded.status === 'ready' && runCount === 0 && !visibleGroups.some(({ state }) => state?.loading || state?.error || state?.nextCursor) ? <section className="card"><EmptyState text="当前没有分析任务，可以从课堂档案上传录像并发起分析。"/></section> : null}
     <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore}/>
   </div>;
 }

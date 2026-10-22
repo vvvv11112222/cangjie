@@ -1,19 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { SessionListPage } from './SessionListPage';
+import { SessionListPage, bucketOf } from './SessionListPage';
 import { SessionDetailPage } from './SessionDetailPage';
 import { TranscriptPage } from './TranscriptPage';
 import { ReportPage } from './ReportPage';
 import { TasksPage } from './TasksPage';
 import { SourcesPage } from './SourcesPage';
 import { DevicesPage } from './DevicesPage';
-import { PLANNED_PAGES, PlaceholderPage } from './PlaceholderPage';
+import { AuditPage } from './AuditPage';
 import { buildReportView, buildSessionTasks, buildTranscriptView } from '../data/viewModel';
 import type { ReportView, SessionTaskView } from '../data/viewModel';
 import type { ReportAction, SessionAction } from '../types';
 import { fixtures } from '../data/samples';
 
 describe('三个页面的固定样例渲染', () => {
+  it('有视觉分析的课堂不能误报待上传或待复核教学报告', () => {
+    const task = buildSessionTasks()[0]!;
+    const observed = { ...task, session: { ...task.session, primary_media_asset_id: null, current_report_id: null }, run: { ...fixtures.run, mode: 'visual_only' as const, report_id: null, status: 'succeeded' as const } };
+    expect(bucketOf(observed)).toBe('other');
+    expect(bucketOf({ ...observed, run: { ...observed.run, status: 'running' } })).toBe('processing');
+    const html = renderToStaticMarkup(<SessionListPage tasks={[observed]}/>);
+    expect(html).toContain('查看详情');
+  });
   it('课堂档案列表按草图结构显示状态页签、表格与允许操作', () => {
     const html = renderToStaticMarkup(<SessionListPage tasks={buildSessionTasks()} />);
     expect(html).toContain('课堂档案');
@@ -174,9 +182,9 @@ describe('设备接入页', () => {
   });
 
   it('操作记录使用产品空态，不向用户展示开发依赖', () => {
-    const html = renderToStaticMarkup(<PlaceholderPage page={PLANNED_PAGES['#/audit']!} />);
-    expect(html).toContain('操作记录查询暂未开放');
-    expect(html).toContain('暂无可查看的记录');
+    const html = renderToStaticMarkup(<AuditPage />);
+    expect(html).toContain('演示模式不显示真实操作记录');
+    expect(html).toContain('操作记录');
     for (const developerText of ['页面尚未实现', '接口就绪', 'contracts', '系统草图', '依赖：']) {
       expect(html).not.toContain(developerText);
     }

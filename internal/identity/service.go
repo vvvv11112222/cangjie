@@ -134,8 +134,12 @@ func (s *Service) Login(ctx context.Context, username, password, previousToken s
 		return Principal{}, "", fmt.Errorf("begin login: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := tx.QueryRow(ctx, `SELECT display_name,status FROM teaching.user_accounts WHERE id=$1 FOR UPDATE`, userID).Scan(&displayName, &status); err != nil {
+	var lockedHash string
+	if err := tx.QueryRow(ctx, `SELECT display_name,status,password_hash FROM teaching.user_accounts WHERE id=$1 FOR UPDATE`, userID).Scan(&displayName, &status, &lockedHash); err != nil {
 		return Principal{}, "", fmt.Errorf("lock login account: %w", err)
+	}
+	if lockedHash != passwordHash && bcrypt.CompareHashAndPassword([]byte(lockedHash), []byte(password)) != nil {
+		return Principal{}, "", apperror.New(http.StatusUnauthorized, "UNAUTHENTICATED", "password changed during login")
 	}
 	if status != "active" {
 		return Principal{}, "", apperror.New(http.StatusUnauthorized, "UNAUTHENTICATED", "account is disabled")

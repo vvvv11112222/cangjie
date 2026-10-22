@@ -60,3 +60,32 @@ func TestBuildModelConfigRequiresConfirmedPricesAndCombinedBudget(t *testing.T) 
 		t.Fatal("disable did not stop cloud stages", err)
 	}
 }
+
+func TestDurationBillingSurvivesWebSettingsRoundTrip(t *testing.T) {
+	v := validValues()
+	v.ASRBillingMode = "seconds"
+	v.ASRSecond = "0.00022"
+	v.ASRInput = "0"
+	v.ASROutput = "0"
+	v.MonthlyBudget = "2"
+	base := analysis.Config{ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai"}
+	c, err := BuildConfig(base, v, secrets{"synthetic-dotted.key", "synthetic-report-key"}, true)
+	if err != nil || c.CloudASR.BillingMode != "seconds" || c.CloudASR.PriceSecondMicros != 220 {
+		t.Fatalf("duration config: %v", err)
+	}
+	if reserve, err := c.CloudASR.ReserveMicros(40000); err != nil || reserve != 8800 {
+		t.Fatalf("duration reservation: %d %v", reserve, err)
+	}
+	encoded, _ := json.Marshal(FromConfig(c))
+	var decoded Values
+	if err = json.Unmarshal(encoded, &decoded); err != nil || decoded.ASRBillingMode != "seconds" || decoded.ASRSecond != "0.000220" {
+		t.Fatalf("duration round trip: %v", err)
+	}
+	if c.ReportPromptVersion != analysis.ComprehensivePromptVersion {
+		t.Fatal("web configuration lost comprehensive prompt")
+	}
+	v.ASRSecond = "0"
+	if _, err = BuildConfig(base, v, secrets{"synthetic-asr-key", "synthetic-report-key"}, true); err == nil {
+		t.Fatal("zero duration price accepted")
+	}
+}

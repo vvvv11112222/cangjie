@@ -6,9 +6,13 @@ import (
 )
 
 const TeacherPromptVersion = "teacher-sixdim-v1"
+const ComprehensivePromptVersion = "teacher-sixdim-v2"
 
 //go:embed prompts/teacher-sixdim-v1.txt
 var teacherReportPrompt string
+
+//go:embed prompts/teacher-sixdim-v2.txt
+var comprehensiveReportPrompt string
 
 // ReportPrompt returns the exact bytes sent as the system message and their hash.
 // The embedded template makes execution independent of the server's working directory.
@@ -18,6 +22,8 @@ func ReportPrompt(version string) (text, sha256 string, err error) {
 		text = reportSystemPrompt
 	case TeacherPromptVersion:
 		text = teacherReportPrompt
+	case ComprehensivePromptVersion:
+		text = comprehensiveReportPrompt
 	default:
 		return "", "", fmt.Errorf("unsupported REPORT_PROMPT_VERSION %q", version)
 	}
@@ -35,7 +41,7 @@ func ValidateReportPrompt(enabled bool, version, sha256 string) error {
 	if err != nil {
 		return err
 	}
-	if version == TeacherPromptVersion && sha256 != expected {
+	if (version == TeacherPromptVersion || version == ComprehensivePromptVersion) && sha256 != expected {
 		return fmt.Errorf("REPORT_PROMPT_SHA256 does not match %s; run go run ./cmd/report-prompt", version)
 	}
 	return nil

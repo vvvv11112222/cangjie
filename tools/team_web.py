@@ -95,7 +95,7 @@ def environment(config, state):
 
 
 def select_vision(config, state):
-    mode = config.get('vision_runtime', 'cpu')  # Preserve an existing explicit safe deployment until reconfigured.
+    mode = config.get('vision_runtime', 'directml')
     if mode not in ('cpu', 'auto', 'directml'): raise ValueError('Unknown vision runtime')
     result = {'engine':'cpu', 'batch_size':1, 'device':None, 'probe_passed':False,
               'reason':'明确选择 CPU 模式' if mode == 'cpu' else None}
@@ -217,7 +217,7 @@ def prepare(args, state):
                   models=str(Path(args.models).resolve(strict=True)))
     analysis_config = args.analysis_config or prior.get('analysis_config')
     if analysis_config: config['analysis_config'] = str(Path(analysis_config).resolve(strict=True))
-    config['vision_runtime'] = args.vision_runtime or prior.get('vision_runtime','auto')
+    config['vision_runtime'] = args.vision_runtime or prior.get('vision_runtime','directml')
     config['vision_batch_size'] = args.vision_batch_size or prior.get('vision_batch_size',16)
     accelerator_root = args.accelerator_root or prior.get('accelerator_root')
     if accelerator_root: config['accelerator_root'] = str(Path(accelerator_root).resolve(strict=True))
@@ -228,7 +228,7 @@ def prepare(args, state):
     config['code_sha'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     config['source_dirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     select_vision(config, state); env = environment(config, state)
-    for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger'):
+    for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger', 'model-config'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
     run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')
     run([config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'build'], env, state, cwd=ROOT / 'frontend')
@@ -305,7 +305,7 @@ def main():
     for name in ('go', 'pg-bin', 'node', 'python', 'models'): setup.add_argument('--' + name, required=True)
     setup.add_argument('--login-from')
     setup.add_argument('--analysis-config', help='Private JSON with ASR/REPORT/MODEL settings; enables unified analysis')
-    setup.add_argument('--vision-runtime', choices=('auto','directml','cpu'), help='New installs default to auto; directml requires a verified discrete GPU')
+    setup.add_argument('--vision-runtime', choices=('auto','directml','cpu'), help='Default: require verified discrete GPU; auto/CPU are explicit diagnostic choices')
     setup.add_argument('--accelerator-root', help='Existing accelerator folder containing directml/onnxruntime; no packages or drivers installed automatically')
     setup.add_argument('--vision-batch-size',type=int,choices=(1,8,16))
     sub.add_parser('start'); sub.add_parser('start-detached'); sub.add_parser('stop'); sub.add_parser('status')

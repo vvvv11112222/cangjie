@@ -43,6 +43,27 @@ def test_face_contact_is_not_a_raise_but_upright_forearm_is():
     assert raised_hand(p,s,[40,20,60,40])[0] is True
 
 
+def test_seated_vertical_forearm_can_raise_beside_lower_face():
+    # Synthetic desk-supported arm, with two common wrist heights. No image,
+    # personal identifier, track-specific rule or additional network inference.
+    for wrist in ([55,40],[58,31]):
+        p=np.zeros((17,2));s=np.zeros(17)
+        p[0]=[50,30];p[6]=[32,49];p[8]=[52,69];p[10]=wrist
+        p[1]=[54,26];p[2]=[46,26];s[[1,2]]=.8
+        s[[0,6,8,10]]=[.8,.75,.7,.72]
+        for scale in (1,2):
+            assert raised_hand(p*scale,s,[35*scale,15*scale,65*scale,45*scale])[0] is True
+        p[1]=[48,26];p[2]=[46,26] # profile/collapsed eye span: contact is ambiguous
+        assert raised_hand(p,s,[35,15,65,45])[0] is None
+        p[1]=[54,26];p[2]=[46,-30] # another face's eye must not rescue the wrist
+        assert raised_hand(p,s,[35,15,65,45])[0] is None
+        p[2]=[46,26]
+        s[8]=.4
+        assert raised_hand(p,s,[35,15,65,45])[0] is None
+        s[8]=.7;p[10]=[50,34] # face-centred contact is not a raise
+        assert raised_hand(p,s,[35,15,65,45])[0] is False
+
+
 def test_absolute_head_down_needs_no_neutral_history_and_rejects_profile():
     assert head_down_from_angles({'pitch':-30,'yaw':10,'roll':5}) is True
     assert head_down_from_angles({'pitch':30,'yaw':10,'roll':5}) is False

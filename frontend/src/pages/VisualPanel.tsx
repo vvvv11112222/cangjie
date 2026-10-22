@@ -23,17 +23,19 @@ function ObservationBoxes({ boxes, selected }: { boxes: PersonBox[]; selected: s
 }
 
 /** The existing classroom page gains one tab; navigation and existing panels stay intact. */
-export function VisualPanel({ sessionId, currentRun }: { sessionId: string; currentRun: Run | null }): ReactElement {
+export function VisualPanel({ sessionId, currentRun, onReplayMedia }: { sessionId: string; currentRun: Run | null; onReplayMedia?(mediaId: string): void }): ReactElement {
   const [history, setHistory] = useState<Run[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyReload, setHistoryReload] = useState(0);
   useEffect(() => {
     let live = true;
-    void listSessionRuns(sessionId).then(page => { if (live) { setHistory(page.items); setHistoryCursor(page.next_cursor); } }).catch(error => { if (live) setHistoryError(describeError(error)); });
+    setHistoryBusy(true); setHistoryError(null);
+    void listSessionRuns(sessionId).then(page => { if (live) { setHistory(page.items); setHistoryCursor(page.next_cursor); } }).catch(error => { if (live) setHistoryError(describeError(error)); }).finally(() => { if (live) setHistoryBusy(false); });
     return () => { live = false; };
-  }, [sessionId]);
+  }, [sessionId, historyReload]);
   useEffect(() => { if (currentRun?.mode === 'visual_only') setChosen(currentRun.id); }, [currentRun?.id]);
   const all = [...(currentRun?.mode === 'visual_only' ? [currentRun] : []), ...history.filter(r => r.mode === 'visual_only' && r.id !== currentRun?.id)];
   const selected = all.find(r => r.id === chosen) ?? all[0] ?? null;
@@ -49,17 +51,18 @@ export function VisualPanel({ sessionId, currentRun }: { sessionId: string; curr
     <Card title="视觉观察" subtitle="检查录像中的可见人数与动作。看不清的部分保留为“看不清”，不计为没有动作。">
       <p className="onboarding-next">编号是本次录像的匿名轨迹，可能因遮挡或切镜变化。低头可能是阅读或书写；多条举手观察可能属于同一次持续动作。看不清表示无法判断，不等于未发现动作。<br/>颜色：红色发现举手，蓝色发现低头，绿色未见这两种动作，灰色看不清。记录只覆盖实际检查的画面。</p>
       {all.length > 0 && <label className="account-field"><span>选择视觉分析记录</span><select value={selected?.id ?? ''} onChange={event => setChosen(event.target.value)}>{all.map(r => <option key={r.id} value={r.id}>{r.created_at ? formatDateTime(r.created_at) : `历史分析 ${all.indexOf(r)+1}`} · {runStatusBadge(r.status).label}</option>)}</select></label>}
-      {historyError && <p role="alert" className="load-note load-note-error">{historyError}</p>}
+      {historyError && <p role="alert" className="load-note load-note-error">{historyError} <button type="button" className="btn btn-secondary" disabled={historyBusy} onClick={() => setHistoryReload(value => value + 1)}>重试读取分析记录</button></p>}
       {historyCursor && <button className="btn btn-secondary" disabled={historyBusy} onClick={() => void moreHistory()}>查找更早的分析</button>}
-      {!run && <p className="empty">还没有视觉分析记录。在“批次与操作”中上传录像后，点击“举手与低头识别”。</p>}
+      {!run && historyBusy && <p role="status" className="load-note">正在读取分析记录…</p>}
+      {!run && !historyBusy && !historyError && <p className="empty">{historyCursor ? '已读取部分暂未找到视觉分析，请查找更早的分析。' : '还没有视觉分析记录。在“批次与操作”中上传录像后，点击“举手与低头识别”。'}</p>}
       {run && run.status !== 'succeeded' && <><StageFlow run={run} /><p className="load-note">{run.status === 'queued' || run.status === 'running' ? '正在分析。完成后会自动显示结果；可以先切换标签查看其他内容。' : '本次分析未完成，没有可展示的完整结果。请回到“批次与操作”查看原因或重试。'}</p></>}
       {polling.error && <p role="alert">{polling.error}</p>}
     </Card>
-    {run?.status === 'succeeded' && <VisualResults key={run.id} run={run} />}
+    {run?.status === 'succeeded' && <VisualResults key={run.id} run={run} onReplayMedia={onReplayMedia} />}
   </>;
 }
 
-function VisualResults({ run }: { run: Run }): ReactElement {
+function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((mediaId: string) => void) | undefined }): ReactElement {
   const [summary, setSummary] = useState<VisualSummary | null>(null);
   const [people, setPeople] = useState<VisualPerson[]>([]);
   const [peopleCursor, setPeopleCursor] = useState<string | null>(null);
@@ -124,6 +127,7 @@ function VisualResults({ run }: { run: Run }): ReactElement {
     }).then(data => {
       if (!live) return;
       setAllData(data);
+      setPeople(data.people); setPeopleCursor(null);
     }).catch(e => { if (live) setAllError(describeError(e)); }).finally(() => { if (live) setAllBusy(false); });
     return () => { live = false; };
   }, [run.id, showAll, allData, allRetry]);
@@ -166,6 +170,9 @@ function VisualResults({ run }: { run: Run }): ReactElement {
       <p className="load-note">低头可能是在阅读或书写；这些观察需要结合教学内容核对，不直接评价学生是否认真。</p>
     </Card>
     <Card title="按人物查看与回放" subtitle="编号只属于本次录像。选中人物不会改变行为颜色：红色举手，蓝色低头，绿色未见这两种动作，灰色看不清。">
+      <p className="load-note">正在查看分析 {run.id.slice(0, 8)} 对应的录像（编号 {run.media_asset_id.slice(0, 8)}）。同一课堂上传多份录像时，每条分析仍保留自己的录像。
+        {media?.playback_url && onReplayMedia && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onReplayMedia(run.media_asset_id)}>在回放中打开此录像</button>}
+      </p>
       {error && <p role="alert" className="load-note load-note-error">{error}</p>}
       <label className="check-row"><input type="checkbox" checked={showAll} disabled={!hasPlayer && !showAll} onChange={e => setShowAll(e.target.checked)} />显示所有人物框</label>
       {showAll && allBusy && <p className="load-note" role="status">正在读取全班画框{allProgress.total ? `：已完成 ${allProgress.completed}/${allProgress.total} 个编号` : '…'}；读取完成前暂时只显示选中人物。</p>}

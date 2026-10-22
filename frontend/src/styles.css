@@ -607,6 +607,7 @@ code {
 
 /* 输入框统一高度、边框、圆角和聚焦状态；深色侧栏里另有配色。 */
 .account-field {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -656,6 +657,8 @@ code {
 .account-field input:not([type='file']),
 .account-field select {
   height: var(--control-height);
+  min-width: 0;
+  max-width: 100%;
 }
 
 /*

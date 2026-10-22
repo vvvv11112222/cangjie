@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -177,6 +178,9 @@ func (s *Service) executeEvidence(ctx context.Context, j goJob) error {
 	if _, err = tx.Exec(ctx, `UPDATE teaching.lesson_sessions SET transcript_lock_version=transcript_lock_version+1 WHERE id=$1`, j.SessionID); err != nil {
 		return err
 	}
+	if err = s.insertReportContextEvidence(ctx, tx, j); err != nil {
+		return err
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata) VALUES($1,$2,$3,$4,'__result/evidence',jsonb_build_object('transcript_revision_id',$5::text))`, j.ID, j.RunID, j.SessionID, j.Token, revisionID)
 	if err != nil {
 		return err
@@ -238,6 +242,9 @@ func (s *Service) executeRevisionEvidence(ctx context.Context, tx pgx.Tx, j goJo
 			VALUES($1,$2,$3,'manual',$4,$5,$6,$7)`, j.RunID, j.SessionID, j.MediaID, seg.StartMS, seg.EndMS, seg.Text, prov); err != nil {
 			return err
 		}
+	}
+	if err = s.insertReportContextEvidence(ctx, tx, j); err != nil {
+		return err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata)
 		VALUES($1,$2,$3,$4,'__result/evidence',jsonb_build_object('transcript_revision_id',$5::text))`, j.ID, j.RunID, j.SessionID, j.Token, *revisionID); err != nil {
@@ -558,8 +565,12 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 		return input, err
 	}
 	input.CourseContext = map[string]string{"course_name": course, "session_title": title}
+	if reportConfig.Context != nil {
+		input.CourseContext = reportConfig.Context.Academic
+		input.Limitations = append(input.Limitations, reportConfig.Context.Limitations...)
+	}
 	input.TranscriptRevisionID = &revision
-	rows, err := s.pool.Query(ctx, `SELECT id::text,kind,start_ms,end_ms,description FROM teaching.evidence_items WHERE run_id=$1 AND availability='available' AND kind IN('transcript','manual') ORDER BY start_ms,id`, j.RunID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,kind,start_ms,end_ms,description,COALESCE(provenance->>'source'='academic_schedule',false) FROM teaching.evidence_items WHERE run_id=$1 AND availability='available' AND kind IN('transcript','manual','behavior') ORDER BY CASE WHEN provenance ? 'report_context_version' THEN 0 ELSE 1 END,start_ms,id`, j.RunID)
 	if err != nil {
 		return input, err
 	}
@@ -568,26 +579,12 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 	if maxChars <= 0 {
 		maxChars = 16000
 	}
-	usedChars := 0
 	skippedEvidence := 0
 	for rows.Next() {
 		var e modelEvidence
-		if err = rows.Scan(&e.ID, &e.Kind, &e.StartMS, &e.EndMS, &e.TextContent); err != nil {
+		if err = rows.Scan(&e.ID, &e.Kind, &e.StartMS, &e.EndMS, &e.TextContent, &e.ContextOnly); err != nil {
 			return input, err
 		}
-		chars := utf8.RuneCountInString(e.TextContent)
-		remaining := maxChars - usedChars
-		if remaining <= 0 {
-			skippedEvidence++
-			continue
-		}
-		if chars > remaining {
-			e.TextContent = truncateRunes(e.TextContent, remaining)
-			chars = remaining
-			input.Limitations = append(input.Limitations, "MODEL_INPUT_TRUNCATED:"+e.ID)
-		}
-		e.TextSHA256 = digestBytes([]byte(e.TextContent))
-		usedChars += chars
 		input.Evidence = append(input.Evidence, e)
 	}
 	if err = rows.Err(); err != nil {
@@ -601,6 +598,28 @@ func (s *Service) buildModelInput(ctx context.Context, j goJob) (modelInput, err
 		return input, limitErr
 	}
 	input.Limitations = boundedModelLimitations(appendUniqueAll(input.Limitations, workerLimitations))
+	if reportConfig.Context != nil {
+		input.Evidence = interleaveReportEvidence(input.Evidence)
+	}
+	bounded := make([]modelEvidence, 0, len(input.Evidence))
+	usedChars := 0
+	for _, e := range input.Evidence {
+		chars := utf8.RuneCountInString(e.TextContent)
+		remaining := maxChars - usedChars
+		if remaining <= 0 {
+			skippedEvidence++
+			continue
+		}
+		if chars > remaining {
+			e.TextContent = truncateRunes(e.TextContent, remaining)
+			chars = remaining
+			input.Limitations = append(input.Limitations, "MODEL_INPUT_TRUNCATED:"+e.ID)
+		}
+		e.TextSHA256 = digestBytes([]byte(e.TextContent))
+		usedChars += chars
+		bounded = append(bounded, e)
+	}
+	input.Evidence = bounded
 	return fitModelInputToRequest(input, reportConfig, skippedEvidence)
 }
 
@@ -609,6 +628,20 @@ func fitModelInputToRequest(input modelInput, config reportSnapshot, skipped int
 	baseLimitations := append([]string(nil), input.Limitations...)
 	for len(input.Evidence) > 0 {
 		input.Coverage = coverageForEvidence(input.Evidence)
+		if len(input.Coverage) == 0 {
+			return input, fmt.Errorf("no observed coverage remains in report input")
+		}
+		if input.PromptVersion == ComprehensivePromptVersion {
+			speech := false
+			for _, e := range input.Evidence {
+				if !e.ContextOnly && (e.Kind == "transcript" || e.Kind == "manual") {
+					speech = true
+				}
+			}
+			if !speech {
+				return input, fmt.Errorf("no speech evidence remains in comprehensive input")
+			}
+		}
 		limitations := append([]string(nil), baseLimitations...)
 		if skipped > 0 {
 			limitations = append(limitations, fmt.Sprintf("MODEL_INPUT_SKIPPED_COUNT:%d", skipped))
@@ -647,8 +680,13 @@ func fitModelInputToRequest(input modelInput, config reportSnapshot, skipped int
 }
 
 func coverageForEvidence(evidence []modelEvidence) []Interval {
+	evidence = append([]modelEvidence(nil), evidence...)
+	sort.Slice(evidence, func(i, j int) bool { return evidence[i].StartMS < evidence[j].StartMS })
 	coverage := []Interval{}
 	for _, item := range evidence {
+		if item.ContextOnly {
+			continue
+		}
 		window := Interval{StartMS: item.StartMS, EndMS: item.EndMS}
 		if len(coverage) == 0 || window.StartMS > coverage[len(coverage)-1].EndMS {
 			coverage = append(coverage, window)
@@ -766,6 +804,31 @@ func (s *Service) executeValidate(ctx context.Context, j goJob) error {
 		return err
 	}
 	prov := map[string]any{"media_asset_id": j.MediaID, "input_sha256": input.InputSHA256, "transcript_revision_id": input.TranscriptRevisionID, "model": input.Model, "prompt_version": input.PromptVersion, "prompt_sha256": input.PromptSHA256, "selection_version": input.SelectionVersion, "manifest_sha256": manifestSHA, "coverage": input.Coverage, "limitations": input.Limitations, "source": map[string]any{"id": sourceID, "title": title, "attribution": attribution, "source_url": sourceURL, "rights_version": rightsVersion}}
+	// Describe only evidence that survived request-size selection, not merely
+	// material available elsewhere in the classroom.
+	materials := map[string]bool{"academic_schedule": false, "speech": false, "visual": false}
+	for _, e := range input.Evidence {
+		if e.Kind == "behavior" {
+			materials["visual"] = true
+		}
+		if e.Kind == "transcript" {
+			materials["speech"] = true
+		}
+		if e.Kind == "manual" {
+			var source string
+			if err = tx.QueryRow(ctx, `SELECT COALESCE(provenance->>'source','') FROM teaching.evidence_items WHERE id=$1`, e.ID).Scan(&source); err != nil {
+				return err
+			}
+			if source == "academic_schedule" {
+				materials["academic_schedule"] = true
+			} else {
+				materials["speech"] = true
+			}
+		}
+	}
+	if input.PromptVersion == ComprehensivePromptVersion {
+		prov["included_materials"] = materials
+	}
 	plannedObservations := make([]Observation, 0, len(candidate.Observations))
 	digestObservations := make([]map[string]any, 0, len(candidate.Observations))
 	for _, o := range candidate.Observations {
@@ -859,8 +922,13 @@ func (s *Service) finalizeValidatedRun(ctx context.Context, tx pgx.Tx, runID str
 
 func validateCandidate(c ReportCandidate, input modelInput) error {
 	allowed := map[string]bool{}
+	visualIDs := map[string]bool{}
+	visualCited := false
 	for _, e := range input.Evidence {
 		allowed[e.ID] = true
+		if e.Kind == "behavior" {
+			visualIDs[e.ID] = true
+		}
 	}
 	if len(input.Coverage) == 0 || validateIntervals(input.Coverage, input.Coverage[len(input.Coverage)-1].EndMS) != nil {
 		return fmt.Errorf("model input coverage is invalid")
@@ -878,6 +946,9 @@ func validateCandidate(c ReportCandidate, input modelInput) error {
 			unique[id] = true
 			if !allowed[id] {
 				return fmt.Errorf("candidate references evidence outside the actual model input")
+			}
+			if visualIDs[id] {
+				visualCited = true
 			}
 		}
 		return nil
@@ -924,9 +995,12 @@ func validateCandidate(c ReportCandidate, input modelInput) error {
 		if err := check(o.EvidenceIDs); err != nil {
 			return err
 		}
-		if input.PromptVersion == TeacherPromptVersion && o.ObservationType == "issue" && strings.TrimSpace(o.Suggestion) == "" {
+		if (input.PromptVersion == TeacherPromptVersion || input.PromptVersion == ComprehensivePromptVersion) && o.ObservationType == "issue" && strings.TrimSpace(o.Suggestion) == "" {
 			return fmt.Errorf("teacher report issue requires an actionable suggestion")
 		}
+	}
+	if input.PromptVersion == ComprehensivePromptVersion && len(visualIDs) > 0 && !visualCited {
+		return fmt.Errorf("comprehensive report omitted all supplied visual evidence")
 	}
 	return nil
 }

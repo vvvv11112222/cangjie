@@ -17,6 +17,15 @@ async function fill(selector:string,value:string){const input=container.querySel
 async function confirm(){const label=[...container.querySelectorAll('label')].find(item=>item.textContent?.includes('已核对同地域'))!;await act(async()=>label.querySelector<HTMLInputElement>('input')!.click());}
 async function submit(){await act(async()=>container.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));}
 it('rejects a response that exposes keys',()=>{expect(()=>parseModelSettings({...fixture,asr_api_key:'synthetic-leak'})).toThrow('credential');});
+it('keeps duration prices separate from token prices',async()=>{
+ const data={...fixture,values:{...fixture.values,asr_billing_mode:'seconds',asr_cny_per_second:'0.00022'}};
+ h.read.mockResolvedValue(data);await mount();
+ expect(container.querySelector<HTMLSelectElement>('select[aria-label="语音计费方式"]')?.value).toBe('seconds');
+ expect(container.querySelector<HTMLInputElement>('input[aria-label="语音单价（元 / 秒）"]')?.value).toBe('0.00022');
+ expect(container.querySelector('input[aria-label="语音输入单价（元 / 百万 token）"]')).toBeNull();
+ expect(parseModelSettings(data).values.asr_billing_mode).toBe('seconds');
+ expect(parseModelSettings(fixture).values.asr_billing_mode).toBe('tokens');
+});
 it('requires price confirmation and preserves existing keys when blank',async()=>{
  h.write.mockResolvedValue({...fixture,revision:'00000000-0000-4000-8000-000000000014',active_revision:'00000000-0000-4000-8000-000000000014'});
  await mount();expect(container.querySelector<HTMLInputElement>('input[type=password]')?.value).toBe('');

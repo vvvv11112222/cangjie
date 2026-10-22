@@ -922,7 +922,9 @@ func (s *Service) ProcessDeletion(ctx context.Context) (bool, error) {
 		`DELETE FROM teaching.job_artifacts WHERE session_id=$1`, `DELETE FROM teaching.analysis_jobs WHERE run_id IN(SELECT id FROM teaching.analysis_runs WHERE session_id=$1)`,
 		`UPDATE teaching.transcript_revisions SET parent_revision_id=NULL WHERE session_id=$1`, `DELETE FROM teaching.transcript_revisions WHERE session_id=$1`,
 		`DELETE FROM teaching.analysis_runs WHERE session_id=$1`,
-		`UPDATE teaching.media_assets SET playback_asset_id=NULL,parent_asset_id=NULL WHERE session_id=$1`, `DELETE FROM teaching.media_assets WHERE session_id=$1`,
+		// Keep required derived-media parents intact. A single DELETE removes the
+		// whole classroom's media graph; its self-references vanish together.
+		`DELETE FROM teaching.media_assets WHERE session_id=$1`,
 		`DELETE FROM teaching.source_records WHERE session_id=$1`,
 	}
 	for _, statement := range statements {

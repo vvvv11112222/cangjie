@@ -223,6 +223,51 @@
       "valid": false
     },
     {
+      "file": "change-password.json",
+      "definition": "ChangePassword",
+      "valid": true
+    },
+    {
+      "file": "reset-password.json",
+      "definition": "ResetPassword",
+      "valid": true
+    },
+    {
+      "file": "invalid-change-password.json",
+      "definition": "ChangePassword",
+      "valid": false
+    },
+    {
+      "file": "resource-in-use-error.json",
+      "definition": "ErrorResponse",
+      "valid": true
+    },
+    {
+      "file": "audit-page.json",
+      "definition": "AuditPage",
+      "valid": true
+    },
+    {
+      "file": "audit-query.json",
+      "definition": "AuditQuery",
+      "valid": true
+    },
+    {
+      "file": "invalid-audit-query.json",
+      "definition": "AuditQuery",
+      "valid": false
+    },
+    {
+      "file": "media-query.json",
+      "definition": "MediaQuery",
+      "valid": true
+    },
+    {
+      "file": "invalid-media-query.json",
+      "definition": "MediaQuery",
+      "valid": false
+    },
+    {
       "file": "service-capabilities.json",
       "definition": "ServiceCapabilities",
       "valid": true
@@ -248,6 +293,16 @@
       "valid": false
     },
     {
+      "file": "report-comprehensive.json",
+      "definition": "Report",
+      "valid": true
+    },
+    {
+      "file": "model-input-comprehensive.json",
+      "definition": "ModelInput",
+      "valid": true
+    },
+    {
       "file": "model-settings.json",
       "definition": "ModelSettings",
       "valid": true
@@ -271,10 +326,16 @@
       "file": "invalid-model-settings-unconfirmed.json",
       "definition": "UpdateModelSettings",
       "valid": false
+    },
+    {
+      "file": "model-settings-duration.json",
+      "definition": "ModelSettings",
+      "valid": true
     }
   ],
   "case_sets": [
     "api-cases.json",
-    "capture-cases.json"
+    "capture-cases.json",
+    "password-cases.json"
   ]
 }

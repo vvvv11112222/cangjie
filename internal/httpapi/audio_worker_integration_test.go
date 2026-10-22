@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -31,6 +32,12 @@ import (
 // Real Go + Python Runner + FFmpeg + original demo segmentation. Only the paid
 // provider is substituted. It proves integration, not recognition accuracy.
 func TestAudioWorkerMainPipeline(t *testing.T) {
+	for _, mode := range []string{"tokens", "seconds"} {
+		t.Run(mode, func(t *testing.T) { runAudioWorkerMainPipeline(t, mode == "seconds") })
+	}
+}
+
+func runAudioWorkerMainPipeline(t *testing.T, secondsBilling bool) {
 	python, planner := os.Getenv("WORKER_AUDIO_PYTHON"), os.Getenv("WORKER_AUDIO_PLANNER")
 	if python == "" || planner == "" {
 		t.Skip("WORKER_AUDIO_PYTHON/PLANNER not set")
@@ -63,7 +70,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	}
 	runtime := bridge("-m", "workers", "runtime-info")
 	var asrCalls, reportCalls atomic.Int32
-	systemPrompt, promptSHA, err := analysis.ReportPrompt(analysis.TeacherPromptVersion)
+	systemPrompt, promptSHA, err := analysis.ReportPrompt(analysis.ComprehensivePromptVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +86,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 			return
 		}
 		text := "合成课堂：请解释矩阵加法的定义。"
+		usage := map[string]int{"prompt_tokens": 20, "completion_tokens": 10}
 		if body.Model == "synthetic-asr" {
 			callNo := asrCalls.Add(1)
 			var content []struct {
@@ -92,6 +100,20 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 				return
 			}
 			wav, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(content[0].Audio.Data, "data:audio/wav;base64,"))
+			if secondsBilling {
+				for offset := 12; offset+8 <= len(wav); {
+					size := int(binary.LittleEndian.Uint32(wav[offset+4 : offset+8]))
+					if size < 0 || offset+8+size > len(wav) {
+						t.Error("invalid synthetic WAV")
+						return
+					}
+					if string(wav[offset:offset+4]) == "data" {
+						usage["seconds"] = (size + 31999) / 32000
+						break
+					}
+					offset += 8 + size + size%2
+				}
+			}
 			if len(wav) < 44+16000 {
 				t.Error("missing audio")
 				return
@@ -144,7 +166,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 			raw, _ := json.Marshal(candidate)
 			text = string(raw)
 		}
-		writeJSON(w, 200, map[string]any{"id": "synthetic-local-provider", "usage": map[string]int{"prompt_tokens": 20, "completion_tokens": 10}, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": text}}}})
+		writeJSON(w, 200, map[string]any{"id": "synthetic-local-provider", "usage": usage, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": text}}}})
 	}))
 	defer provider.Close()
 	store, err := storage.NewLocal(filepath.Join(tmp, "media"))
@@ -153,8 +175,12 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	}
 	cfg := analysis.Config{Lease: 30 * time.Second, ProbeTimeout: time.Minute, ASRTimeout: time.Minute, VideoTimeout: time.Minute, GoStageTimeout: time.Minute, MediaJobAttempts: 2,
 		ProcessorVersion: runtime["processor_version"].(string), FFmpegSHA256: runtime["ffmpeg_build_sha256"].(string), ASRModelName: "synthetic-asr", ASRModelRevision: "v1", ASRDevice: "cpu", KeyframeIntervalMS: 1000, MaxKeyframes: 100, MaxMediaDurationMS: 60000, MaxVideoHeight: 1080, MaxArtifactBytes: 10 << 20,
-		ReportEnabled: true, ReportAPIBase: provider.URL, ReportAPIKey: "synthetic", ReportModel: "synthetic-report", ReportModelRevision: "v1", ReportPromptVersion: analysis.TeacherPromptVersion, ReportPromptSHA256: promptSHA, ReportSelectionVersion: "time-window-v1", ReportPriceVersion: "synthetic", ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai", ReportMonthlyBudgetMicros: 30000000, ReportInputPriceMicros: 1000000, ReportOutputPriceMicros: 1000000, ReportTimeout: time.Minute, ReportMaxInputTokens: 8000, ReportMaxOutputTokens: 1000,
+		ReportEnabled: true, ReportAPIBase: provider.URL, ReportAPIKey: "synthetic", ReportModel: "synthetic-report", ReportModelRevision: "v1", ReportPromptVersion: analysis.ComprehensivePromptVersion, ReportPromptSHA256: promptSHA, ReportSelectionVersion: "time-window-v1", ReportPriceVersion: "synthetic", ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai", ReportMonthlyBudgetMicros: 30000000, ReportInputPriceMicros: 1000000, ReportOutputPriceMicros: 1000000, ReportTimeout: time.Minute, ReportMaxInputTokens: 8000, ReportMaxOutputTokens: 1000,
 		CloudASR: analysis.CloudASRConfig{Enabled: true, APIKey: "synthetic", ASRSnapshot: analysis.ASRSnapshot{APIBase: provider.URL, LanguageHints: "zh,en", RequestVersion: asrrequest.Version, PriceVersion: "synthetic", InputPriceMicros: 1000000, OutputPriceMicros: 1000000, MaxInputTokens: 32768, MaxOutputTokens: 4096}}}
+	if secondsBilling {
+		cfg.CloudASR.BillingMode = "seconds"
+		cfg.CloudASR.PriceSecondMicros = 220
+	}
 	webValues := modelsettings.FromConfig(cfg)
 	webValues.PriceSource = "Synthetic integration prices, no billed provider"
 	cfg.CloudASR = analysis.CloudASRConfig{}

@@ -6,7 +6,7 @@
  * 免得把"样例"当成真实基础资料。
  *
  * 与草图的差异（都是因为没有对应接口，不是漏做）：
- *   - 没有"删除"按钮：协议里这两个资源只有 GET/POST/PATCH；
+ *   - 删除只允许未被使用的资料；服务端拒绝级联删除历史；
  *   - "年级"不是独立资源：入学年份是班级的属性，只在筛选与列表里体现；
  *   - 筛选在前端已加载的数据上做，因为列表接口只有 cursor/limit。
  */
@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
 import { Card, EmptyState } from '../components/ui';
+import { DeleteUnusedButton } from '../components/ManagementActions';
+import { useAuth } from '../auth';
 import { IconAlert, IconInfo, IconList, IconPlus } from '../components/icons';
 import { isApiMode } from '../data/sources';
 import { describeError } from '../data/errors';
@@ -61,7 +63,7 @@ function OrganizationsHead(): ReactElement {
         <p className="eyebrow">ORGANIZATION</p>
         <h1>学院、年级与班级</h1>
         <p className="muted">
-          班级按入学年份筛选；入学年份不是组织层级。有引用的资料保留历史，不提供删除。
+          班级按入学年份筛选；入学年份不是组织层级。未使用的资料可删除；有引用的资料保留历史。
         </p>
       </div>
     </header>
@@ -86,6 +88,7 @@ export function OrganizationsPage(): ReactElement {
 }
 
 function DirectoryView(): ReactElement {
+  const auth = useAuth();
   const [tab, setTab] = useState<Tab>('colleges');
   const [units, setUnits] = useState<OrgUnit[] | null>(null);
   const [groups, setGroups] = useState<ClassGroup[] | null>(null);
@@ -222,7 +225,7 @@ function DirectoryView(): ReactElement {
             <Card
               title="学院 / 院系"
               icon={<IconList size={16} />}
-              subtitle={`共 ${units?.length ?? 0} 条；层级由 kind 与上级决定，没有删除接口`}
+              subtitle={`共 ${units?.length ?? 0} 条；未使用的资料可删除，有关联记录时保留历史`}
             >
               {(units ?? []).length === 0 ? (
                 <EmptyState text="当前账号没有可见的组织。先由系统管理员初始化学校与学院。" />
@@ -253,6 +256,7 @@ function DirectoryView(): ReactElement {
                             >
                               编辑
                             </button>
+                            {auth.me?.roles.some(role => role.role_code === 'sys_admin') && unit.kind !== 'school' && <DeleteUnusedButton resource="org-units" id={unit.id} name={unit.name} onDeleted={reload}/>}
                           </td>
                         </tr>
                       ))}
@@ -311,6 +315,7 @@ function DirectoryView(): ReactElement {
                             >
                               编辑
                             </button>
+                            {auth.capabilities?.includes('manage_academic') && <DeleteUnusedButton resource="class-groups" id={group.id} name={group.name} onDeleted={reload}/>}
                           </td>
                         </tr>
                       ))}

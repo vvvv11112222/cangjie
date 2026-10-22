@@ -38,6 +38,42 @@ afterEach(async () => {
 async function mount(): Promise<void> { await act(async () => { root.render(<VisualPanel sessionId={run.session_id} currentRun={run} />); }); }
 async function toggleAll(): Promise<void> { await act(async () => container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()); }
 describe('视觉观察页面', () => {
+  it('a history failure is not an empty result and can be retried', async () => {
+    api.runs.mockRejectedValueOnce(new Error('temporary history failure'));
+    await act(async () => root.render(<VisualPanel sessionId={run.session_id} currentRun={null}/>));
+    expect(container.textContent).not.toContain('还没有视觉分析记录');
+    const retry = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '重试读取分析记录');
+    expect(retry).toBeDefined();
+    await act(async () => retry!.click());
+    expect(container.querySelector('.visual-metrics')).not.toBeNull();
+    expect(container.textContent).not.toContain('temporary history failure');
+  });
+  it('clearly names the running behavior analysis stage', async () => {
+    const running = { ...run, status: 'running' as const, stage_plan: ['probe', 'video_analysis'] as const };
+    await act(async () => root.render(<VisualPanel sessionId={run.session_id} currentRun={{ ...running, stage_plan: [...running.stage_plan] }}/>));
+    expect(container.querySelector('.stage-flow')?.textContent).toContain('举手与低头识别');
+    expect(container.querySelector('.stage-flow')?.textContent).not.toContain('视频采样');
+  });
+  it('全班画框读完后，侧栏同步完整人物，选择后续页人物不重复请求', async () => {
+    api.people.mockImplementation(async (_run, cursor) => cursor
+      ? { items: [{ track_id: 'T0003', sample_count: 1 }], next_cursor: null }
+      : { items: [{ track_id: 'T0001', sample_count: 1 }], next_cursor: 'second' });
+    await mount();
+    expect(container.querySelectorAll('.visual-person')).toHaveLength(1);
+    await toggleAll();
+    expect(container.querySelectorAll('.visual-person')).toHaveLength(2);
+    expect(container.textContent).not.toContain('加载更多人物');
+    const requests = api.observations.mock.calls.length;
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('.visual-person')].find(b => b.textContent?.includes('T0003'))!.click());
+    expect(container.textContent).toContain('T0003 的画面记录');
+    expect(api.observations).toHaveBeenCalledTimes(requests);
+  });
+  it('opens the exact recording belonging to the selected visual run', async () => {
+    const open = vi.fn();
+    await act(async () => root.render(<VisualPanel sessionId={run.session_id} currentRun={run} onReplayMedia={open}/>));
+    await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === '在回放中打开此录像')!.click());
+    expect(open).toHaveBeenCalledWith(run.media_asset_id);
+  });
   it('显示全部人物框，选人不改变颜色，切换显示范围复用缓存', async () => {
     await mount(); await toggleAll();
     const colors = () => [...container.querySelectorAll('.visual-overlay g')].map(g => [g.getAttribute('data-track-id'), g.querySelector('rect')?.getAttribute('stroke')]);

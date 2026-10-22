@@ -146,6 +146,44 @@ func TestDatabaseDeletionFailuresStopAtMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestDeletionPreservesDerivedMediaParentsUntilRemoval(t *testing.T) {
+	f := setupDeletionFixture(t)
+	ctx := context.Background()
+	var sourceID, proxyID string
+	if err := f.pool.QueryRow(ctx, `SELECT id::text FROM teaching.media_assets WHERE session_id=$1 AND kind='source' LIMIT 1`, f.sessionID).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	// A real prepared recording has a source -> playback proxy link and derived
+	// proxy/audio/keyframe -> source links. Derived parents are required by CHECK.
+	for _, kind := range []string{"proxy", "audio", "keyframe"} {
+		var id string
+		if err := f.pool.QueryRow(ctx, `INSERT INTO teaching.media_assets(session_id,parent_asset_id,kind,storage_backend,object_key,sha256,mime_type,byte_size,status)
+			VALUES($1,$2,$3,'filesystem',$4,$5,'application/octet-stream',1,'ready') RETURNING id::text`, f.sessionID, sourceID, kind, "synthetic-derived/"+kind, strings.Repeat("a", 64)).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if kind == "proxy" {
+			proxyID = id
+		}
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE teaching.media_assets SET playback_asset_id=$2 WHERE id=$1`, sourceID, proxyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.service.CreateDeletion(ctx, f.admin, f.sessionID, "derived-media", "synthetic prepared recording cleanup"); err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := f.service.ProcessDeletion(ctx); !worked || err != nil {
+		t.Fatalf("delete derived media: worked=%v err=%v", worked, err)
+	}
+	var remaining int
+	var state string
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM teaching.media_assets WHERE session_id=$1`, f.sessionID).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("media remaining=%d err=%v", remaining, err)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT status FROM teaching.lesson_sessions WHERE id=$1`, f.sessionID).Scan(&state); err != nil || state != "deleted" {
+		t.Fatalf("classroom state=%s err=%v", state, err)
+	}
+}
+
 func TestExportConfirmedRollbackRemovesObject(t *testing.T) {
 	f := setupDeletionFixture(t)
 	ctx := context.Background()

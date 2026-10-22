@@ -27,6 +27,8 @@ type Values struct {
 	ASRModel        string `json:"asr_model"`
 	ASRRevision     string `json:"asr_revision"`
 	ASRLanguage     string `json:"asr_language_hints"`
+	ASRBillingMode  string `json:"asr_billing_mode,omitempty"`
+	ASRSecond       string `json:"asr_cny_per_second,omitempty"`
 	ASRInput        string `json:"asr_input_cny_per_million_tokens"`
 	ASROutput       string `json:"asr_output_cny_per_million_tokens"`
 	ASRMaxInput     int    `json:"asr_max_input_tokens"`
@@ -54,6 +56,9 @@ func (v *Values) UnmarshalJSON(raw []byte) error {
 	shape := reflect.TypeOf(plain{})
 	for i := 0; i < shape.NumField(); i++ {
 		name := shape.Field(i).Tag.Get("json")
+		if strings.HasSuffix(name, ",omitempty") {
+			continue
+		}
 		value, ok := fields[name]
 		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return fmt.Errorf("模型配置缺少必填字段")
@@ -66,6 +71,12 @@ func (v *Values) UnmarshalJSON(raw []byte) error {
 		return fmt.Errorf("模型配置字段或类型不正确")
 	}
 	*v = Values(value)
+	if v.ASRBillingMode == "" {
+		v.ASRBillingMode = "tokens"
+	}
+	if v.ASRSecond == "" {
+		v.ASRSecond = "0"
+	}
 	return nil
 }
 
@@ -143,6 +154,12 @@ func FromConfig(c analysis.Config) Values {
 		c.ASRModelRevision = ""
 	}
 	return Values{Enabled: c.CloudASR.Enabled && c.ReportEnabled, ASRBase: c.CloudASR.APIBase, ASRModel: c.ASRModelName, ASRRevision: c.ASRModelRevision, ASRLanguage: c.CloudASR.LanguageHints,
+		ASRBillingMode: func() string {
+			if c.CloudASR.BillingMode == "seconds" {
+				return "seconds"
+			}
+			return "tokens"
+		}(), ASRSecond: amount(c.CloudASR.PriceSecondMicros),
 		ASRInput: amount(c.CloudASR.InputPriceMicros), ASROutput: amount(c.CloudASR.OutputPriceMicros), ASRMaxInput: fallback(int(c.CloudASR.MaxInputTokens), 32768), ASRMaxOutput: fallback(int(c.CloudASR.MaxOutputTokens), 4096),
 		ReportBase: c.ReportAPIBase, ReportModel: c.ReportModel, ReportRevision: c.ReportModelRevision, ReportInput: amount(c.ReportInputPriceMicros), ReportOutput: amount(c.ReportOutputPriceMicros), ReportMaxInput: fallback(c.ReportMaxInputTokens, 8000), ReportMaxOutput: fallback(c.ReportMaxOutputTokens, 6000), MonthlyBudget: amount(c.ReportMonthlyBudgetMicros), PriceVersion: c.ReportPriceVersion}
 }
@@ -258,6 +275,15 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, in Update, re
 }
 
 func BuildConfig(base analysis.Config, v Values, keys secrets, confirmed bool) (analysis.Config, error) {
+	if v.ASRBillingMode == "" {
+		v.ASRBillingMode = "tokens"
+	}
+	if v.ASRSecond == "" {
+		v.ASRSecond = "0"
+	}
+	if v.ASRBillingMode != "tokens" && v.ASRBillingMode != "seconds" {
+		return base, fmt.Errorf("语音计费方式须为tokens或seconds")
+	}
 	for _, key := range []string{keys.ASR, keys.Report} {
 		if len(key) > 4096 || strings.IndexFunc(key, unicode.IsSpace) >= 0 || strings.IndexFunc(key, unicode.IsControl) >= 0 {
 			return base, fmt.Errorf("密钥长度或格式不正确")
@@ -271,7 +297,7 @@ func BuildConfig(base analysis.Config, v Values, keys secrets, confirmed bool) (
 	if len([]rune(v.PriceSource)) > 2048 || strings.IndexFunc(v.PriceSource, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' }) >= 0 {
 		return base, fmt.Errorf("价格来源说明过长或含非法控制字符")
 	}
-	for _, value := range []string{v.MonthlyBudget, v.ASRInput, v.ASROutput, v.ReportInput, v.ReportOutput} {
+	for _, value := range []string{v.MonthlyBudget, v.ASRInput, v.ASROutput, v.ASRSecond, v.ReportInput, v.ReportOutput} {
 		if _, err := Money(value); err != nil {
 			return base, fmt.Errorf("预算和单价请填写最多六位小数的非负金额")
 		}
@@ -289,18 +315,25 @@ func BuildConfig(base analysis.Config, v Values, keys secrets, confirmed bool) (
 	if strings.HasSuffix(strings.TrimRight(v.ASRBase, "/"), "/chat/completions") || strings.HasSuffix(strings.TrimRight(v.ReportBase, "/"), "/chat/completions") {
 		return base, fmt.Errorf("请填写接口基础地址，不要包含 /chat/completions")
 	}
-	p := Pricing{Confirmed: confirmed, Source: v.PriceSource, Version: v.PriceVersion, MonthlyBudget: v.MonthlyBudget, APIBase: v.ASRBase, ASRModel: v.ASRModel, ASRRevision: v.ASRRevision, ASRInput: v.ASRInput, ASROutput: v.ASROutput, ReportModel: v.ReportModel, ReportRevision: v.ReportRevision, ReportInput: v.ReportInput, ReportOutput: v.ReportOutput}
+	p := Pricing{Confirmed: confirmed, Source: v.PriceSource, Version: v.PriceVersion, MonthlyBudget: v.MonthlyBudget, APIBase: v.ASRBase, ASRModel: v.ASRModel, ASRRevision: v.ASRRevision, ASRBillingMode: v.ASRBillingMode, ASRSecond: v.ASRSecond, ASRInput: v.ASRInput, ASROutput: v.ASROutput, ReportModel: v.ReportModel, ReportRevision: v.ReportRevision, ReportInput: v.ReportInput, ReportOutput: v.ReportOutput}
 	if err := p.Validate(); err != nil {
 		return base, err
 	}
 	asrInput, _ := Money(v.ASRInput)
 	asrOutput, _ := Money(v.ASROutput)
-	_, promptSHA, err := analysis.ReportPrompt(analysis.TeacherPromptVersion)
+	_, promptSHA, err := analysis.ReportPrompt(analysis.ComprehensivePromptVersion)
 	if err != nil {
 		return base, err
 	}
 	settings := map[string]string{"ASR_CLOUD_ENABLED": "true", "ASR_API_BASE": v.ASRBase, "ASR_API_KEY": keys.ASR, "ASR_MODEL_NAME": v.ASRModel, "ASR_MODEL_REVISION": v.ASRRevision, "ASR_LANGUAGE_HINTS": v.ASRLanguage, "ASR_PRICE_VERSION": v.PriceVersion, "ASR_INPUT_PRICE_MICROS": strconv.FormatInt(asrInput, 10), "ASR_OUTPUT_PRICE_MICROS": strconv.FormatInt(asrOutput, 10), "ASR_MAX_INPUT_TOKENS": strconv.Itoa(v.ASRMaxInput), "ASR_MAX_OUTPUT_TOKENS": strconv.Itoa(v.ASRMaxOutput),
-		"REPORT_API_BASE": v.ReportBase, "REPORT_API_KEY": keys.Report, "REPORT_MODEL": v.ReportModel, "REPORT_MODEL_REVISION": v.ReportRevision, "REPORT_PROMPT_VERSION": analysis.TeacherPromptVersion, "REPORT_PROMPT_SHA256": promptSHA, "REPORT_SELECTION_VERSION": "time-window-v1", "REPORT_MAX_INPUT_TOKENS": strconv.Itoa(v.ReportMaxInput), "REPORT_MAX_OUTPUT_TOKENS": strconv.Itoa(v.ReportMaxOutput), "MODEL_BUDGET_CURRENCY": base.ReportBudgetCurrency, "MODEL_BUDGET_TIMEZONE": base.ReportBudgetTimezone, "MODEL_MONTHLY_BUDGET": v.MonthlyBudget, "MODEL_PRICE_VERSION": v.PriceVersion, "MODEL_INPUT_PRICE_PER_MILLION": v.ReportInput, "MODEL_OUTPUT_PRICE_PER_MILLION": v.ReportOutput}
+		"REPORT_API_BASE": v.ReportBase, "REPORT_API_KEY": keys.Report, "REPORT_MODEL": v.ReportModel, "REPORT_MODEL_REVISION": v.ReportRevision, "REPORT_PROMPT_VERSION": analysis.ComprehensivePromptVersion, "REPORT_PROMPT_SHA256": promptSHA, "REPORT_SELECTION_VERSION": "time-window-v1", "REPORT_MAX_INPUT_TOKENS": strconv.Itoa(v.ReportMaxInput), "REPORT_MAX_OUTPUT_TOKENS": strconv.Itoa(v.ReportMaxOutput), "MODEL_BUDGET_CURRENCY": base.ReportBudgetCurrency, "MODEL_BUDGET_TIMEZONE": base.ReportBudgetTimezone, "MODEL_MONTHLY_BUDGET": v.MonthlyBudget, "MODEL_PRICE_VERSION": v.PriceVersion, "MODEL_INPUT_PRICE_PER_MILLION": v.ReportInput, "MODEL_OUTPUT_PRICE_PER_MILLION": v.ReportOutput}
+	settings["ASR_BILLING_MODE"] = v.ASRBillingMode
+	if v.ASRBillingMode == "seconds" {
+		perSecond, _ := Money(v.ASRSecond)
+		settings["ASR_PRICE_PER_SECOND_MICROS"] = strconv.FormatInt(perSecond, 10)
+		delete(settings, "ASR_INPUT_PRICE_MICROS")
+		delete(settings, "ASR_OUTPUT_PRICE_MICROS")
+	}
 	if _, err = CheckSettings(settings); err != nil {
 		return base, err
 	}
@@ -319,7 +352,10 @@ func BuildConfig(base analysis.Config, v Values, keys secrets, confirmed bool) (
 		return base, fmt.Errorf("语音配置校验失败")
 	}
 	budget, _ := Money(v.MonthlyBudget)
-	asrReserve := (int64(v.ASRMaxInput)*asrInput + int64(v.ASRMaxOutput)*asrOutput + 999999) / 1000000
+	asrReserve, reserveErr := cloud.ReserveMicros(40000)
+	if reserveErr != nil {
+		return base, reserveErr
+	}
 	reportReserve := (int64(v.ReportMaxInput)*cfg.ReportInputPriceMicros + int64(v.ReportMaxOutput)*cfg.ReportOutputPriceMicros + 999999) / 1000000
 	if budget < asrReserve+reportReserve {
 		return base, fmt.Errorf("月预算不足以同时预留一次语音和报告请求，请核对单价与额度")
@@ -332,7 +368,7 @@ func BuildConfig(base analysis.Config, v Values, keys secrets, confirmed bool) (
 	base.ReportAPIKey = keys.Report
 	base.ReportModel = v.ReportModel
 	base.ReportModelRevision = v.ReportRevision
-	base.ReportPromptVersion = analysis.TeacherPromptVersion
+	base.ReportPromptVersion = analysis.ComprehensivePromptVersion
 	base.ReportPromptSHA256 = promptSHA
 	base.ReportSelectionVersion = "time-window-v1"
 	base.ReportPriceVersion = v.PriceVersion

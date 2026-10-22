@@ -269,7 +269,7 @@ export function StageFlow({ run }: { run: Run }): ReactElement {
             <div className={`stage stage-${tone}`}>
               <span className="stage-icon" aria-hidden="true">{stageIcon(job?.status ?? null)}</span>
               <p className="stage-name">
-                {index + 1}. {jobStageLabel(stage)}
+                {index + 1}. {stage === 'video_analysis' && run.mode === 'visual_only' ? '举手与低头识别' : jobStageLabel(stage)}
               </p>
               {job === null ? (
                 <span className="muted small">阶段计划中未返回任务</span>

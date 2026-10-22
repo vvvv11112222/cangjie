@@ -33,12 +33,4 @@ export function PlaceholderPage({ page }: { page: PlannedPage }): ReactElement {
   );
 }
 
-export const PLANNED_PAGES: Record<string, PlannedPage> = {
-  '#/audit': {
-    kicker: 'ACTIVITY LOG',
-    title: '操作记录',
-    description: '查看课堂管理与报告复核的操作轨迹。',
-    unavailableMessage: '操作记录查询暂未开放。',
-    emptyMessage: '你仍可在具体课堂、分析任务和教学报告中查看当前处理状态。',
-  },
-};
+export const PLANNED_PAGES: Record<string, PlannedPage> = {};

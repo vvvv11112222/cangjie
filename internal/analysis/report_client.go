@@ -11,6 +11,7 @@ import (
 )
 
 type modelEvidence struct {
+	ContextOnly bool `json:"context_only,omitempty"`
 	ID          string `json:"id"`
 	Kind        string `json:"kind"`
 	StartMS     int64  `json:"start_ms"`
@@ -43,6 +44,8 @@ type modelCallResult struct {
 	ProviderRequestID string
 	InputTokens       int64
 	OutputTokens      int64
+	BilledSeconds     int64 // ASR duration billing only; never substitutes for tokens.
+	TokensKnown       bool  // Duration-billed ASR can omit token usage.
 	UsageKnown        bool
 }
 

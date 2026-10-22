@@ -236,6 +236,7 @@ export interface WritableObservation {
 }
 
 export interface ReportProvenance {
+  included_materials?: { academic_schedule: boolean; speech: boolean; visual: boolean };
   media_asset_id: string;
   input_sha256: string;
   transcript_revision_id: string | null;

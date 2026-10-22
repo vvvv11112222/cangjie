@@ -23,6 +23,8 @@ import (
 )
 
 type ASRSnapshot struct {
+	BillingMode       string `json:"billing_mode,omitempty"`
+	PriceSecondMicros int64  `json:"price_second_micros,omitempty"`
 	APIBase           string `json:"api_base"`
 	LanguageHints     string `json:"language_hints"`
 	PriceVersion      string `json:"price_version"`
@@ -32,6 +34,20 @@ type ASRSnapshot struct {
 	MaxOutputTokens   int64  `json:"max_output_tokens"`
 	RequestVersion    string `json:"request_version"`
 }
+
+// Empty preserves historical token-billed snapshots and their interpretation.
+func (c ASRSnapshot) secondsBilling() bool { return c.BillingMode == "seconds" }
+
+func (c ASRSnapshot) ReserveMicros(durationMS int64) (int64, error) {
+	if c.secondsBilling() {
+		if durationMS <= 0 || durationMS > 40000 || c.PriceSecondMicros <= 0 || c.PriceSecondMicros > 1000000000 {
+			return 0, fmt.Errorf("invalid duration-billed ASR reservation")
+		}
+		return ((durationMS + 999) / 1000) * c.PriceSecondMicros, nil
+	}
+	return tokenCostMicros(c.MaxInputTokens, c.MaxOutputTokens, c.InputPriceMicros, c.OutputPriceMicros)
+}
+
 type CloudASRConfig struct {
 	Enabled bool
 	APIKey  string
@@ -60,6 +76,10 @@ func LoadCloudASR(get func(string) string) (CloudASRConfig, error) {
 	c.APIBase = strings.TrimRight(get("ASR_API_BASE"), "/")
 	c.LanguageHints = get("ASR_LANGUAGE_HINTS")
 	c.PriceVersion = get("ASR_PRICE_VERSION")
+	c.BillingMode = get("ASR_BILLING_MODE")
+	if c.BillingMode != "" && c.BillingMode != "tokens" && c.BillingMode != "seconds" {
+		return c, fmt.Errorf("ASR_BILLING_MODE must be tokens or seconds")
+	}
 	c.RequestVersion = asrrequest.Version
 	u, err := url.Parse(c.APIBase)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -72,7 +92,14 @@ func LoadCloudASR(get func(string) string) (CloudASRConfig, error) {
 	if c.APIKey == "" || c.PriceVersion == "" || get("ASR_MODEL_NAME") == "" || get("ASR_MODEL_REVISION") == "" {
 		return c, fmt.Errorf("cloud ASR requires key, model, revision and price version")
 	}
-	for key, dest := range map[string]*int64{"ASR_INPUT_PRICE_MICROS": &c.InputPriceMicros, "ASR_OUTPUT_PRICE_MICROS": &c.OutputPriceMicros, "ASR_MAX_INPUT_TOKENS": &c.MaxInputTokens, "ASR_MAX_OUTPUT_TOKENS": &c.MaxOutputTokens} {
+	fields := map[string]*int64{"ASR_MAX_INPUT_TOKENS": &c.MaxInputTokens, "ASR_MAX_OUTPUT_TOKENS": &c.MaxOutputTokens}
+	if c.secondsBilling() {
+		fields["ASR_PRICE_PER_SECOND_MICROS"] = &c.PriceSecondMicros
+	} else {
+		fields["ASR_INPUT_PRICE_MICROS"] = &c.InputPriceMicros
+		fields["ASR_OUTPUT_PRICE_MICROS"] = &c.OutputPriceMicros
+	}
+	for key, dest := range fields {
 		v, e := strconv.ParseInt(get(key), 10, 64)
 		if e != nil || v <= 0 || v > 1000000000 {
 			return c, fmt.Errorf("%s must be a positive bounded integer", key)
@@ -175,7 +202,9 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 		return empty, apperror.New(403, "EXTERNAL_PROCESSING_FORBIDDEN", "source or job no longer permits external processing")
 	}
 	body := asrrequest.Body(wav, model.Name, c.LanguageHints)
-	body["max_tokens"] = c.MaxOutputTokens
+	if !c.secondsBilling() {
+		body["max_tokens"] = c.MaxOutputTokens
+	}
 	raw, _ := json.Marshal(body)
 	sha := digestBytes(raw)
 	key := fmt.Sprintf("asr:%s:%d:%d", jobID, in.StartMS, in.EndMS)
@@ -212,7 +241,7 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 	if in.StartMS != priorEnd {
 		return empty, invalid("ASR chunks must be contiguous and ordered")
 	}
-	reserve, err := tokenCostMicros(c.MaxInputTokens, c.MaxOutputTokens, c.InputPriceMicros, c.OutputPriceMicros)
+	reserve, err := c.ReserveMicros(in.EndMS - in.StartMS)
 	if err != nil {
 		return empty, err
 	}
@@ -241,7 +270,7 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 	// A client disconnect must not erase billing state. No automatic provider retry.
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 180*time.Second)
 	defer cancel()
-	result, usage, callErr := s.callASR(callCtx, c.APIBase, raw)
+	result, usage, callErr := s.callASRBilled(callCtx, c.APIBase, raw, c.secondsBilling())
 	settleCtx, done := context.WithTimeout(context.Background(), 15*time.Second)
 	defer done()
 	if !usage.UsageKnown {
@@ -249,6 +278,10 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 		return empty, apperror.New(409, "MODEL_CALL_UNKNOWN", "ASR outcome or billing is unknown; no automatic repeat")
 	}
 	cost, e := tokenCostMicros(usage.InputTokens, usage.OutputTokens, c.InputPriceMicros, c.OutputPriceMicros)
+	if c.secondsBilling() {
+		cost = usage.BilledSeconds * c.PriceSecondMicros
+		e = nil
+	}
 	if e != nil {
 		return empty, e
 	}
@@ -264,12 +297,24 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 	if callErr != nil {
 		status = "failed"
 	}
-	tag, err := tx.Exec(settleCtx, `UPDATE teaching.model_calls SET status=$2,actual_cost=$3::numeric/1000000,input_tokens=$4,output_tokens=$5,provider_request_id=NULLIF($6,''),settled_at=now(),lock_version=lock_version+1 WHERE call_key=$1 AND status IN('reserved','unknown') AND reconciled_by IS NULL`, key, status, cost, usage.InputTokens, usage.OutputTokens, usage.ProviderRequestID)
+	var inputTokens, outputTokens any = usage.InputTokens, usage.OutputTokens
+	if c.secondsBilling() && !usage.TokensKnown {
+		inputTokens, outputTokens = nil, nil
+	}
+	tag, err := tx.Exec(settleCtx, `UPDATE teaching.model_calls SET status=$2,actual_cost=$3::numeric/1000000,input_tokens=$4,output_tokens=$5,provider_request_id=NULLIF($6,''),settled_at=now(),lock_version=lock_version+1 WHERE call_key=$1 AND status IN('reserved','unknown') AND reconciled_by IS NULL`, key, status, cost, inputTokens, outputTokens, usage.ProviderRequestID)
 	if err != nil {
 		return empty, err
 	}
 	if tag.RowsAffected() != 1 {
 		return empty, state("ASR bill was reconciled while provider request was running")
+	}
+	if c.secondsBilling() {
+		// Keep exact billed units outside classroom content, including after its
+		// eventual cleanup. Never reinterpret seconds as input/output tokens.
+		if _, err = tx.Exec(settleCtx, `INSERT INTO teaching.audit_logs(action,resource_type,resource_id,result,request_id,metadata)
+			VALUES('model.asr.settle','analysis_run',$1,'success','asr-billing',jsonb_build_object('billing_mode','seconds','billed_seconds',$2::bigint,'price_second_micros',$3::bigint,'price_version',$4::text,'call_key',$5::text))`, job.RunID, usage.BilledSeconds, c.PriceSecondMicros, c.PriceVersion, key); err != nil {
+			return empty, err
+		}
 	}
 	if err = tx.Commit(settleCtx); err != nil {
 		return empty, err
@@ -301,6 +346,10 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 }
 
 func (s *Service) callASR(ctx context.Context, base string, raw []byte) (ASRText, modelCallResult, error) {
+	return s.callASRBilled(ctx, base, raw, false)
+}
+
+func (s *Service) callASRBilled(ctx context.Context, base string, raw []byte, secondsBilling bool) (ASRText, modelCallResult, error) {
 	var text ASRText
 	var result modelCallResult
 	req, err := http.NewRequestWithContext(ctx, "POST", base+"/chat/completions", bytes.NewReader(raw))
@@ -329,13 +378,23 @@ func (s *Service) callASR(ctx context.Context, base string, raw []byte) (ASRText
 	}
 	result.ProviderRequestID = envelope.ID
 	var usage struct {
-		Input  *int64 `json:"prompt_tokens"`
-		Output *int64 `json:"completion_tokens"`
+		Input   *int64 `json:"prompt_tokens"`
+		Output  *int64 `json:"completion_tokens"`
+		Seconds *int64 `json:"seconds"`
 	}
 	if json.Unmarshal(envelope.Usage, &usage) == nil && usage.Input != nil && usage.Output != nil && *usage.Input >= 0 && *usage.Output >= 0 {
 		result.UsageKnown = true
+		result.TokensKnown = true
 		result.InputTokens = *usage.Input
 		result.OutputTokens = *usage.Output
+	}
+	if secondsBilling {
+		// Each request contains at most 40 seconds of verified PCM. Other values
+		// need reconciliation, not a guessed conversion from tokens.
+		result.UsageKnown = usage.Seconds != nil && *usage.Seconds > 0 && *usage.Seconds <= 40
+		if result.UsageKnown {
+			result.BilledSeconds = *usage.Seconds
+		}
 	}
 	var choices []struct {
 		Finish  string `json:"finish_reason"`

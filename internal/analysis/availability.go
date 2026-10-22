@@ -40,7 +40,7 @@ func (s *Service) Availability(ctx context.Context) (visual, audio, report, budg
 	if err != nil {
 		return
 	}
-	asrReserve, asrErr := tokenCostMicros(cfg.CloudASR.MaxInputTokens, cfg.CloudASR.MaxOutputTokens, cfg.CloudASR.InputPriceMicros, cfg.CloudASR.OutputPriceMicros)
+	asrReserve, asrErr := cfg.CloudASR.ReserveMicros(40000)
 	reportReserve, reportErr := tokenCostMicros(int64(cfg.ReportMaxInputTokens), int64(cfg.ReportMaxOutputTokens), cfg.ReportInputPriceMicros, cfg.ReportOutputPriceMicros)
 	reportBudget = reportErr == nil && reportReserve > 0 && !unreconciled && used <= cfg.ReportMonthlyBudgetMicros-reportReserve
 	// The full workflow needs both reservations. Check the subtraction in stages

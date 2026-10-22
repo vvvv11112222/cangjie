@@ -41,6 +41,7 @@ export function PlaybackPanel({
   transcript,
   mediaList,
   needsMediaList,
+  onSelectMedia,
 }: {
   /** 当前回放目标媒体；为 null 表示该课堂还没有可回放的媒体。 */
   mediaId: string | null;
@@ -48,6 +49,7 @@ export function PlaybackPanel({
   transcript: TranscriptResult;
   mediaList: ReturnType<typeof useSessionMedia>;
   needsMediaList: boolean;
+  onSelectMedia?(mediaId: string): void;
 }): ReactElement {
   const api = isApiMode();
   // 重取许可时保留已失败的节点但暂停操作；许可成功后对同一节点执行 load，清除失败资源。
@@ -141,7 +143,7 @@ export function PlaybackPanel({
       <p className="result-context">当前回放：{media?.original_filename || "历史录像（文件名未记录）"}。片段与证据仅匹配当前回放录像。</p>
       <Card
         title="回放"
-        subtitle="播放的是课堂当前主媒体的播放代理；时间口径为原录像起点的整数毫秒，代理不裁剪、不变速，所以跳转时间与原录像一致。"
+        subtitle="选择本节课堂的一份录像回放。不同录像各自保留分析结果；切换回放不会覆盖录像或重新分析。"
         actions={
           playbackUrl === null ? undefined : (
             <button
@@ -155,11 +157,16 @@ export function PlaybackPanel({
           )
         }
       >
+        {onSelectMedia && <label className="account-field"><span>选择回放录像</span><select value={mediaId ?? ''} onChange={event => onSelectMedia(event.target.value)}>
+          {mediaId !== null && !mediaList.data.items.some(item => item.id === mediaId && item.kind === 'source' && item.status === 'ready' && item.allowed_actions.includes('playback')) && <option value={mediaId}>当前录像 · {mediaId.slice(0, 8)}</option>}
+          {mediaId === null && <option value="">请选择已就绪且允许回放的录像</option>}
+          {mediaList.data.items.filter(item => item.kind === 'source' && item.status === 'ready' && item.allowed_actions.includes('playback')).map(item => <option key={item.id} value={item.id}>{item.original_filename || `历史录像 ${item.id.slice(0, 8)}`} · {item.created_at ? formatDateTime(item.created_at) : "上传时间未记录"}</option>)}
+        </select><small className="muted">录像编号与“批次与操作”的媒体编号一致。也可以在“视觉观察”点击“在回放中打开此录像”。</small></label>}
         <LoadStateNote status={detail.status} error={detail.error} />
         <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
         {needsMediaList ? (
           <div>
-            <LoadStateNote status={mediaList.status} error={mediaList.error} />
+            {mediaId !== null && mediaList.error !== null ? <p className="load-note">其他录像列表暂时无法读取，当前录像仍可回放；可重试读取列表。</p> : <LoadStateNote status={mediaList.status} error={mediaList.error} />}
             <LoadControls actionLabel={mediaList.actionLabel} loadMore={mediaList.loadMore} />
             {mediaId === null && mediaList.data.nextCursor !== null && mediaList.status === 'ready' ? (
               <p className="load-note">已读取页面尚无可回放媒体，请继续加载后续页面。</p>
@@ -182,22 +189,22 @@ export function PlaybackPanel({
                 <BadgeTag badge={mediaStatusBadge(media.status)} />
               </Field>
               <Field label="时长">
-                {media.duration_ms === null ? <span className="muted">null</span> : formatTimestamp(media.duration_ms)}
+                {media.duration_ms === null ? <span className="muted">时长未读取</span> : formatTimestamp(media.duration_ms)}
               </Field>
               <Field label="播放资产">
-                {media.playback_asset_id === null ? <span className="muted">null</span> : <IdChip id={media.playback_asset_id} />}
+                {media.playback_asset_id === null ? <span className="muted">未单独记录</span> : <IdChip id={media.playback_asset_id} />}
               </Field>
               <Field label="有效期">
-                {media.expires_at === null ? <span className="muted">null</span> : formatDateTime(media.expires_at)}
+                {media.expires_at === null ? <span className="muted">未设置到期时间</span> : formatDateTime(media.expires_at)}
               </Field>
             </div>
 
             {media.status === 'ready' ? null : (
               <p className="notice-strip">
                 <IconAlert size={14} aria-hidden="true" />
-                媒体状态为 {media.status}
+                媒体状态为 {mediaStatusBadge(media.status).label}
                 {media.status === 'pending'
-                  ? '，可先在「批次与操作」里做媒体准备（probe 允许对 pending 原媒体执行）。'
+                  ? '，可先在“批次与操作”里点击“媒体准备”。'
                   : '，未就绪前不能播放。'}
               </p>
             )}
@@ -206,8 +213,8 @@ export function PlaybackPanel({
               media.status === 'ready' ? (
                 <p className="notice-strip">
                   <IconAlert size={14} aria-hidden="true" />
-                  服务端没有给出 playback_url：来源未核验、缺少 playback 用途、媒体已过期，
-                  或课堂内容读取权限已到期。页面不拿别的地址顶替，请按上述原因核对。
+                  当前录像暂不能播放：来源可能未核验、未获准回放、录像已过期，
+                  或课堂读取权限已到期。请在“素材与来源”核对。
                 </p>
               ) : null
             ) : probe.status === 'failed' ? (

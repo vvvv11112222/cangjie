@@ -48,6 +48,11 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   const [pairing, setPairing] = useState<CapturePairing | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [captureLoading, setCaptureLoading] = useState(true);
+  const [captureUnavailable, setCaptureUnavailable] = useState(false);
+  const [reload, setReload] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -70,23 +75,26 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   }
 
   useEffect(() => {
-    if (!enabled || !services.data?.live_capture.available) return;
+    if (!enabled) return;
     let current = true;
-    setError(null);
-    void Promise.all([
-      verifiedSources(session.id),
-      getActiveLiveCapture(session.id).catch((reason: unknown) => {
-        if (reason instanceof ApiError && reason.status === 404) return null;
-        throw reason;
-      }),
-    ]).then(([verified, active]) => {
+    setError(null); setSourceError(null); setSources([]); setSourceId(''); setCapture(null);
+    setSourcesLoading(true); setCaptureLoading(true); setCaptureUnavailable(false);
+    void verifiedSources(session.id).then(verified => {
       if (!current) return;
       setSources(verified);
-      setSourceId((value) => value || verified[0]?.id || '');
-      setCapture(active);
-    }).catch((reason: unknown) => { if (current) setError(describeError(reason)); });
+      setSourceId(verified[0]?.id || '');
+    }).catch((reason: unknown) => { if (current) setSourceError(describeError(reason)); })
+      .finally(() => { if (current) setSourcesLoading(false); });
+    void getActiveLiveCapture(session.id).then(active => { if (current) setCapture(active); })
+      .catch((reason: unknown) => {
+        if (!current || (reason instanceof ApiError && reason.status === 404)) return;
+        setCaptureUnavailable(true);
+        setError(reason instanceof ApiError && reason.status === 503
+          ? '实时采集服务尚未启用或暂时不可用。已登记的录像来源仍可正常使用；手机采集需要部署者启用媒体服务和可信 HTTPS。'
+          : `无法读取采集状态：${describeError(reason)}`);
+      }).finally(() => { if (current) setCaptureLoading(false); });
     return () => { current = false; };
-  }, [enabled, session.id, services.data?.live_capture.available]);
+  }, [enabled, session.id, reload]);
 
   useEffect(() => {
     if (!enabled || pollStopped || capture === null || terminal(capture)) return;
@@ -184,11 +192,11 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
           <div className="capture-create">
             <label className="account-field">
               <span>已核验来源</span>
-              <select value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
-                {sources.length === 0 ? <option value="">没有可用来源</option> : sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}
+              <select value={sourceId} disabled={sourcesLoading || sourceError !== null} onChange={(event) => setSourceId(event.target.value)}>
+                {sources.length === 0 ? <option value="">{sourcesLoading ? '正在读取来源…' : sourceError ? '来源读取失败' : '没有已核验且允许回放的来源'}</option> : sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}
               </select>
             </label>
-            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || sourceId === '' || !session.allowed_actions.includes('upload') || !services.data?.live_capture.available} onClick={() => void start()}>
+            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || captureLoading || captureUnavailable || sourceId === '' || !session.allowed_actions.includes('upload') || !services.data?.live_capture.available} onClick={() => void start()}>
               创建实时采集
             </button>
             <p className="field-hint">没有可用来源时，请先登记来源并由学院教务或系统管理员核验回放用途。<a href={`#/sources?session=${session.id}`}>处理这节课堂的来源</a></p>
@@ -213,6 +221,8 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
         )}
         {pairing === null ? null : <div className="capture-pairing"><strong>手机配对链接</strong><a href={pairing.phone_url} target="_blank" rel="noreferrer">{pairing.phone_url}</a><span>有效至 {formatDateTime(pairing.expires_at)}</span><button type="button" className="btn btn-secondary" onClick={() => void navigator.clipboard.writeText(pairing.phone_url).then(() => setNotice('配对链接已复制。')).catch(() => setError('浏览器拒绝复制，请手动选择链接。'))}>复制链接</button></div>}
         {error === null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={error}/></div>}
+        {sourceError === null ? null : <p role="alert" className="notice-strip load-note-error">来源读取失败：{sourceError}</p>}
+        {(sourceError !== null || captureUnavailable) && <button type="button" className="btn btn-secondary" disabled={sourcesLoading || captureLoading || busy} onClick={() => setReload(value => value + 1)}>重新检查来源与采集服务</button>}
         {notice === null ? null : <p className="notice-strip">{notice}</p>}
         {capture?.error_code == null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={`${errorCodeText(capture.error_code)}（错误码 ${capture.error_code}）`}/><p>请先检查手机连接、权限和采集服务；确认本次采集已停止后，再创建新的采集。</p><TechDetails summary="采集结束技术详情"><p>{capture.end_reason ?? "未提供结束原因"}</p></TechDetails></div>}
         {capture === null ? null : <TechDetails><ul className="tech-list"><li className="mono">live_capture.id = {capture.id}</li><li className="mono">media_asset_id = {capture.media_asset_id ?? 'null'}</li><li className="mono">media_prepare_run_id = {capture.media_prepare_run_id ?? 'null'}</li><li className="mono">allowed_actions = [{capture.allowed_actions.join(', ')}]</li></ul></TechDetails>}

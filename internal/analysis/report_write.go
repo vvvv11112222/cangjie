@@ -285,8 +285,11 @@ func (s *Service) Review(ctx context.Context, p identity.Principal, id string, i
 		if err = tx.QueryRow(ctx, `SELECT content_sha256,(SELECT count(*) FROM teaching.report_observations WHERE report_id=$1 AND removed_at IS NULL AND review_status='unreviewed') FROM teaching.reports WHERE id=$1`, id).Scan(&digest, &unreviewed); err != nil {
 			return Report{}, err
 		}
-		if digest != *in.ContentSHA256 || unreviewed != 0 {
-			return Report{}, apperror.New(http.StatusUnprocessableEntity, "INVALID_REPORT", "report content changed or observations remain unreviewed")
+		if unreviewed != 0 {
+			return Report{}, apperror.WithDetails(http.StatusUnprocessableEntity, "INVALID_REPORT", "observations remain unreviewed", map[string]any{"unreviewed_count": unreviewed})
+		}
+		if digest != *in.ContentSHA256 {
+			return Report{}, apperror.New(http.StatusUnprocessableEntity, "INVALID_REPORT", "report content changed; reload and confirm current content")
 		}
 		_, err = tx.Exec(ctx, `UPDATE teaching.reports SET reviewed_content_sha256=content_sha256,reviewed_by=$2,reviewed_at=now(),lock_version=lock_version+1 WHERE id=$1`, id, p.UserID)
 	default:

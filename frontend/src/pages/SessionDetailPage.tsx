@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ReactElement } from 'react';
 import { useAuth } from '../auth';
 import { cancelRun, createRun, uploadMedia } from '../data/actions';
-import { describeError } from '../data/errors';
+import { ApiError, describeError } from '../data/errors';
 import { isUuid } from '../data/ids';
 import {
   fixtureSession,
@@ -107,6 +107,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   useEffect(()=>()=>{activeScope.current="unmounted";},[]);
 
   const [tab, setTab] = useState<Tab>(()=>sessionIntent().tab);
+  const [replayChoice, setReplayChoice] = useState<{ scope: string; mediaId: string } | null>(null);
   const [actions, setActions] = useState<ActionState>(() => emptyActionState(scope));
   const uploadFile = useRef<HTMLInputElement>(null);
   const uploadForm = useRef<HTMLDivElement>(null);
@@ -149,8 +150,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
   const transcript = useSessionTranscript(session, tab === 'transcript' || tab === 'playback');
   const report = useSessionReport(session, baseRun, tab === 'report');
   // 回放要用媒体列表挑出可播放的目标（没有主媒体时退回到列表里的原媒体），因此也在这里加载。
-  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'live' || tab === 'playback'));
-  const playbackMediaId = session === null ? null : pickPlaybackMediaId(session, media.data.items);
+  const media = useSessionMedia(session, api && (tab === 'run' || tab === 'live' || tab === 'playback'), 'source');
+  const recentMediaId = baseRun !== null && media.data.items.some(item => item.id === baseRun.media_asset_id && item.kind === 'source') ? baseRun.media_asset_id : null;
+  const playbackMediaId = replayChoice?.scope === scope ? replayChoice.mediaId : session === null ? null : pickPlaybackMediaId(session, media.data.items);
   const playback = useMediaDetail(playbackMediaId, tab === 'playback');
 
   const effectiveRun = action.run ?? baseRun;
@@ -182,7 +184,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
   async function submitAnalyze(mode: RunMode): Promise<void> {
     const fromScope = scope;
-    const mediaAssetId = processingMediaId(action, session?.primary_media_asset_id ?? null);
+    const mediaAssetId = processingMediaId(action, session?.primary_media_asset_id ?? null, recentMediaId);
     if (session === null || mediaAssetId === null) {
       write(fromScope, (base) => ({ ...base, error: '该课堂还没有可处理的媒体，请先上传录像。' }));
       return;
@@ -224,7 +226,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       }
     } catch (error) {
       // 失败时保留 pendingIntent：重试（含重进详情）会复用同一个键，避免重复分析。
-      write(fromScope, (base) => ({ ...base, busy: false, error: describeError(error) }));
+      write(fromScope, (base) => ({ ...base, busy: false, error: error instanceof ApiError && error.code === 'SERVICE_UNAVAILABLE' && typeof error.details.reason === 'string' ? error.details.reason : describeError(error) }));
     }
   }
 
@@ -328,7 +330,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     }
   }
 
-  const mediaTarget = processingMediaId(action, session?.primary_media_asset_id ?? null);
+  const mediaTarget = processingMediaId(action, session?.primary_media_asset_id ?? null, recentMediaId);
   const canUpload = session !== null && session.allowed_actions.includes('upload');
   /**
    * 评审意见 N05：Session 的授权不能覆盖所选媒体自己的用途。
@@ -389,7 +391,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
       <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
 
       {session === null ? (
-        <p className="empty">找不到该课堂，或不在当前账号可见范围。</p>
+        detail.status === 'ready' ? <p className="empty">找不到该课堂，或不在当前账号可见范围。</p> : null
       ) : (
         <>
           <div className="tab-bar" role="tablist" aria-label="课堂详情">
@@ -482,7 +484,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                         ? '该课堂还没有分析批次。'
                         : '批次引用存在，但暂时读不到内容，请重试读取。'
                       : '批次读取失败，暂时无法显示。'
-                    : `${runModeLabel(shownRun.mode)} · 状态 ${shownRun.status}${
+                    : `${runModeLabel(shownRun.mode)} · ${runStatusBadge(shownRun.status).label}${
                         isRunActive(shownRun)
                           ? poll.error === null
                             ? ' · 每 2 秒刷新'
@@ -508,7 +510,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     {/* 与课堂任务页共用同一套阶段流程和错误区，避免同一批次两种样子。 */}
                     <StageFlow run={shownRun} />
                     {shownRun.error_code === null ? (
-                      <RunFields run={shownRun} />
+                      <TechDetails summary="批次编号与状态详情"><RunFields run={shownRun} /></TechDetails>
                     ) : (
                       <RunErrorBox run={shownRun} />
                     )}
@@ -523,6 +525,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
               </Card>
 
               <Card title="下一步：上传或选择分析" subtitle="举手与低头识别查看画面；语音转写与教学报告处理带声音的录像。上传成功后不会自动调用模型。">
+                <p className="field-hint">综合报告会采用课程与课表登记、语音文字，以及这段录像已完成的举手和低头结果。需要综合学生动作时，请先完成“举手与低头识别”，再生成报告；已有转写可在“转写”中直接生成新报告，无需重复识别语音。</p>
                 {api && <ServiceChecklist data={services.data} error={services.error} onReload={()=>{services.reload();targetSource.reload();selectedDetail.reload();media.reload();}}/>}
                 {mediaTarget === null ? <p className="onboarding-next">还没有选择录像。请先点击“上传录像”，在同一区域登记或选择来源。</p> : targetSource.data && !mediaAllows('analyze') ? <p className="onboarding-next">{targetSource.data.rights_status !== 'verified' ? '录像来源尚未通过核验。' : !targetSource.data.allowed_uses.includes('analysis') ? '该来源尚未获准分析用途。未申请过该用途时，需要重新登记来源。' : '当前录像状态或当前账号授权暂不允许分析。'}请联系学院教务或系统管理员处理。<a href={`#/sources?session=${session.id}`}>前往这节课堂的来源登记与核验</a></p> : null}
                 {targetMedia && !targetSource.data && <div className="field-hint">正在确认录像来源与云端处理许可。{targetSource.error && <>读取失败，请重新检查。<TechDetails><p>{targetSource.error}</p></TechDetails></>}</div>}
@@ -602,7 +605,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                             write(scope, (base) => ({ ...base, mediaChoice: choice }));
                           }}
                         >
-                          <option value="__auto__">自动（优先刚上传的媒体）</option>
+                          <option value="__auto__">自动（刚上传录像 → 主录像 → 最近分析录像）</option>
                           <option value="__primary__">
                             使用课堂当前主媒体{session.primary_media_asset_id === null ? '（当前没有）' : ''}
                           </option>
@@ -614,7 +617,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                         </select>
                       </label>
                     ) : media.status === 'ready' ? (
-                      <p className="load-note">该课堂还没有可选的原媒体，先上传录像。</p>
+                      <p className="load-note">{media.data.nextCursor !== null ? '已加载页面尚未找到原录像，请点击“加载更多”继续查找。' : '该课堂还没有可选的原录像，先上传录像。'}</p>
                     ) : null}
                     {mediaTarget === null ? (
                       <p className="load-note">{sourceMedia.length > 0 ? '请在“处理目标媒体”中选择已上传的录像，或上传新的录像。' : '请先上传录像。'}</p>
@@ -735,10 +738,10 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
             )
           ) : null}
 
-          {tab === 'visual' ? api ? <VisualPanel key={scope} sessionId={session.id} currentRun={shownRun} /> : <Card title="视觉观察"><p className="empty">当前是固定样例模式，请连接团队后端后上传录像进行视觉分析。</p></Card> : null}
+          {tab === 'visual' ? api ? <VisualPanel key={scope} sessionId={session.id} currentRun={shownRun} onReplayMedia={mediaId => { setReplayChoice({ scope, mediaId }); setTab('playback'); }} /> : <Card title="视觉观察"><p className="empty">当前是固定样例模式，请连接团队后端后上传录像进行视觉分析。</p></Card> : null}
 
           {tab === 'playback' ? (
-                <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList={session.primary_media_asset_id === null} />
+                <PlaybackPanel key={`${scope}:${playbackMediaId}:${session.latest_run_id}`} mediaId={playbackMediaId} detail={playback} transcript={transcript} mediaList={media} needsMediaList onSelectMedia={mediaId => setReplayChoice({ scope, mediaId })} />
           ) : null}
         </>
       )}

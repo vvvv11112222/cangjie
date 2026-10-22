@@ -90,6 +90,50 @@ it('switching transcript history updates the visible revision and its text', asy
   expect(container.textContent).toContain('第二版正文'); expect(container.textContent).not.toContain('第一版正文');
 });
 
+it('replaces transcript editor history when a new recording result arrives', async () => {
+  const view = buildTranscriptView({ results: resultsFixture, revision: firstRevision, run: null, kind: 'api' });
+  await mount(<TranscriptPage embedded session={session} view={view}/>);
+  const other = { ...secondRevision, id: 'other-recording-revision', media_asset_id: 'other-recording', segments: [{ ...secondRevision.segments[0]!, text_content: '另一录像的文字' }] };
+  revisions = [other];
+  await mount(<TranscriptPage embedded session={session} view={buildTranscriptView({ results: { ...resultsFixture, transcript_revision_id: other.id }, revision: other, run: null, kind: 'api' })}/>);
+  expect(container.querySelector<HTMLSelectElement>('.revision-toolbar select')?.value).toBe(other.id);
+  expect(container.querySelector('.revision-toolbar')?.textContent).not.toContain(firstRevision.id);
+  await click('修订转写');
+  expect(container.querySelector<HTMLTextAreaElement>('.revision-editor textarea[aria-label]')?.value).toBe('另一录像的文字');
+});
+
+it('does not retain edited text after cancelling transcript changes', async () => {
+  await mount(<TranscriptRevisionPanel session={session} initial={firstRevision}/>);
+  await click('修订转写');
+  const node = container.querySelector<HTMLTextAreaElement>('.revision-editor textarea[aria-label]')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(node, '不应保存的修改'); node.dispatchEvent(new Event('input', { bubbles: true })); });
+  await click('取消编辑'); await click('修订转写');
+  expect(container.querySelector<HTMLTextAreaElement>('.revision-editor textarea[aria-label]')?.value).toBe('第一版正文');
+});
+
+it('cancelling report edits restores all saved fields before editing again', async () => {
+  const report: Report = { ...reportFixture, status: 'draft', allowed_actions: ['edit'] }; reports = [report];
+  await mount(<ReportWorkflowPanel session={session} initial={report}/>); await click('编辑草稿');
+  const node = container.querySelector<HTMLTextAreaElement>('.report-editor textarea')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(node, '取消的报告修改'); node.dispatchEvent(new Event('input', { bubbles: true })); });
+  await click('取消编辑'); await click('编辑草稿');
+  expect(container.querySelector<HTMLTextAreaElement>('.report-editor textarea')?.value).toBe(report.summary);
+});
+
+it('recovers an export status read without keeping a stale error', async () => {
+  vi.useFakeTimers();
+  const report: Report = { ...reportFixture, status: 'published', allowed_actions: ['export'] }; reports = [report];
+  const exported = { id: 'export', report_id: report.id, status: 'queued', error_code: null, download_url: null, expires_at: '2026-10-23T00:00:00Z' };
+  h.createExport.mockResolvedValue(exported);
+  h.getExport.mockRejectedValueOnce(new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 })).mockResolvedValue({ ...exported, status: 'succeeded', download_url: '/recovered-export' });
+  await mount(<ReportWorkflowPanel session={session} initial={report}/>); await click('导出当前发布版');
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+  expect(container.textContent).toContain('SERVICE_UNAVAILABLE');
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+  expect(container.textContent).not.toContain('SERVICE_UNAVAILABLE');
+  expect(container.querySelector('a[href="/recovered-export"]')).not.toBeNull();
+});
+
 it('a saved revision advances the classroom lock even when branching from an older version', async () => {
   let lock = 1;
   h.createRevision.mockImplementation(async (_session, input) => {
@@ -155,7 +199,7 @@ it('loads evidence and disclosures for the selected report run and discards late
 });
 
 it('refreshes publication state across tab reentry and after withdrawal', async () => {
-  const a: Report = { ...reportFixture, status: 'in_review', allowed_actions: ['publish'] };
+  const a: Report = { ...reportFixture, status: 'in_review', allowed_actions: ['publish'], content_sha256: 'confirmed-content', reviewed_content_sha256: 'confirmed-content', observations: reportFixture.observations.map(item => ({ ...item, review_status: 'accepted' })) };
   const b: Report = { ...a, id: 'report-b', revision: 2 };
   reports = [a, b]; let current: string | null = null;
   h.publishReport.mockImplementation(async (id, input) => {
@@ -176,6 +220,23 @@ it('refreshes publication state across tab reentry and after withdrawal', async 
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '撤回测试'); input.dispatchEvent(new Event('input', { bubbles: true })); });
   await click('撤回报告'); expect(refresh).toHaveBeenCalledTimes(3);
   expect(container.textContent).not.toContain('导出当前发布版');
+});
+
+it('requires observation review before whole confirmation, and whole confirmation before publication', async () => {
+  const reviewable: Report = { ...reportFixture, status: 'in_review', content_sha256: 'current-content', reviewed_content_sha256: null, allowed_actions: ['review', 'confirm_report', 'publish'], observations: reportFixture.observations.map(item => ({ ...item, review_status: 'unreviewed' })) };
+  reports = [reviewable];
+  await mount(<ReportWorkflowPanel session={session} initial={reviewable}/>);
+  const input = container.querySelector('.workflow-toolbar input')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '已核对依据'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(button('确认整篇内容').disabled).toBe(true);
+  expect(button('发布报告').disabled).toBe(true);
+  const reviewed: Report = { ...reviewable, observations: reviewable.observations.map(item => ({ ...item, review_status: 'accepted' })) };
+  reports = [reviewed]; await mount(<ReportWorkflowPanel session={session} initial={reviewed}/>);
+  expect(button('确认整篇内容').disabled).toBe(false);
+  expect(button('发布报告').disabled).toBe(true);
+  const confirmed = { ...reviewed, reviewed_content_sha256: reviewed.content_sha256 };
+  reports = [confirmed]; await mount(<ReportWorkflowPanel session={session} initial={confirmed}/>);
+  expect(button('发布报告').disabled).toBe(false);
 });
 
 it.each(['report', 'revision', 'source'])('loads beyond ten pages of %s data', async (kind) => {
@@ -212,6 +273,42 @@ it.each([401, 403, 404, 410])('stops export polling and clears download data on 
   await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
   expect(h.getExport).toHaveBeenCalledTimes(1); expect(container.textContent).toContain('已停止自动刷新');
   expect(container.textContent).not.toContain('导出状态');
+});
+
+it('reuses an uncertain export intent but creates a different key for another format', async () => {
+  const report: Report = { ...reportFixture, status: 'published', allowed_actions: ['export'] }; reports = [report];
+  h.createExport.mockRejectedValue(new ApiError({ code: 'NETWORK_ERROR', status: 0 }));
+  await mount(<ReportWorkflowPanel session={session} initial={report}/>);
+  await click('导出当前发布版'); await click('导出当前发布版');
+  expect(h.createExport.mock.calls[0]?.[2]).toBe(h.createExport.mock.calls[1]?.[2]);
+  const format = container.querySelector<HTMLSelectElement>('.export-row select')!;
+  await act(async () => { format.value = 'json'; format.dispatchEvent(new Event('change', { bubbles: true })); });
+  h.createExport.mockResolvedValue({ id: 'json-export', report_id: report.id, status: 'succeeded', error_code: null, download_url: '/synthetic.json', expires_at: '2026-10-23T00:00:00Z' });
+  await click('导出当前发布版');
+  expect(h.createExport.mock.calls[2]?.[1]).toBe('json');
+  expect(h.createExport.mock.calls[2]?.[2]).not.toBe(h.createExport.mock.calls[0]?.[2]);
+  expect(container.textContent).toContain('导出状态：已生成');
+});
+
+it('does not show or continue polling another report version export', async () => {
+  vi.useFakeTimers();
+  const a: Report = { ...reportFixture, status: 'published', allowed_actions: ['export'] };
+  const b: Report = { ...a, id: 'old-report', revision: a.revision + 1, status: 'superseded', allowed_actions: [] }; reports = [a,b];
+  h.createExport.mockResolvedValue({ id: 'export-a', report_id: a.id, status: 'queued', error_code: null, download_url: null, expires_at: '2026-10-23T00:00:00Z' });
+  await mount(<ReportWorkflowPanel session={session} initial={a}/>); await click('导出当前发布版');
+  await select(b.id);
+  expect(container.textContent).not.toContain('导出状态');
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  expect(h.getExport).not.toHaveBeenCalled();
+});
+
+it('hides an old download link when the current report loses export permission', async () => {
+  const report: Report = { ...reportFixture, status: 'published', allowed_actions: ['export'] }; reports = [report];
+  h.createExport.mockResolvedValue({ id: 'export', report_id: report.id, status: 'succeeded', error_code: null, download_url: '/old-report-download', expires_at: '2026-10-23T00:00:00Z' });
+  await mount(<ReportWorkflowPanel session={session} initial={report}/>); await click('导出当前发布版');
+  expect(container.querySelector('a[href="/old-report-download"]')).not.toBeNull();
+  await mount(<ReportWorkflowPanel session={session} initial={{ ...report, allowed_actions: [] }}/>);
+  expect(container.querySelector('a[href="/old-report-download"]')).toBeNull();
 });
 
 it('recovers capture polling after a temporary server failure', async () => {

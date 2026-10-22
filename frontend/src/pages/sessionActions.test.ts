@@ -96,5 +96,7 @@ describe('幂等键与处理媒体（评审意见 F02/F03）', () => {
     // 显式选主媒体但当前没有主媒体：不能用别的媒体顶替。
     expect(processingMediaId({ ...base, uploadedMediaId: 'uploaded', mediaChoice: { kind: 'primary' } }, null)).toBeNull();
     expect(processingMediaId(base, null)).toBeNull();
+    expect(processingMediaId(base, null, 'recent-authorized-source')).toBe('recent-authorized-source');
+    expect(processingMediaId({ ...base, mediaChoice: { kind: 'primary' } }, null, 'recent')).toBeNull();
   });
 });

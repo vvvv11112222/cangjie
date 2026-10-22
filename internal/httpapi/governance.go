@@ -9,6 +9,7 @@ import (
 )
 
 func (s *server) registerGovernanceRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/audit-logs", s.listAudit)
 	mux.HandleFunc("POST /api/v1/reports/{id}/exports", s.createExport)
 	mux.HandleFunc("GET /api/v1/exports/{id}", s.getExport)
 	mux.HandleFunc("GET /api/v1/exports/{id}/content", s.getExportContent)

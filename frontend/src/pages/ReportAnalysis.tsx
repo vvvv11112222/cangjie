@@ -79,6 +79,7 @@ export function ReportAnalysis({ report, evidenceById, onSelect }: {
   if (dimension === undefined) return <p className="empty">暂未取得六维分析。</p>;
   const observations = report.observations.filter((item) => item.dimension_code === dimension.dimension_code);
   return <div className="report-analysis">
+    {report.provenance && typeof report.provenance['included_materials'] === 'object' && report.provenance['included_materials'] !== null ? <p className="notice-strip">本报告实际采用：{Object.entries(report.provenance['included_materials'] as Record<string, unknown>).filter(([, value]) => value === true).map(([key]) => ({ academic_schedule: '课程、教师、班级及课表登记', speech: '本录像的语音文字', visual: '本录像已完成的举手、低头画面观察' }[key] ?? '')).filter(Boolean).join('；')}。未提供或未纳入的材料不作推断。</p> : null}
     <nav className="report-dimension-nav" aria-label="六维分析导航">
       <div role="tablist" aria-label="选择分析维度" aria-orientation="vertical">
         {report.dimensions.map((item, index) => <button type="button" role="tab" key={item.dimension_code}
