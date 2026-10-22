@@ -67,7 +67,7 @@ try {
     await pool.query('INSERT INTO public.schema_migrations(name,checksum) VALUES($1,$2)',[name,createHash('sha256').update(body).digest('hex')]);
   }
   await check('fresh migrations and existing SQL constraints', async()=>{
-    assert.equal(await scalar("SELECT count(*)::int FROM information_schema.tables WHERE table_schema='teaching'"),37);
+    assert.equal(await scalar("SELECT count(*)::int FROM information_schema.tables WHERE table_schema='teaching'"),38);
     await pool.query(await fs.readFile(path.join(root,'database/check_schema.sql'),'utf8'));
     assert.equal(await scalar("SELECT count(*)::int FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='teaching' AND NOT convalidated"),0);
   });

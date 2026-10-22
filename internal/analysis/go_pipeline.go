@@ -354,7 +354,7 @@ func (s *Service) executeReport(ctx context.Context, j goJob) error {
 	if overReservationPending {
 		return errBudgetExhausted
 	}
-	if s.cfg.ReportMonthlyBudgetMicros <= 0 || usedMicros > s.cfg.ReportMonthlyBudgetMicros-reservedMicros {
+	if s.ModelConfig().ReportMonthlyBudgetMicros <= 0 || usedMicros > s.ModelConfig().ReportMonthlyBudgetMicros-reservedMicros {
 		return errBudgetExhausted
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO teaching.job_artifacts(job_id,run_id,session_id,lease_token,artifact_key,metadata) VALUES($1,$2,$3,$4,'__model_input',jsonb_build_object('model_input',$5::jsonb,'manifest_sha256',$6::text))`, j.ID, j.RunID, j.SessionID, j.Token, manifestRaw, manifestSHA)

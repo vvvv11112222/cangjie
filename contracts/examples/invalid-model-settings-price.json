@@ -1,0 +1,26 @@
+{
+  "expected_revision": "00000000-0000-4000-8000-000000000013",
+  "values": {
+    "asr_api_base": "https://models.example.test/v1",
+    "asr_model": "synthetic-asr",
+    "asr_revision": "v1",
+    "asr_language_hints": "zh,en",
+    "report_api_base": "https://models.example.test/v1",
+    "report_model": "synthetic-report",
+    "report_revision": "v1",
+    "price_version": "synthetic-v1",
+    "price_source": "Synthetic test prices",
+    "asr_input_cny_per_million_tokens": "0.1 yuan/minute",
+    "asr_output_cny_per_million_tokens": "1.000000",
+    "report_input_cny_per_million_tokens": "1.000000",
+    "report_output_cny_per_million_tokens": "1.000000",
+    "monthly_budget_cny": "30.000000",
+    "enabled": true,
+    "asr_max_input_tokens": 32768,
+    "asr_max_output_tokens": 4096,
+    "report_max_input_tokens": 8000,
+    "report_max_output_tokens": 6000
+  },
+  "pricing_confirmed": true,
+  "reason": "Synthetic administrator setup"
+}

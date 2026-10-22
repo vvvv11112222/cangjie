@@ -70,6 +70,8 @@ func NewService(pool *pgxpool.Pool, store storage.Backend, cfg Config) *Service 
 }
 
 func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, key string, in CreateRun) (Run, bool, error) {
+	s.modelGate.RLock()
+	defer s.modelGate.RUnlock()
 	if sessionID == "" || in.MediaAssetID == "" || len(key) < 1 || len(key) > 128 || !printableASCII(key) || (in.ConfigProfile != pipelineVersion && in.ConfigProfile != "vision-v1") {
 		return Run{}, false, invalid("invalid analysis request")
 	}
@@ -91,6 +93,9 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 		return Run{}, false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err = s.checkModelRevision(ctx, tx); err != nil {
+		return Run{}, false, err
+	}
 
 	var teacher, college, sessionStatus, mediaStatus, mediaKind, rights string
 	var contentExpires, mediaExpires time.Time
@@ -150,11 +155,11 @@ func (s *Service) Create(ctx context.Context, p identity.Principal, sessionID, k
 	}
 	// The local visual-only deployment advertises no audio Worker. Do not queue
 	// an audio stage that nobody can claim, while preserving idempotent history.
-	if in.Mode == "full" && s.cfg.ASRModelName == "not-installed" {
+	if in.Mode == "full" && s.ModelConfig().ASRModelName == "not-installed" {
 		return Run{}, false, apperror.WithDetails(http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "audio analysis is not configured", map[string]any{"reason": "本机尚未配置语音转写和报告模型，暂时不能进行完整分析。举手与低头分析可以正常使用；请由部署管理员配置模型、价格和预算后再提交完整分析。"})
 	}
 	if in.Mode == "full" || in.Mode == "report_only" {
-		if err := ValidateReportPrompt(s.cfg.ReportEnabled, s.cfg.ReportPromptVersion, s.cfg.ReportPromptSHA256); err != nil {
+		if err := ValidateReportPrompt(s.ModelConfig().ReportEnabled, s.ModelConfig().ReportPromptVersion, s.ModelConfig().ReportPromptSHA256); err != nil {
 			return Run{}, false, state(err.Error())
 		}
 		var unresolved bool
@@ -1509,7 +1514,8 @@ func (s *Service) failAfterProbe(ctx context.Context, tx pgx.Tx, runID, code str
 }
 
 func (s *Service) newSnapshot(mode string) snapshot {
-	params := Parameters{ConfigProfile: pipelineVersion, KeyframeIntervalMS: s.cfg.KeyframeIntervalMS, MaxKeyframes: s.cfg.MaxKeyframes, ASRDevice: s.cfg.ASRDevice}
+	cfg := s.ModelConfig()
+	params := Parameters{ConfigProfile: pipelineVersion, KeyframeIntervalMS: cfg.KeyframeIntervalMS, MaxKeyframes: cfg.MaxKeyframes, ASRDevice: cfg.ASRDevice}
 	// Match the contract's sorted-key, compact JSON used by Python workers.
 	// Keep execution/result digests unchanged for already persisted leases.
 	paramMap := map[string]any{
@@ -1519,32 +1525,32 @@ func (s *Service) newSnapshot(mode string) snapshot {
 	if mode == "visual_only" {
 		params.ConfigProfile = "vision-v1"
 		params.KeyframeIntervalMS = 500
-		params.Visual = &VisualParameters{Model: Model{Name: "classroom-vision", Revision: s.cfg.VisionModelRevision}, MaxSamples: 15000, MaxPosePeople: 80, HeadDownEnabled: true}
+		params.Visual = &VisualParameters{Model: Model{Name: "classroom-vision", Revision: cfg.VisionModelRevision}, MaxSamples: 15000, MaxPosePeople: 80, HeadDownEnabled: true}
 		paramMap["config_profile"] = params.ConfigProfile
 		paramMap["keyframe_interval_ms"] = params.KeyframeIntervalMS
 		// Nested map keeps the same canonical sorted-key hash as Python.
 		paramMap["visual"] = map[string]any{"model": map[string]any{"name": params.Visual.Model.Name, "revision": params.Visual.Model.Revision}, "max_samples": 15000, "max_pose_people": 80, "head_down_enabled": true}
 	}
 	paramHash := digestJSON(paramMap)
-	base := Execution{ProcessorVersion: s.cfg.ProcessorVersion, FFmpegBuildSHA256: s.cfg.FFmpegSHA256, ParametersSHA256: paramHash}
+	base := Execution{ProcessorVersion: cfg.ProcessorVersion, FFmpegBuildSHA256: cfg.FFmpegSHA256, ParametersSHA256: paramHash}
 	probe := base
 	video := base
 	audio := base
-	audio.ASRModel = &Model{Name: s.cfg.ASRModelName, Revision: s.cfg.ASRModelRevision}
+	audio.ASRModel = &Model{Name: cfg.ASRModelName, Revision: cfg.ASRModelRevision}
 	plan := []string{"probe", "audio_analysis", "video_analysis", "evidence", "report", "validate"}
 	if mode == "media_prepare" {
 		plan = []string{"probe"}
 	} else if mode == "visual_only" {
 		plan = []string{"probe", "video_analysis"}
 	}
-	systemPrompt, _, _ := ReportPrompt(s.cfg.ReportPromptVersion) // validated before creating a report run
-	return snapshot{CloudASR: s.cfg.CloudASR.snapshot(), StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
-		MediaLimits: mediaLimits{MaxDurationMS: s.cfg.MaxMediaDurationMS, MaxVideoHeight: s.cfg.MaxVideoHeight},
-		Report: reportSnapshot{Enabled: s.cfg.ReportEnabled, Model: Model{Name: s.cfg.ReportModel, Revision: s.cfg.ReportModelRevision},
-			PromptVersion: s.cfg.ReportPromptVersion, PromptSHA256: s.cfg.ReportPromptSHA256, SelectionVersion: s.cfg.ReportSelectionVersion,
-			SystemPrompt: systemPrompt, MaxInputTokens: s.cfg.ReportMaxInputTokens, MaxOutputTokens: s.cfg.ReportMaxOutputTokens,
-			PriceVersion: s.cfg.ReportPriceVersion, Currency: s.cfg.ReportBudgetCurrency,
-			InputPriceMicros: s.cfg.ReportInputPriceMicros, OutputPriceMicros: s.cfg.ReportOutputPriceMicros}}
+	systemPrompt, _, _ := ReportPrompt(cfg.ReportPromptVersion) // validated before creating a report run
+	return snapshot{CloudASR: cfg.CloudASR.snapshot(), StagePlan: plan, Parameters: params, Executions: map[string]Execution{"probe": probe, "audio_analysis": audio, "video_analysis": video},
+		MediaLimits: mediaLimits{MaxDurationMS: cfg.MaxMediaDurationMS, MaxVideoHeight: cfg.MaxVideoHeight},
+		Report: reportSnapshot{Enabled: cfg.ReportEnabled, Model: Model{Name: cfg.ReportModel, Revision: cfg.ReportModelRevision},
+			PromptVersion: cfg.ReportPromptVersion, PromptSHA256: cfg.ReportPromptSHA256, SelectionVersion: cfg.ReportSelectionVersion,
+			SystemPrompt: systemPrompt, MaxInputTokens: cfg.ReportMaxInputTokens, MaxOutputTokens: cfg.ReportMaxOutputTokens,
+			PriceVersion: cfg.ReportPriceVersion, Currency: cfg.ReportBudgetCurrency,
+			InputPriceMicros: cfg.ReportInputPriceMicros, OutputPriceMicros: cfg.ReportOutputPriceMicros}}
 }
 
 func (s *Service) reportConfigForRun(ctx context.Context, runID string) (reportSnapshot, error) {

@@ -43,7 +43,7 @@ export interface Envelope<T> {
 export type QueryValue = string | number | boolean | null | undefined;
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** 查询参数；值为 null/undefined/'' 时该参数不发送，筛选变化的清空逻辑由调用方负责。 */
   query?: Record<string, QueryValue>;
   /** JSON 请求体；不传时使用 GET 语义（POST 空请求体发送 {}）。 */

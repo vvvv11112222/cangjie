@@ -21,12 +21,14 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/media"
+	"github.com/vvvv11112222/cangjie/internal/modelsettings"
 )
 
 type CheckFunc func(context.Context) error
 type ReadinessChecks map[string]CheckFunc
 
 type Options struct {
+	ModelSettings      *modelsettings.Service
 	Capture            *capture.Service
 	Logger             *slog.Logger
 	Readiness          ReadinessChecks
@@ -48,6 +50,7 @@ type Options struct {
 }
 
 type server struct {
+	modelSettings      *modelsettings.Service
 	announcements      workerAnnouncements
 	capture            *capture.Service
 	logger             *slog.Logger
@@ -81,8 +84,9 @@ func New(options Options) http.Handler {
 		logger = slog.Default()
 	}
 	s := &server{
-		capture: options.Capture,
-		logger:  logger, readiness: options.Readiness,
+		modelSettings: options.ModelSettings,
+		capture:       options.Capture,
+		logger:        logger, readiness: options.Readiness,
 		identity: options.Identity, academic: options.Academic, classroom: options.Classroom, media: options.Media, analysis: options.Analysis, governance: options.Governance,
 		workerToken: options.WorkerToken, workerID: options.WorkerID, maxArtifactBytes: options.MaxArtifactBytes,
 		origin:       strings.TrimRight(options.PublicOrigin, "/"),

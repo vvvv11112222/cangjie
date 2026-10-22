@@ -27,6 +27,7 @@ class Settings:
     asr_planner: str = ''
     asr_model_name: str = ''
     asr_model_revision: str = ''
+    asr_model_from_claim: bool = False
     lease_seconds: int = 120
     vision_enabled: bool = False
     cleanup_enabled: bool = False
@@ -51,6 +52,8 @@ class Settings:
             raise ValueError("FFMPEG_BUILD_SHA256 与实际二进制不一致；先运行 runtime-info")
         if type(self.vision_enabled) is not bool:
             raise ValueError("vision_enabled 必须是布尔值")
+        if type(self.asr_model_from_claim) is not bool:
+            raise ValueError('asr_model_from_claim 必须是布尔值')
         if type(self.cleanup_enabled) is not bool:
             raise ValueError("cleanup_enabled 必须是布尔值")
         if self.cleanup_enabled:
@@ -67,6 +70,9 @@ class Settings:
         cleanup_flag = os.environ.get("WORKER_CLEANUP_ENABLED", "0")
         if cleanup_flag not in ("0", "1"):
             raise ValueError("WORKER_CLEANUP_ENABLED 必须为 0 或 1")
+        model_flag = os.environ.get('ASR_MODEL_FROM_CLAIM', '0')
+        if model_flag not in ('0', '1'):
+            raise ValueError('ASR_MODEL_FROM_CLAIM 必须为 0 或 1')
         return cls(
             api_base=os.environ.get("WORKER_API_BASE", "http://127.0.0.1:8080/internal/v1").rstrip("/"),
             worker_id=os.environ.get("WORKER_ID", "worker-01"), token=os.environ.get("WORKER_TOKEN", ""),
@@ -85,6 +91,7 @@ class Settings:
             asr_planner=os.environ.get('ASR_PLANNER', ''),
             asr_model_name=os.environ.get('ASR_MODEL_NAME', ''),
             asr_model_revision=os.environ.get('ASR_MODEL_REVISION', ''),
+            asr_model_from_claim=model_flag == '1',
             lease_seconds=int(os.environ.get("JOB_LEASE_SECONDS", "120")),
             vision_enabled=vision_flag == "1",
             cleanup_enabled=cleanup_flag == "1",

@@ -31,7 +31,9 @@ def run_local(command, directory, guard, name):
 
 def audio_analysis(claim, directory, settings, transport, guard):
     expected = claim['execution']['asr_model']
-    if expected != {'name': settings.asr_model_name, 'revision': settings.asr_model_revision}:
+    # In this opt-in mode the authenticated Go claim fixes the cloud model.
+    # Recognition and key handling still happen exclusively in Go.
+    if not settings.asr_model_from_claim and expected != {'name': settings.asr_model_name, 'revision': settings.asr_model_revision}:
         raise WorkerError('CONFIG_MISMATCH', 'ASR 模型与固定任务配置不一致')
     duration = claim['duration_ms']
     if not isinstance(duration, int) or duration <= 0:

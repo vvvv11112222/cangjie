@@ -157,7 +157,7 @@ func validateASRWAV(raw []byte, duration int64) error {
 
 func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in ASRChunk) (ASRText, error) {
 	empty := ASRText{}
-	if !s.cfg.CloudASR.Enabled {
+	if !s.ModelConfig().CloudASR.Enabled {
 		return empty, apperror.New(503, "SERVICE_UNAVAILABLE", "cloud ASR is not configured")
 	}
 	if in.StartMS < 0 || in.EndMS <= in.StartMS || in.EndMS-in.StartMS > 40000 {
@@ -183,7 +183,7 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 		return empty, invalid("job does not enable cloud ASR")
 	}
 	c := *job.Snapshot.CloudASR
-	if c.RequestVersion != asrrequest.Version || c.APIBase != s.cfg.CloudASR.APIBase {
+	if c.RequestVersion != asrrequest.Version || c.APIBase != s.ModelConfig().CloudASR.APIBase {
 		return empty, state("ASR runtime differs from the fixed job configuration")
 	}
 	model := job.Snapshot.Executions["audio_analysis"].ASRModel
@@ -257,7 +257,7 @@ func (s *Service) TranscribeChunk(ctx context.Context, jobID, token string, in A
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teaching.model_calls WHERE currency=$1 AND billing_period=$2::date AND actual_cost>reserved_cost AND reconciled_by IS NULL)`, currency, period).Scan(&blocked); err != nil {
 		return empty, err
 	}
-	if blocked || reserve <= 0 || s.cfg.ReportMonthlyBudgetMicros <= 0 || used > s.cfg.ReportMonthlyBudgetMicros-reserve {
+	if blocked || reserve <= 0 || s.ModelConfig().ReportMonthlyBudgetMicros <= 0 || used > s.ModelConfig().ReportMonthlyBudgetMicros-reserve {
 		return empty, apperror.New(409, "BUDGET_EXHAUSTED", "ASR budget exhausted or reconciliation required")
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO teaching.model_calls(run_id,job_id,call_key,provider,model_name,prompt_version,status,currency,reserved_cost,billing_period,price_version,request_sha256,dispatch_started_at) VALUES($1,$2,$3,'openai-compatible-asr',$4,$5,'reserved',$6,$7::numeric/1000000,$8::date,$9,$10,now())`, job.RunID, jobID, key, model.Name, asrrequest.Version, currency, reserve, period, c.PriceVersion, sha)
@@ -357,7 +357,7 @@ func (s *Service) callASRBilled(ctx context.Context, base string, raw []byte, se
 		return text, result, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.cfg.CloudASR.APIKey)
+	req.Header.Set("Authorization", "Bearer "+s.ModelConfig().CloudASR.APIKey)
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {

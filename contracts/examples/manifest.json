@@ -301,6 +301,36 @@
       "file": "model-input-comprehensive.json",
       "definition": "ModelInput",
       "valid": true
+    },
+    {
+      "file": "model-settings.json",
+      "definition": "ModelSettings",
+      "valid": true
+    },
+    {
+      "file": "update-model-settings.json",
+      "definition": "UpdateModelSettings",
+      "valid": true
+    },
+    {
+      "file": "invalid-model-settings-secret.json",
+      "definition": "ModelSettings",
+      "valid": false
+    },
+    {
+      "file": "invalid-model-settings-price.json",
+      "definition": "UpdateModelSettings",
+      "valid": false
+    },
+    {
+      "file": "invalid-model-settings-unconfirmed.json",
+      "definition": "UpdateModelSettings",
+      "valid": false
+    },
+    {
+      "file": "model-settings-duration.json",
+      "definition": "ModelSettings",
+      "valid": true
     }
   ],
   "case_sets": [

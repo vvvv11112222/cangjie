@@ -32,7 +32,7 @@ $env:TEAM_PYTHON = 'D:/vision-env/Scripts/python.exe'
 cmd.exe /c tools\start_team_web.bat D:/cangjie-data/team-web
 ```
 
-`prepare` 构建正式 Go 和前端、初始化独立数据库、按摘要执行001—012迁移、初始化删除账本、创建开发账号及幂等试用课堂。不会清空数据库、重写迁移或覆盖已有账号密码。已有私有配置会保留凭据。准备新构建前先停止本部署。
+`prepare` 构建正式 Go 和前端、初始化独立数据库、按摘要执行001—013迁移、初始化删除账本、创建开发账号及幂等试用课堂。不会清空数据库、重写迁移或覆盖已有账号密码。已有私有配置会保留凭据。准备新构建前先停止本部署。
 
 Windows 的 PostgreSQL 工具在部分中文路径下无法初始化；使用 ASCII 路径最简便。若必须使用中文路径，在第一次 `prepare` 前用 PowerShell 的原生 `subst.exe` 将运行时根目录和数据根目录分别映射到空闲的 V/W/Y/Z 盘；不要替换其他盘的映射。后续 BAT 启动脚本会通过目录标记复用或重建所需映射。Go、PostgreSQL 可执行文件和数据均使用对应映射。没有空闲盘时明确报错。启动使用普通 BAT，不要求修改 PowerShell 执行策略；可选 PS1 仅适用于本机策略允许的环境。
 
@@ -98,3 +98,8 @@ python tools/team_web.py --data-root D:/cangjie-data/team-web stop
 - 每条课堂记录表示一次实际授课，不是一整学期。请填写本次上课开始和结束时间。
 
 本轮功能、自动检查、真实视觉速度及未完成项见[commits报告](../../workers/COMMITS.md)。更换服务器后仍需安装锁定依赖/加速包；每次启动按当前机器重新探测独显，老师通过浏览器访问时使用服务器算力。
+## 网页模型配置的持久化
+
+系统管理员可在运行与设置直接配置ASR、报告、单价与共享预算，空闲时保存并立即应用。prepare现在始终构建既有audio-plan切片工具，Worker声明实际已安装的音频处理能力，并通过ASR_MODEL_FROM_CLAIM=1使用Go任务固定的云模型；Python不持有模型密钥。配置未启用时，Go不会因此自动发起收费调用。
+
+MODEL_SETTINGS_DIR指向数据目录下model-settings，私有密钥文件仅由后端读取，不能放到静态文件目录。公共配置和版本在runtime_model_settings中，恢复备份必须同时恢复数据库、该私有目录及原删除账本。网页已有保存版本时优先于旧analysis-config与环境变量；旧私有配置作为首次未设置时的来源，不会被网页修改。该应用方式面向单Go API实例，多实例须共同准备私有文件并重启其他实例，旧配置进程会拒绝新建分析。

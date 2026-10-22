@@ -11,6 +11,8 @@ import {
   workerCapabilityLabel,
 } from '../format';
 import type { ModelCall, Operations, ReconcileCall } from '../types';
+import { useAuth } from '../auth';
+import { ModelSettingsPanel } from './ModelSettingsPanel';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -95,6 +97,7 @@ function ReconcileForm({ call, busy, onCancel, onSubmit }: {
 }
 
 export function OperationsPage(): ReactElement {
+  const {me,sessionKey}=useAuth();
   const api = isApiMode();
   const [operations, setOperations] = useState<Operations | null>(null);
   const [calls, setCalls] = useState<ModelCall[]>([]);
@@ -174,7 +177,7 @@ export function OperationsPage(): ReactElement {
 
       <p className="notice-strip">
         <IconInfo size={14} aria-hidden="true" />
-        当前协议只提供运行状态和模型账目读取；预算限额与数据保留期由服务端配置，页面不提供无法保存的设置按钮。
+        模型与共享预算可在下方配置，空闲时保存并生效。数据保留期仍由部署配置管理。
       </p>
 
       {!api ? (
@@ -183,6 +186,7 @@ export function OperationsPage(): ReactElement {
         </Card>
       ) : null}
 
+      {api && me?.roles?.some(role=>role.role_code==='sys_admin') && <ModelSettingsPanel key={sessionKey} onApplied={()=>setReloadKey(value=>value+1)}/>}
       {operationsLoading ? <p className="load-note">正在读取运行状态……</p> : null}
       {operationsError ? <div className="notice-strip"><span className="load-note-error">运行状态读取失败：{operationsError}</span><button type="button" className="btn btn-secondary btn-sm" disabled={refreshDisabled} onClick={() => setReloadKey((value) => value + 1)}>重新读取</button></div> : null}
       {operations !== null ? (
