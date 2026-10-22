@@ -14,14 +14,18 @@ ROOT = Path(__file__).resolve().parents[1]
 PRICE_SOURCE = 'https://help.aliyun.com/zh/model-studio/model-pricing'
 
 
+class SetupInputError(ValueError):
+    """Fixed, safe messages for interactive validation; never include input."""
+
+
 def pricing(budget):
     if not re.fullmatch(r'\d{1,9}(?:\.\d{1,6})?', budget):
-        raise ValueError('预算须为正数人民币金额，最多六位小数。')
+        raise SetupInputError('预算须为正数人民币金额，最多六位小数。')
     try:
         if Decimal(budget) <= 0:
-            raise ValueError('未授权正数预算，不启用真实模型。')
+            raise SetupInputError('未授权正数预算，不启用真实模型。')
     except InvalidOperation:
-        raise ValueError('预算格式不正确。') from None
+        raise SetupInputError('预算格式不正确。') from None
     return dict(confirmed=True, price_source=PRICE_SOURCE,
         price_version='bailian-beijing-checked-2026-10-22', monthly_budget_cny=budget,
         api_base='https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -35,8 +39,8 @@ def pricing(budget):
 def source_env(key):
     # Restrict to ordinary API key characters; never interpret environment values
     # as shell code or allow interpolation/newline injection into the source file.
-    if not re.fullmatch(r'[A-Za-z0-9_-]{12,512}', key):
-        raise ValueError('密钥格式不正确；不要输入引号、空格或整段配置。')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]{12,512}', key):
+        raise SetupInputError('密钥格式不正确；只粘贴密钥，不要包含引号、空格或整段配置。')
     return ('DASHSCOPE_API_KEY=' + key + '\n'
         'BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n'
         'BAILIAN_ASR_MODEL=qwen3-asr-flash\nBAILIAN_TEXT_MODEL=qwen-plus-2025-12-01\n'
@@ -56,11 +60,11 @@ def main():
     parser.add_argument('--data-root', type=Path, default=ROOT / 'var/team-web')
     args = parser.parse_args()
     if not sys.stdin.isatty():
-        raise ValueError('请在本机交互窗口运行，不能通过管道传入密钥。')
+        raise SetupInputError('请在本机交互窗口运行，不能通过管道传入密钥。')
     state = args.data_root.resolve(strict=True)
     config = web.load(state / 'private.json')
     if web.sql(config, state, "SELECT count(*) FROM teaching.analysis_jobs WHERE status IN('queued','running')") != '0':
-        raise ValueError('请先等待当前分析结束或在网页取消任务，再配置模型。')
+        raise SetupInputError('请先等待当前分析结束或在网页取消任务，再配置模型。')
     print('选择：阿里云百炼华北2（北京），语音 qwen3-asr-flash，报告 qwen-plus-2025-12-01。')
     print('官方价格快照（2026-10-22）：语音0.00022元/秒；报告输入0.8、输出2元/百万token（本配置限制在首档）。')
     print('语音名称为供应商滚动别名，效果可能随供应商更新；不是固定权重版本。')
@@ -103,6 +107,9 @@ if __name__ == '__main__':
         main()
     except (KeyboardInterrupt, EOFError):
         print('\n已取消。')
+    except SetupInputError as error:
+        print('配置未完成：' + str(error), file=sys.stderr)
+        raise SystemExit(1)
     except Exception:
         # Do not echo exception arguments or local credential contents.
         print('配置未完成。请检查账号、预算、当前任务及本机启动日志；已有模型请求不会自动重发。', file=sys.stderr)

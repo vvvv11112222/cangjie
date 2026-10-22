@@ -24,6 +24,15 @@ def test_key_source_rejects_interpolation_and_line_injection():
     assert 'synthetic-key-12345' in source_env('synthetic-key-12345')
 
 
+def test_workspace_key_with_dots_is_preserved_as_data():
+    key = 'sk-ws-SYNTHETIC.Part_1.Part-2'
+    assert source_env(key).splitlines()[0] == 'DASHSCOPE_API_KEY=' + key
+    for suffix in ('\nOTHER=value', '\r', ' ', '"', '${HOME}', '`value`'):
+        with pytest.raises(ValueError) as failure:
+            source_env(key + suffix)
+        assert key not in str(failure.value)
+
+
 def test_private_files_do_not_overwrite_existing_configuration():
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder)/'config.private.json'
