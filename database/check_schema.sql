@@ -338,4 +338,10 @@ BEGIN
     RAISE NOTICE 'PASS: v0.7 constraints, leases, snapshots, namespaces, scope, coverage, review history, accounting and governance';
 END;
 $$;
+DO $$
+BEGIN
+    PERFORM pg_temp.expect_sqlstate('INSERT INTO teaching.runtime_model_settings(singleton) VALUES(false)','23514');
+    PERFORM pg_temp.expect_sqlstate('UPDATE teaching.runtime_model_settings SET settings='' {"asr_api_key":"synthetic-forbidden"}''::jsonb','23514');
+END;
+$$;
 ROLLBACK;

@@ -24,6 +24,7 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/governance"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/media"
+	"github.com/vvvv11112222/cangjie/internal/modelsettings"
 	"github.com/vvvv11112222/cangjie/internal/storage"
 )
 
@@ -47,7 +48,7 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 		defer cancel()
 		command := exec.CommandContext(cctx, python, args...)
 		command.Dir = root
-		command.Env = append(os.Environ(), "PYTHONUTF8=1", "WORKER_TOKEN=synthetic-audio-worker", "ASR_PLANNER="+planner, "ASR_MODEL_NAME=synthetic-asr", "ASR_MODEL_REVISION=v1")
+		command.Env = append(os.Environ(), "PYTHONUTF8=1", "WORKER_TOKEN=synthetic-audio-worker", "ASR_PLANNER="+planner, "ASR_MODEL_NAME=not-installed", "ASR_MODEL_REVISION=not-installed", "ASR_MODEL_FROM_CLAIM=1")
 		var log bytes.Buffer
 		command.Stderr = &log
 		raw, err := command.Output()
@@ -154,14 +155,42 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 		ProcessorVersion: runtime["processor_version"].(string), FFmpegSHA256: runtime["ffmpeg_build_sha256"].(string), ASRModelName: "synthetic-asr", ASRModelRevision: "v1", ASRDevice: "cpu", KeyframeIntervalMS: 1000, MaxKeyframes: 100, MaxMediaDurationMS: 60000, MaxVideoHeight: 1080, MaxArtifactBytes: 10 << 20,
 		ReportEnabled: true, ReportAPIBase: provider.URL, ReportAPIKey: "synthetic", ReportModel: "synthetic-report", ReportModelRevision: "v1", ReportPromptVersion: analysis.TeacherPromptVersion, ReportPromptSHA256: promptSHA, ReportSelectionVersion: "time-window-v1", ReportPriceVersion: "synthetic", ReportBudgetCurrency: "CNY", ReportBudgetTimezone: "Asia/Shanghai", ReportMonthlyBudgetMicros: 30000000, ReportInputPriceMicros: 1000000, ReportOutputPriceMicros: 1000000, ReportTimeout: time.Minute, ReportMaxInputTokens: 8000, ReportMaxOutputTokens: 1000,
 		CloudASR: analysis.CloudASRConfig{Enabled: true, APIKey: "synthetic", ASRSnapshot: analysis.ASRSnapshot{APIBase: provider.URL, LanguageHints: "zh,en", RequestVersion: asrrequest.Version, PriceVersion: "synthetic", InputPriceMicros: 1000000, OutputPriceMicros: 1000000, MaxInputTokens: 32768, MaxOutputTokens: 4096}}}
+	webValues := modelsettings.FromConfig(cfg)
+	webValues.PriceSource = "Synthetic integration prices, no billed provider"
+	cfg.CloudASR = analysis.CloudASRConfig{}
+	cfg.ReportEnabled = false
+	cfg.ReportAPIKey = ""
+	cfg.ReportMonthlyBudgetMicros = 0
+	cfg.ASRModelName = "not-installed"
+	cfg.ASRModelRevision = "not-installed"
 	svc := analysis.NewService(pool, store, cfg)
+	if _, err = pool.Exec(ctx, `UPDATE teaching.runtime_model_settings SET revision=gen_random_uuid(),settings='{}',secret_revision=NULL,updated_by=NULL`); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `UPDATE teaching.runtime_model_settings SET revision=gen_random_uuid(),settings='{}',secret_revision=NULL,updated_by=NULL`)
+	modelSettings, err := modelsettings.New(ctx, pool, svc, filepath.Join(tmp, "model-settings"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	ledger, err := governance.InitializeLedger(filepath.Join(tmp, "deletions.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	gov := governance.NewService(pool, store, ledger, governance.Config{Lease: time.Minute, MaxAttempts: 3, ExportRetention: time.Hour, ExecutorID: "synthetic-audio-export"})
-	server := httptest.NewServer(New(Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: media.NewService(pool, store, 10<<20, 14*24*time.Hour), Analysis: svc, Governance: gov, PublicOrigin: "http://frontend.test", WorkerID: "worker-01", WorkerToken: "synthetic-audio-worker", WorkerCapabilities: []string{"probe", "audio_analysis", "video_analysis"}}))
+	server := httptest.NewServer(New(Options{ModelSettings: modelSettings, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Identity: identity.NewService(pool, 8*time.Hour), Academic: academic.NewService(pool), Classroom: classroom.NewService(pool), Media: media.NewService(pool, store, 10<<20, 14*24*time.Hour), Analysis: svc, Governance: gov, PublicOrigin: "http://frontend.test", WorkerID: "worker-01", WorkerToken: "synthetic-audio-worker", WorkerCapabilities: []string{"probe", "audio_analysis", "video_analysis"}}))
 	defer server.Close()
+	adminConfig := newTestClient(t)
+	adminConfigCSRF := loginTestUser(t, adminConfig, server.URL, "admin")
+	requestJSON(t, newTestClient(t), "GET", server.URL+"/api/v1/model-settings", nil, "", 401)
+	requestJSON(t, adminConfig, "GET", server.URL+"/api/v1/model-settings?unexpected=1", nil, "", 400)
+	initialSettings := requestJSON(t, adminConfig, "GET", server.URL+"/api/v1/model-settings", nil, "", 200)
+	syntheticKey := "synthetic"
+	webInput := modelsettings.Update{ExpectedRevision: initialSettings["revision"].(string), Values: webValues, ASRAPIKey: &syntheticKey, ReportAPIKey: &syntheticKey, PricingConfirmed: true, Reason: "Enable synthetic pipeline via web settings"}
+	requestJSON(t, adminConfig, "PUT", server.URL+"/api/v1/model-settings", webInput, "invalid-csrf", 403)
+	appliedSettings := requestJSON(t, adminConfig, "PUT", server.URL+"/api/v1/model-settings", webInput, adminConfigCSRF, 200)
+	if appliedSettings["revision"] != appliedSettings["active_revision"] || asrCalls.Load() != 0 || reportCalls.Load() != 0 {
+		t.Fatal("web configuration was not applied offline")
+	}
 	input := filepath.Join(tmp, "delayed.mp4")
 	gen := exec.Command(runtime["ffmpeg_binary"].(string), "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=45", "-itsoffset", "1", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=44", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", input)
 	if raw, err := gen.CombinedOutput(); err != nil {
@@ -173,9 +202,13 @@ func TestAudioWorkerMainPipeline(t *testing.T) {
 	}
 	client := newTestClient(t)
 	csrf := loginTestUser(t, client, server.URL, "teacher")
+	requestJSON(t, client, "GET", server.URL+"/api/v1/model-settings", nil, "", 403)
+	requestJSON(t, client, "PUT", server.URL+"/api/v1/model-settings", webInput, csrf, 403)
 	uploaded := requestMultipart(t, client, server.URL+"/api/v1/sessions/"+lesson+"/media", source, video, csrf, http.StatusCreated)
 	run := requestWithHeaders(t, client, "POST", server.URL+"/api/v1/sessions/"+lesson+"/analysis-runs", map[string]any{"media_asset_id": uploaded["id"], "mode": "full", "config_profile": "p0-v1", "input_transcript_revision_id": nil}, csrf, map[string]string{"Idempotency-Key": "synthetic-real-audio"}, 202)
 	id := run["id"].(string)
+	webInput.ExpectedRevision = appliedSettings["revision"].(string)
+	requestJSON(t, adminConfig, "PUT", server.URL+"/api/v1/model-settings", webInput, adminConfigCSRF, 409)
 	for _, stage := range []string{"probe", "audio_analysis", "video_analysis"} {
 		result := bridge("-m", "workers.tools.check_real_go", "work", "--api-base", server.URL+"/internal/v1", "--stage", stage, "--run-id", id, "--scratch", filepath.Join(tmp, "scratch"))
 		t.Logf("real %s completed: %v seconds", stage, result["wall_seconds"])

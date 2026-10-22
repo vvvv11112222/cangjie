@@ -37,6 +37,8 @@ type Config struct {
 }
 
 type Service struct {
+	// Set before Run; the shared model limit may be changed by an idle admin update.
+	ModelBudgetLimit func() int64
 	// Set before Run. Deletion cannot complete while capture writers remain active.
 	BeforeCaptureCleanup func(context.Context, string) error
 	pool                 *pgxpool.Pool
@@ -1113,7 +1115,11 @@ func (s *Service) GetOperations(ctx context.Context, p identity.Principal) (Oper
 	if err != nil {
 		return out, err
 	}
-	out.Budget = Budget{s.cfg.BudgetCurrency, period, money(s.cfg.BudgetMonthlyMicros), money(charged), money(reserved), money(unknown)}
+	limit := s.cfg.BudgetMonthlyMicros
+	if s.ModelBudgetLimit != nil {
+		limit = s.ModelBudgetLimit()
+	}
+	out.Budget = Budget{s.cfg.BudgetCurrency, period, money(limit), money(charged), money(reserved), money(unknown)}
 	capacity, ok := s.store.(interface{ FreeBytes() (int64, error) })
 	if !ok {
 		return out, fmt.Errorf("storage backend does not expose capacity")

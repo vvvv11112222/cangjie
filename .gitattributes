@@ -4,3 +4,5 @@
 /.github/workflows/vision-worker.yml text eol=lf
 /database/011_cloud_asr_chunks.sql text eol=lf
 /database/012_media_display_name.sql text eol=lf
+
+database/013_runtime_model_settings.sql text eol=lf

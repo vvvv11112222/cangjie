@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/vvvv11112222/cangjie/internal/httpapi"
 	"github.com/vvvv11112222/cangjie/internal/identity"
 	"github.com/vvvv11112222/cangjie/internal/media"
+	"github.com/vvvv11112222/cangjie/internal/modelsettings"
 	"github.com/vvvv11112222/cangjie/internal/storage"
 )
 
@@ -96,12 +98,21 @@ func run() error {
 		ReportInputPriceMicros:    cfg.ReportInputPriceMicros, ReportOutputPriceMicros: cfg.ReportOutputPriceMicros,
 		ReportMaxInputTokens: cfg.ReportMaxInputTokens, ReportMaxOutputTokens: cfg.ReportMaxOutputTokens,
 	})
+	modelSettingsDir := os.Getenv("MODEL_SETTINGS_DIR")
+	if modelSettingsDir == "" {
+		modelSettingsDir = filepath.Join(filepath.Dir(cfg.MediaRoot), "model-settings")
+	}
+	modelSettingsService, err := modelsettings.New(context.Background(), pool.Pool, analysisService, modelSettingsDir)
+	if err != nil {
+		return err
+	}
 	governanceService := governance.NewService(pool.Pool, mediaStore, ledger, governance.Config{
 		Lease: cfg.GovernanceLease, Recheck: cfg.GovernanceRecheck, MaxAttempts: cfg.GovernanceMaxAttempts,
 		ExportRetention: cfg.ExportRetention, ExecutorID: cfg.WorkerID + "-governance",
 		BudgetCurrency: cfg.ReportBudgetCurrency, BudgetMonthlyMicros: cfg.ReportMonthlyBudgetMicros,
 		WorkerTempRoot: cfg.WorkerTempRoot, AuditRetention: cfg.AuditRetention,
 	})
+	governanceService.ModelBudgetLimit = analysisService.ModelBudgetLimit
 	if err := governanceService.ReplayLedger(context.Background()); err != nil {
 		return err
 	}
@@ -137,6 +148,7 @@ func run() error {
 		governanceService.BeforeCaptureCleanup = captureService.CleanupSession
 	}
 	handler := httpapi.New(httpapi.Options{
+		ModelSettings:      modelSettingsService,
 		Capture:            captureService,
 		Logger:             logger,
 		Readiness:          checks,

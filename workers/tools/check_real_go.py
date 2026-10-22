@@ -41,7 +41,8 @@ def work(api_base, expected_stage, expected_run, scratch, visual=False):
                         max_artifact_bytes=10 * 1024**2, vision_enabled=visual)
     if expected_stage == 'audio_analysis':
         settings = replace(settings, capabilities=('audio_analysis',), asr_planner=os.environ['ASR_PLANNER'],
-                           asr_model_name=os.environ['ASR_MODEL_NAME'], asr_model_revision=os.environ['ASR_MODEL_REVISION'])
+                           asr_model_name=os.environ['ASR_MODEL_NAME'], asr_model_revision=os.environ['ASR_MODEL_REVISION'],
+                           asr_model_from_claim=os.environ.get('ASR_MODEL_FROM_CLAIM', '0') == '1')
     runner = Runner(settings)
     started = time.perf_counter()
     try:

@@ -17,11 +17,11 @@ try {
     process.stdout.write(`PASS ${name}\n`);
   }
   const tables = await db.query("SELECT count(*)::int AS count FROM information_schema.tables WHERE table_schema='teaching'");
-  if (tables.rows[0].count !== 37) throw new Error('Expected 37 business tables');
+  if (tables.rows[0].count !== 38) throw new Error('Expected 38 business tables');
   const rows = await db.query('SELECT count(*)::int AS count FROM teaching.lesson_sessions');
   if (rows.rows[0].count !== 0) throw new Error('Check fixtures were not rolled back');
   const version = await db.query('SELECT version()');
-  process.stdout.write(`37 tables; fixtures rolled back; ${version.rows[0].version}\n`);
+  process.stdout.write(`38 tables; fixtures rolled back; ${version.rows[0].version}\n`);
   await checkUpgrade(PGlite, btree_gist, root);
 } catch (error) {
   process.stderr.write(`FAIL ${error.code ?? ''}: ${error.message}\n${error.where ?? ''}\n`);

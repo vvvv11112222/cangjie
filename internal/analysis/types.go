@@ -2,6 +2,8 @@ package analysis
 
 import (
 	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,9 +39,11 @@ type Config struct {
 }
 
 type Service struct {
-	pool  *pgxpool.Pool
-	store storage.Backend
-	cfg   Config
+	modelGate    sync.RWMutex
+	modelRuntime atomic.Pointer[modelRuntime]
+	pool         *pgxpool.Pool
+	store        storage.Backend
+	cfg          Config
 }
 
 type CreateRun struct {
