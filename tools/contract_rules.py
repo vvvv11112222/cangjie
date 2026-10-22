@@ -27,6 +27,12 @@ def report_digest(report):
 def check_semantics(value, definition=None, context=None):
     context = context or {}
 
+    if definition in ("ChangePassword", "ResetPassword"):
+        # JSON Schema minLength counts code points, whereas bcrypt and both
+        # application clients enforce the encoded UTF-8 byte length.
+        require(12 <= len(value["new_password"].encode("utf-8")) <= 72,
+                "new_password must contain 12 to 72 UTF-8 bytes")
+
     def visit(item):
         if isinstance(item, list):
             for child in item:

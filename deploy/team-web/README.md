@@ -102,7 +102,7 @@ python tools/team_web.py --data-root D:/cangjie-data/team-web stop
 
 系统管理员可在运行与设置直接配置ASR、报告、单价与共享预算，空闲时保存并立即应用。prepare现在始终构建既有audio-plan切片工具，Worker声明实际已安装的音频处理能力，并通过ASR_MODEL_FROM_CLAIM=1使用Go任务固定的云模型；Python不持有模型密钥。配置未启用时，Go不会因此自动发起收费调用。
 
-MODEL_SETTINGS_DIR指向数据目录下model-settings，私有密钥文件仅由后端读取，不能放到静态文件目录。公共配置和版本在runtime_model_settings中，恢复备份必须同时恢复数据库、该私有目录及原删除账本。网页已有保存版本时优先于旧analysis-config与环境变量；旧私有配置作为首次未设置时的来源，不会被网页修改。该应用方式面向单Go API实例，多实例须共同准备私有文件并重启其他实例，旧配置进程会拒绝新建分析。
+MODEL_SETTINGS_DIR指向数据目录下model-settings，私有密钥文件仅由后端读取，不能放到静态文件目录。公共配置和版本在runtime_model_settings中，恢复备份必须同时恢复数据库、该私有目录及原删除账本。网页已有保存版本时优先于旧analysis-config与环境变量；旧私有配置作为首次未设置时的来源，不会被网页修改。本机“配置语音与报告”入口在检测到已保存的网页配置（含停用）时会拒绝；后续密钥、预算及计费模式请统一在网页修改。该应用方式面向单Go API实例，多实例须共同准备私有文件并重启其他实例，旧配置进程会拒绝新建分析。
 
 
 ## 截止前易用性审查补充（2026-10-22）
@@ -117,3 +117,4 @@ python tools/team_web.py --data-root D:/cangjie-data/team-web seed-demo
 ```
 
 执行前备份本地数据库；重复执行不增加重复记录，不覆盖已有课堂。页面“仅演示课堂”用于查找这些记录。普通教师仍只看自己的课堂，种子归属开发账号teacher_demo，不会授予其他账号新权限。真正上传录像后仍须按实际许可登记/核验来源。演示登记不能用来证明识别准确率或报告质量。
+
