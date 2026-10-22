@@ -335,6 +335,7 @@
   ],
   "case_sets": [
     "api-cases.json",
-    "capture-cases.json"
+    "capture-cases.json",
+    "password-cases.json"
   ]
 }

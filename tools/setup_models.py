@@ -54,6 +54,32 @@ def write_private(path, text):
         stream.write(text)
 
 
+def require_initial_setup(web, config, state, expected_revision=None):
+    # Web saves (including disabled settings) are authoritative on restart.
+    # Read only the revision and presence flag, never the stored credentials.
+    raw = web.sql(config, state, "SELECT json_build_object('revision',revision::text,'stored',secret_revision IS NOT NULL)::text FROM teaching.runtime_model_settings WHERE singleton")
+    status = json.loads(raw)
+    if status.get('stored') is True:
+        raise SetupInputError('此部署已保存网页模型配置（包括停用配置）。请使用系统管理员账号到“运行与设置→语音与报告模型配置”修改密钥和预算；本机工具不会覆盖该版本。')
+    if status.get('stored') is not False or not status.get('revision'):
+        raise SetupInputError('无法确认当前模型配置，请在网页核对后再操作。')
+    if expected_revision is not None and status['revision'] != expected_revision:
+        raise SetupInputError('模型配置已发生变化，请在网页核对后再操作。')
+    return status['revision']
+
+
+def verify_restart(web, state, output, revision):
+    active = web.load(state / 'private.json')
+    require_initial_setup(web, active, state, revision)
+    if Path(active.get('analysis_config', '')).resolve() != output.resolve():
+        raise SetupInputError('启动配置与本次保存不一致，请在网页核对当前模型和预算；尚未确认启用。')
+    expected = web.load(output)
+    effective = web.environment(active, state)
+    if any(effective.get(key) != value for key, value in expected.items()):
+        raise SetupInputError('启动参数与本次保存不一致，请在网页核对当前模型和预算；尚未确认启用。')
+    web.wait_ready(active)
+
+
 def main():
     import team_web as web
     parser = argparse.ArgumentParser(description=__doc__)
@@ -63,6 +89,7 @@ def main():
         raise SetupInputError('请在本机交互窗口运行，不能通过管道传入密钥。')
     state = args.data_root.resolve(strict=True)
     config = web.load(state / 'private.json')
+    revision = require_initial_setup(web, config, state)
     if web.sql(config, state, "SELECT count(*) FROM teaching.analysis_jobs WHERE status IN('queued','running')") != '0':
         raise SetupInputError('请先等待当前分析结束或在网页取消任务，再配置模型。')
     print('选择：阿里云百炼华北2（北京），语音 qwen3-asr-flash，报告 qwen-plus-2025-12-01。')
@@ -93,13 +120,16 @@ def main():
     finally:
         if source_written and src.exists(): src.unlink()  # Only this attempt's file.
     print('配置已通过离线校验。尚未检验账号额度、真实识别效果或供应商连通性。')
+    # Someone may have saved in the web UI while this operator entered data.
+    require_initial_setup(web, config, state, revision)
     web.stop(config, state)
     command = [config['python'], str(ROOT/'tools/team_web.py'), '--data-root', str(state), 'prepare',
         '--go', config['go'], '--pg-bin', config['pg_bin'], '--node', config['node'],
         '--python', config['python'], '--models', config['models'], '--analysis-config', str(output)]
     subprocess.run(command, cwd=ROOT, check=True)
     subprocess.run([config['python'], str(ROOT/'tools/team_web.py'), '--data-root', str(state), 'start-detached'], cwd=ROOT, check=True)
-    print('已启用。到课堂详情选“语音转写与教学报告”；完成后在“转写”和“报告”查看。')
+    verify_restart(web, state, output, revision)
+    print('本机配置已保存并重启。请在“运行与设置→语音与报告模型配置”核对当前模型和预算，再到课堂详情提交“语音转写与教学报告”。')
 
 
 if __name__ == '__main__':

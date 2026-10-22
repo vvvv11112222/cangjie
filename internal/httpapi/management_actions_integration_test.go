@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -120,6 +121,51 @@ func TestManagementDeletionAndPasswords(t *testing.T) {
 	logged := requestJSON(t, fresh, http.MethodPost, server.URL+"/api/v1/auth/login", map[string]any{"username": "teacher", "password": "new-test-password-123"}, token, http.StatusOK)
 	requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/users/"+teacherID+"/password", map[string]any{"new_password": "reset-test-password-456"}, csrf, http.StatusNoContent)
 	requestJSON(t, fresh, http.MethodGet, server.URL+"/api/v1/auth/me", nil, logged["csrf_token"].(string), http.StatusUnauthorized)
+	// Run the shared contract cases through both real endpoints and bcrypt login.
+	// This checks UTF-8 boundaries, rejected updates preserving the old password,
+	// and successful updates revoking the existing session.
+	var passwordCases []struct {
+		Name          string            `json:"name"`
+		Definition    string            `json:"definition"`
+		Valid         bool              `json:"valid"`
+		SemanticValid bool              `json:"semantic_valid"`
+		Value         map[string]string `json:"value"`
+	}
+	raw, err := os.ReadFile("../../contracts/examples/password-cases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(raw, &passwordCases); err != nil || len(passwordCases) == 0 {
+		t.Fatalf("password contract cases: %v", err)
+	}
+	current := "reset-test-password-456"
+	for _, example := range passwordCases {
+		t.Run(example.Name, func(t *testing.T) {
+			client := newTestClient(t)
+			loginToken := getCSRF(t, client, server.URL)
+			login := requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/login", map[string]any{"username": "teacher", "password": current}, loginToken, http.StatusOK)
+			body := map[string]any{"new_password": example.Value["new_password"]}
+			expected := http.StatusBadRequest
+			if example.Valid && example.SemanticValid {
+				expected = http.StatusNoContent
+			}
+			if example.Definition == "ChangePassword" {
+				body["current_password"] = current
+				requestJSON(t, client, http.MethodPost, change, body, login["csrf_token"].(string), expected)
+			} else {
+				requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/users/"+teacherID+"/password", body, csrf, expected)
+			}
+			if expected == http.StatusNoContent {
+				requestJSON(t, client, http.MethodGet, server.URL+"/api/v1/auth/me", nil, "", http.StatusUnauthorized)
+				current = example.Value["new_password"]
+				client = newTestClient(t)
+				loginToken = getCSRF(t, client, server.URL)
+				requestJSON(t, client, http.MethodPost, server.URL+"/api/v1/auth/login", map[string]any{"username": "teacher", "password": current}, loginToken, http.StatusOK)
+			} else {
+				requestJSON(t, client, http.MethodGet, server.URL+"/api/v1/auth/me", nil, "", http.StatusOK)
+			}
+		})
+	}
 	// Administrator self-service uses the same old-password check; no lockout of the
 	// last administrator, and no password/hash is stored in the audit metadata.
 	requestJSON(t, admin, http.MethodPost, change, map[string]any{"current_password": integrationPassword, "new_password": "admin-new-password-789"}, csrf, http.StatusNoContent)

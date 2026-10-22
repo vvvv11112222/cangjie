@@ -57,3 +57,14 @@ it('管理员重置他人不提交旧密码，失败保持表单', async () => {
   expect(request).toHaveBeenCalledWith('/users/teacher/password', { method: 'POST', csrf: true, body: { new_password: 'reset-password-123' } });
   expect(done).not.toHaveBeenCalled(); expect(container.textContent).toContain('权限');
 });
+
+it.each([
+  ['中文密码', true], ['中'.repeat(24), true], ['🙂'.repeat(3), true], ['🙂'.repeat(18), true],
+  ['a'.repeat(12), true], ['a'.repeat(72), true], ['中文密', false], ['🙂'.repeat(2), false],
+  ['中'.repeat(25), false], ['🙂'.repeat(19), false], ['a'.repeat(11), false], ['a'.repeat(73), false],
+])('新密码按 UTF-8 字节校验：%s', async (password, valid) => {
+  await act(async () => root.render(<PasswordForm userId="teacher" onDone={() => {}} onCancel={() => {}}/>));
+  await fill('新密码', password); await fill('再次输入新密码', password); await submit();
+  expect(request).toHaveBeenCalledTimes(valid ? 1 : 0);
+  if (!valid) expect(container.textContent).toContain('12至72字节');
+});

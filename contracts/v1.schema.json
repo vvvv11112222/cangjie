@@ -6092,7 +6092,8 @@
         },
         "new_password": {
           "type": "string",
-          "minLength": 12,
+          "description": "12至72个UTF-8字节；minLength/maxLength仅约束字符结构，字节长度须执行语义校验（tools/contract_rules.py）。",
+          "minLength": 1,
           "maxLength": 72
         }
       },
@@ -6107,7 +6108,8 @@
       "properties": {
         "new_password": {
           "type": "string",
-          "minLength": 12,
+          "description": "12至72个UTF-8字节；minLength/maxLength仅约束字符结构，字节长度须执行语义校验（tools/contract_rules.py）。",
+          "minLength": 1,
           "maxLength": 72
         }
       },

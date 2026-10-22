@@ -6,6 +6,74 @@ import sys
 from pathlib import Path
 import pytest
 from setup_models import pricing, source_env, write_private
+import setup_models as setup
+from unittest.mock import Mock
+
+
+def interactive_setup(monkeypatch, tmp_path, statuses):
+    import team_web as web
+    config = dict(python='python', go='go', pg_bin='pg', node='node', models='models')
+    monkeypatch.setattr(sys, 'argv', ['setup_models.py', '--data-root', str(tmp_path)])
+    monkeypatch.setattr(sys, 'stdin', Mock(isatty=lambda: True))
+    monkeypatch.setattr(web, 'load', Mock(return_value=config))
+    responses = iter(statuses)
+    monkeypatch.setattr(web, 'sql', Mock(side_effect=lambda c, s, query: '0' if 'analysis_jobs' in query else json.dumps(next(responses))))
+    monkeypatch.setattr(web, 'environment', Mock(return_value={}))
+    monkeypatch.setattr(web, 'stop', Mock())
+    monkeypatch.setattr(setup.subprocess, 'run', Mock())
+    monkeypatch.setattr(setup, 'write_private', Mock())
+    monkeypatch.setattr(setup.getpass, 'getpass', Mock(return_value='synthetic-key-12345'))
+    monkeypatch.setattr('builtins.input', Mock(return_value='1'))
+    return web
+
+
+def test_saved_web_settings_refuse_before_key_input_or_any_mutation(monkeypatch, tmp_path):
+    web = interactive_setup(monkeypatch, tmp_path, [dict(revision='saved-version', stored=True)])
+    # secret_revision is present for both enabled and disabled web settings.
+    with pytest.raises(setup.SetupInputError, match='网页模型配置'):
+        setup.main()
+    setup.getpass.getpass.assert_not_called()
+    setup.write_private.assert_not_called()
+    setup.subprocess.run.assert_not_called()
+    web.stop.assert_not_called()
+
+
+def test_web_save_during_input_prevents_restart(monkeypatch, tmp_path):
+    web = interactive_setup(monkeypatch, tmp_path, [dict(revision='initial', stored=False), dict(revision='new', stored=True)])
+    with pytest.raises(setup.SetupInputError, match='网页模型配置'):
+        setup.main()
+    web.stop.assert_not_called()
+    assert setup.subprocess.run.call_count == 2  # build and offline prepare only
+
+
+@pytest.mark.parametrize('status', [dict(revision='initial', stored=True), dict(revision='other', stored=False), {}])
+def test_restart_cannot_claim_success_when_web_settings_change(status, tmp_path):
+    web = Mock()
+    web.sql.return_value = json.dumps(status)
+    with pytest.raises(setup.SetupInputError):
+        setup.verify_restart(web, tmp_path, tmp_path/'new.private.json', 'initial')
+    web.wait_ready.assert_not_called()
+
+
+@pytest.mark.parametrize('fault', ['none', 'wrong_file', 'wrong_budget', 'wrong_key'])
+def test_first_setup_checks_selected_file_parameters_and_readiness(fault, tmp_path):
+    output = tmp_path/'new.private.json'
+    expected = dict(MODEL_MONTHLY_BUDGET='1000000', ASR_API_KEY='synthetic-new-key', REPORT_API_KEY='synthetic-new-key')
+    active = dict(analysis_config=str(output if fault != 'wrong_file' else tmp_path/'old.private.json'))
+    web = Mock()
+    web.load.side_effect = [active, expected]
+    web.sql.return_value = json.dumps(dict(revision='initial', stored=False))
+    web.environment.return_value = {**expected}
+    if fault == 'wrong_budget': web.environment.return_value['MODEL_MONTHLY_BUDGET'] = '30000000'
+    if fault == 'wrong_key': web.environment.return_value['ASR_API_KEY'] = 'synthetic-old-key'
+    if fault == 'none':
+        setup.verify_restart(web, tmp_path, output, 'initial')
+        web.wait_ready.assert_called_once_with(active)
+    else:
+        with pytest.raises(setup.SetupInputError) as failure:
+            setup.verify_restart(web, tmp_path, output, 'initial')
+        assert 'synthetic-' not in str(failure.value)
+        web.wait_ready.assert_not_called()
 
 
 def test_budget_is_explicit_and_prices_keep_their_actual_units():
