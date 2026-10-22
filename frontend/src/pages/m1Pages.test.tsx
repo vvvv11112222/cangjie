@@ -23,7 +23,7 @@ describe('M1 页面固定样例骨架', () => {
     expect(management).toContain('最高权限 · 全校范围');
 
     const recordings = renderToStaticMarkup(<RecordingsPage />);
-    for (const label of ['全部学院', '全部年级', '全部班级', '重置筛选', '登记录像']) expect(recordings).toContain(label);
+    for (const label of ['全部学院', '全部年级', '全部班级', '重置筛选', '上传录像并分析']) expect(recordings).toContain(label);
 
     const tasks = renderToStaticMarkup(<TasksPage />);
     expect(tasks).toContain('上传并分析');

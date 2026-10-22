@@ -1,8 +1,11 @@
+import { ErrorMessage } from '../components/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactElement } from 'react';
 import { BadgeTag, Card, EmptyState, LoadControls, LoadStateNote, Pill, TechDetails } from '../components/ui';
 import { useSessionTasks } from '../data/hooks';
 import { describeError } from '../data/errors';
+import { routeQuery, sessionDetailHash } from '../data/route';
+import { isUuid } from '../data/ids';
 import { isApiMode } from '../data/sources';
 import { createSource, listSessionSources, verifySource } from '../data/m2Api';
 import type { RightsStatus, SourceRecord, SourceUse } from '../data/m2Api';
@@ -19,7 +22,7 @@ const statusBadge: Record<RightsStatus, Badge> = {
 export function SourcesPage(): ReactElement {
   const sessions = useSessionTasks();
   const { capabilities } = useAuth();
-  const [sessionId, setSessionId] = useState('');
+  const [sessionId, setSessionId] = useState(()=>{const id=routeQuery().get('session');return id && isUuid(id) ? id : '';});
   const [items, setItems] = useState<SourceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -34,6 +37,14 @@ export function SourcesPage(): ReactElement {
   const selectionVersion = selection.current;
   const isCurrent = () => selection.current === selectionVersion;
   useEffect(() => () => { selection.current = { id: '' }; requestGeneration.current += 1; }, []);
+  useEffect(()=>{
+    const change=()=>{
+      if(window.location.hash.split('?')[0]!=='#/sources')return;
+      const id=routeQuery().get('session');
+      if(id && isUuid(id)){setSessionId(id);setForm(null);setTarget(null);setUploadedMedia(null);setMessage(null);setError(null);}
+    };
+    window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);
+  },[]);
   const selected = sessions.data.tasks.find((task) => task.session.id === sessionId)?.session ?? null;
   const canRegister = isApiMode() && capabilities?.includes('upload') === true;
 
@@ -64,14 +75,14 @@ export function SourcesPage(): ReactElement {
     try {
       await createSource({ session_id: sessionId, source_type: String(data.get('source_type')) as 'self_recorded', title: String(data.get('title')), attribution: String(data.get('attribution')), source_url: String(data.get('source_url')) || null, authorization_note: String(data.get('authorization_note')), requested_uses: requested, external_processing_requested: data.get('external') === 'on' });
       if (!isCurrent()) return;
-      setForm(null); setMessage('素材来源已登记，核验前只能查看元信息和上传。'); await reload();
+      setForm(null); setMessage('来源已登记。下一步由学院教务或系统管理员根据真实许可核验；核验前可上传文件，不能播放或分析。'); await reload();
     } catch (cause) { if (isCurrent()) setError(describeError(cause)); } finally { if (isCurrent()) setLoading(false); }
   }
 
   async function submitVerify(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault(); if (target === null || loading) return; const data = new FormData(event.currentTarget); setLoading(true); setError(null);
     const allowed = (['playback', 'analysis', 'export'] as SourceUse[]).filter((use) => data.get(use) === 'on');
-    try { await verifySource(target.id, { rights_status: data.get('decision') as 'verified' | 'rejected', allowed_uses: data.get('decision') === 'verified' ? allowed : [], external_processing_allowed: data.get('decision') === 'verified' && data.get('external') === 'on', reason: String(data.get('reason')) }); if (!isCurrent()) return; setForm(null); setTarget(null); setMessage('素材核验结果已保存。'); await reload(); }
+    try { await verifySource(target.id, { rights_status: data.get('decision') as 'verified' | 'rejected', allowed_uses: data.get('decision') === 'verified' ? allowed : [], external_processing_allowed: data.get('decision') === 'verified' && data.get('external') === 'on', reason: String(data.get('reason')) }); if (!isCurrent()) return; setForm(null); setTarget(null); setMessage('核验结果已保存。下一步返回这节课堂，上传或选择录像并选择获准的分析方式。'); await reload(); }
     catch (cause) { if (isCurrent()) setError(describeError(cause)); } finally { if (isCurrent()) setLoading(false); }
   }
 
@@ -79,7 +90,7 @@ export function SourcesPage(): ReactElement {
     event.preventDefault(); if (target === null || loading) return; const data = new FormData(event.currentTarget); const file = data.get('file');
     if (!(file instanceof File) || file.size === 0) { setError('请选择 MP4、MOV 或 MKV 录像文件。'); return; }
     setLoading(true); setError(null);
-    try { const media = await uploadSessionMedia(sessionId, file, target.id); if (!isCurrent()) return; setUploadedMedia(media.id); setMessage('录像已上传，尚未开始媒体检查。请进入课堂详情，来源取得回放许可后点击“媒体准备”。'); setForm(null); setTarget(null); }
+    try { const media = await uploadSessionMedia(sessionId, file, target.id); if (!isCurrent()) return; setUploadedMedia(media.id); setMessage('录像已上传，尚未开始分析。前往课堂详情选择“举手与低头识别”或“语音转写与教学报告”；只需回放时选择“媒体准备”。'); setForm(null); setTarget(null); }
     catch (cause) { if (isCurrent()) setError(describeError(cause)); } finally { if (isCurrent()) setLoading(false); }
   }
 
@@ -88,12 +99,12 @@ export function SourcesPage(): ReactElement {
       {canRegister && sessionId !== '' ? <button className="btn btn-primary" type="button" onClick={() => setForm('create')}>登记新素材</button> : null}
     </header>
     {!isApiMode() ? <p className="notice-strip">固定样例不伪造来源记录；切换到接口模式后可登记、核验并上传真实录像。</p> : null}
-    <Card title="选择课堂" subtitle="来源必须绑定课堂，不能用来源 URL 代替媒体上传。"><label className="account-field">课堂<select value={sessionId} onChange={(event) => { setSessionId(event.target.value); setForm(null); setTarget(null); }}><option value="">请选择课堂</option>{sessions.data.tasks.map((task) => <option key={task.session.id} value={task.session.id}>{task.session.title}</option>)}</select></label><LoadStateNote status={sessions.status} error={sessions.error}/><LoadControls actionLabel={sessions.actionLabel} loadMore={sessions.loadMore}/></Card>
-    {form === 'create' ? <Card title="登记新素材" subtitle="需要边看录像边核对结果时，请同时申请“回放”和“分析”。只申请“分析”可以看判断记录，不能播放录像；最终用途由核验结果决定。"><form className="source-form" onSubmit={(event) => void submitCreate(event)}><label className="account-field">素材类型<select name="source_type"><option value="self_recorded">本校录制</option><option value="school_authorized">学校授权</option><option value="open_course">公开课程</option></select></label><label className="account-field">素材标题<input name="title" required/></label><label className="account-field">署名 / 来源方<input name="attribution" required/></label><label className="account-field">来源链接<input name="source_url" type="url"/></label><label className="account-field">授权说明<input name="authorization_note" required/></label><fieldset className="source-uses"><legend>申请用途</legend>{(['playback','analysis','export'] as SourceUse[]).map((use) => <label className="check-row" key={use}><input type="checkbox" name={use}/>{useLabel[use]}</label>)}</fieldset><label className="check-row"><input type="checkbox" name="external"/>申请外部模型处理音频与文本</label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>登记素材</button></div></form></Card> : null}
-    {form === 'verify' && target !== null ? <Card title={`核验：${target.title}`}><form className="source-form" onSubmit={(event) => void submitVerify(event)}><label className="account-field">核验结论<select name="decision"><option value="verified">通过</option><option value="rejected">拒绝</option></select></label><fieldset className="source-uses"><legend>允许用途</legend>{target.requested_uses.map((use) => <label className="check-row" key={use}><input type="checkbox" name={use} defaultChecked/>{useLabel[use]}</label>)}</fieldset><label className="check-row"><input type="checkbox" name="external"/>允许外部模型处理音频与文本</label><label className="account-field">核验理由<input name="reason" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>保存核验</button></div></form></Card> : null}
-    {form === 'upload' && target !== null ? <Card title={`上传录像：${target.title}`} subtitle="上传后先进入 pending，媒体检查完成后才可播放或分析。"><form className="source-form" onSubmit={(event) => void submitUpload(event)}><label className="account-field">录像文件<input name="file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>开始上传</button></div></form></Card> : null}
-    {error ? <div className="notice-strip"><span className="load-note-error">{error}</span>{sessionId !== '' ? <button type="button" className="btn btn-secondary btn-sm" disabled={loading} onClick={() => void reload()}>{loading ? '重新读取中…' : '重新读取素材'}</button> : null}</div> : null}{message ? <p className="notice-strip" role="status">{message}</p> : null}
-    {uploadedMedia ? <a className="btn btn-primary" href={`#/sessions/${sessionId}`}>前往课堂检查媒体</a> : null}
+    <Card title="选择课堂" subtitle="来源必须绑定课堂，不能用来源 URL 代替媒体上传。"><label className="account-field">课堂<select value={sessionId} onChange={(event) => { setSessionId(event.target.value); setForm(null); setTarget(null); setUploadedMedia(null); setMessage(null); setError(null); window.history.replaceState(null,'',`#/sources?session=${encodeURIComponent(event.target.value)}`); }}><option value="">请选择课堂</option>{sessions.data.tasks.map((task) => <option key={task.session.id} value={task.session.id}>{task.session.title}</option>)}</select></label><LoadStateNote status={sessions.status} error={sessions.error}/><LoadControls actionLabel={sessions.actionLabel} loadMore={sessions.loadMore}/></Card>
+    {form === 'create' ? <Card title="登记新素材" subtitle="需要边看录像边核对结果时，请同时申请“回放”和“分析”。只申请“分析”可以看判断记录，不能播放录像；最终用途由核验结果决定。"><form className="source-form" onSubmit={(event) => void submitCreate(event)}><label className="account-field">素材类型<select name="source_type"><option value="self_recorded">本校录制</option><option value="school_authorized">学校授权</option><option value="open_course">公开课程</option></select></label><label className="account-field">素材标题<input name="title" required/></label><label className="account-field">署名 / 来源方<input name="attribution" required/></label><label className="account-field">来源链接<input name="source_url" type="url"/></label><label className="account-field">授权说明<input name="authorization_note" placeholder="按实际情况填写：谁授权、允许什么用途、适用范围" required/></label><fieldset className="source-uses"><legend>申请用途</legend>{(['playback','analysis','export'] as SourceUse[]).map((use) => <label className="check-row" key={use}><input type="checkbox" name={use}/>{useLabel[use]}</label>)}</fieldset><label className="check-row"><input type="checkbox" name="external"/>申请云端音频识别与文本分析</label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>登记素材</button></div></form></Card> : null}
+    {form === 'verify' && target !== null ? <Card title={`核验：${target.title}`}><form className="source-form" onSubmit={(event) => void submitVerify(event)}><label className="account-field">核验结论<select name="decision"><option value="verified">通过</option><option value="rejected">拒绝</option></select></label><fieldset className="source-uses"><legend>允许用途</legend>{target.requested_uses.map((use) => <label className="check-row" key={use}><input type="checkbox" name={use} defaultChecked/>{useLabel[use]}</label>)}</fieldset><label className="check-row"><input type="checkbox" name="external"/>允许云端音频识别与文本分析</label><label className="account-field">核验理由<input name="reason" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>保存核验</button></div></form></Card> : null}
+    {form === 'upload' && target !== null ? <Card title={`上传录像：${target.title}`} subtitle="上传仅保存文件；核验通过后可在课堂详情选择分析方式，系统会先检查录像。"><form className="source-form" onSubmit={(event) => void submitUpload(event)}><label className="account-field">录像文件<input name="file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>开始上传</button></div></form></Card> : null}
+    {error ? <div className="notice-strip"><ErrorMessage text={error}/>{sessionId !== '' ? <button type="button" className="btn btn-secondary btn-sm" disabled={loading} onClick={() => void reload()}>{loading ? '重新读取中…' : '重新读取素材'}</button> : null}</div> : null}{message ? <p className="notice-strip" role="status">{message}</p> : null}
+    {sessionId && <a className="text-button" href={sessionDetailHash(sessionId, uploadedMedia ? {mediaId:uploadedMedia} : {})}>{uploadedMedia ? '继续：为这段录像选择分析方式' : '返回这节课堂继续操作'}</a>}
     <Card title="课堂素材登记" subtitle={sessionId === '' ? '先选择课堂' : `${items.length} 条已加载记录`}>
       {loading && items.length === 0 ? <p className="load-note">正在读取数据…</p> : null}
       {sessionId !== '' && !loading && items.length === 0 ? <EmptyState text="该课堂尚未登记素材。"/> : null}

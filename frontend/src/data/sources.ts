@@ -49,6 +49,9 @@ export type { MediaAction, MediaKind, MediaStatus } from '../types';
  * 完整的 Media DTO 校验等接入媒体详情页时再补，这里不做多余字段的假设。
  */
 export interface MediaLite {
+  source_record_id?: string | null;
+  original_filename?: string | null;
+  created_at?: string;
   id: string;
   kind: MediaKind;
   status: MediaStatus;
@@ -120,6 +123,9 @@ function parseMediaPage(value: unknown): MediaPageLite {
     const path = `MediaPage.items[${index}]`;
     const media = asRecord(item, path);
     return {
+      source_record_id: media['source_record_id'] === undefined ? undefined : asNullableString(media, 'source_record_id', path),
+      original_filename: media['original_filename'] === undefined ? undefined : asNullableString(media, 'original_filename', path),
+      created_at: media['created_at'] === undefined ? undefined : asString(media, 'created_at', path),
       id: asString(media, 'id', path),
       kind: asEnum(media, 'kind', path, MEDIA_KINDS),
       status: asEnum(media, 'status', path, MEDIA_STATUSES),

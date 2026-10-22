@@ -6,6 +6,7 @@ import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fixturesSessionPage from '../../../contracts/examples/session-page.json';
 import fixturesRun from '../../../contracts/examples/run-partial.json';
+import capabilitiesReady from '../../../contracts/examples/service-capabilities.json';
 import { ApiError } from '../data/errors';
 import { setCsrfToken } from '../data/http';
 
@@ -20,8 +21,15 @@ const hoisted = vi.hoisted(() => ({
   getSessions: vi.fn(),
   getRun: vi.fn(),
   getSessionMedia: vi.fn(),
+  capabilities: null as import('../data/serviceCapabilities').ServiceCapabilities | null,
+  getCapabilities: vi.fn(),
 }));
 
+vi.mock('../data/serviceCapabilities', async original => {
+  const actual=await original<typeof import('../data/serviceCapabilities')>();
+  const data=(await import('../../../contracts/examples/service-capabilities.json')).default;
+  return {...actual,getServiceCapabilities:hoisted.getCapabilities,useServiceCapabilities:()=>({data:hoisted.capabilities ?? data,error:null,reload:vi.fn()})};
+});
 vi.mock('../data/sources', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../data/sources')>();
   return {
@@ -37,6 +45,7 @@ vi.mock('../data/sources', async (importOriginal) => {
   };
 });
 
+vi.mock('../data/m2Api', async original => ({...await original<typeof import('../data/m2Api')>(),getSource:async(id:string)=>({id,session_id:SESSION.id,title:'合成测试来源',rights_status:'verified',requested_uses:['playback','analysis'],allowed_uses:['playback','analysis'],external_processing_allowed:true,allowed_actions:[]})}));
 vi.mock('../auth', () => ({
   AuthProvider: ({ children }: { children: ReactNode }): ReactNode => children,
   useAuth: (): unknown => ({
@@ -93,6 +102,8 @@ async function renderAndSettle(): Promise<void> {
 beforeEach(() => {
   (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   hoisted.sessionKey = 'user:A#1';
+  hoisted.capabilities=capabilitiesReady;
+  hoisted.getCapabilities.mockReset().mockResolvedValue(capabilitiesReady);
   hoisted.getSessions.mockReset().mockResolvedValue(fixturesSessionPage);
   hoisted.getRun.mockReset().mockResolvedValue(fixturesRun);
   hoisted.getSessionMedia.mockReset().mockResolvedValue({ items: [], nextCursor: null });
@@ -123,7 +134,7 @@ async function reenterDetail(): Promise<void> {
 function mediaOptions(): void {
   hoisted.getSessionMedia.mockResolvedValue({
     items: [SESSION.primary_media_asset_id!, RUN_MEDIA_ID].map((id) => ({
-      id, kind: 'source', status: 'ready', allowed_actions: ['analyze', 'prepare_media'],
+      id, kind: 'source', source_record_id: '00000000-0000-4000-8000-000000000006', status: 'ready', allowed_actions: ['analyze', 'prepare_media'],
     })),
     nextCursor: null,
   });
@@ -138,7 +149,7 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
     mediaOptions();
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE', message: 'not configured', details: { reason: '本机尚未配置语音转写和报告模型，举手与低头分析可以正常使用。' } }, request_id: 'synthetic' }), { status: 503, headers: { 'Content-Type': 'application/json' } }));
     await renderAndSettle();
-    await act(async () => buttonByText('提交分析').click());
+    await act(async () => buttonByText('语音转写与教学报告').click());
     expect(container.textContent).toContain('本机尚未配置语音转写和报告模型');
     expect(container.textContent).not.toContain('已提交，批次');
   });
@@ -224,7 +235,7 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
     expect(container.textContent).toContain('服务暂时不可用');
     expect(buttonWithExactText('重试')).not.toBeNull();
     // 拿不到目标媒体的授权信息时按 fail-closed 处理，不能提交。
-    expect(buttonByText('提交分析').disabled).toBe(true);
+    expect(buttonByText('语音转写与教学报告').disabled).toBe(true);
     expect(buttonByText('媒体准备').disabled).toBe(true);
   });
 
@@ -251,10 +262,10 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
     hoisted.getRun.mockResolvedValue(failedRun);
     hoisted.getSessionMedia.mockResolvedValue({
       items: [
-        { id: RUN_MEDIA_ID, kind: 'source', status: 'ready', allowed_actions: ['analyze'] },
+        { id: RUN_MEDIA_ID, kind: 'source', source_record_id: '00000000-0000-4000-8000-000000000006', status: 'ready', allowed_actions: ['analyze'] },
         {
           id: SESSION.primary_media_asset_id!,
-          kind: 'source',
+          kind: 'source', source_record_id: '00000000-0000-4000-8000-000000000006',
           status: 'ready',
           allowed_actions: ['analyze'],
         },
@@ -298,20 +309,20 @@ describe('不同未确定请求的交错与重发（R17-01/R17-02）', () => {
       throw new TypeError('accepted but response lost');
     });
     await renderAndSettle();
-    await act(async () => buttonByText('提交分析').click());
+    await act(async () => buttonByText('语音转写与教学报告').click());
     await reenterDetail();
     await act(async () => {
       const select = container.querySelector('select')!;
       select.value = RUN_MEDIA_ID;
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    await act(async () => buttonByText('提交分析').click());
+    await act(async () => buttonByText('语音转写与教学报告').click());
     expect(submitted).toHaveLength(2);
     await act(async () => acceptOld({
       ok: true, status: 202,
       text: async () => JSON.stringify({ data: fixturesRun, request_id: 'old-accepted' }),
     } as Response));
-    await act(async () => buttonByText('提交分析').click());
+    await act(async () => buttonByText('语音转写与教学报告').click());
     expect(submitted).toHaveLength(3);
     expect(submitted[2]!.body).toBe(submitted[1]!.body);
     expect(submitted[2]!.key).toBe(submitted[1]!.key);
@@ -347,4 +358,20 @@ describe('不同未确定请求的交错与重发（R17-01/R17-02）', () => {
     expect(submitted[2]!.body).toBe(submitted[0]!.body);
     expect(submitted[2]!.key).toBe(submitted[0]!.key);
   });
+});
+
+
+it('unconfigured audio disables only its own analysis choice',async()=>{
+ mediaOptions();hoisted.capabilities={...capabilitiesReady,audio_report:{available:false,reasons:['ASR_NOT_CONFIGURED']}};
+ await renderAndSettle();
+ expect(buttonByText('语音转写与教学报告').disabled).toBe(true);
+ expect(buttonByText('举手与低头识别').disabled).toBe(false);
+ expect(container.textContent).toContain('尚未配置语音识别');
+});
+it('rechecks service availability before creating a paid analysis',async()=>{
+ mediaOptions();hoisted.getCapabilities.mockResolvedValue({...capabilitiesReady,audio_report:{available:false,reasons:['BUDGET_UNAVAILABLE']}});
+ const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
+ await renderAndSettle();await act(async()=>buttonByText('语音转写与教学报告').click());
+ expect(fetcher).not.toHaveBeenCalled();
+ expect(container.textContent).toContain('模型可用预算不足');
 });

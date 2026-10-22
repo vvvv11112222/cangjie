@@ -221,6 +221,7 @@ export function AcademicPage(): ReactElement {
   return <div className="page">
     <Header actions={<>{tab === 'schedule' ? <button className="btn btn-secondary" type="button" disabled={visibleSchedules.length === 0} onClick={() => downloadScheduleCsv(visibleSchedules, data)}>导出课表 CSV</button> : null}{canEditTab ? headerActions : null}</>}/>
     {!api ? <p className="notice-strip">固定样例模式不编造教务资料；切换到 API 模式并登录后读取真实数据。</p> : null}
+    <details className="onboarding-next"><summary>第一次准备教务资料，按什么顺序？</summary><p>先维护学期、课程、教室和班级；再创建开课记录，关联学期、课程、任课教师与班级；最后安排上课时间，并到“课堂档案”创建某一次课堂。课程是教学科目，开课是某个学期、某位教师面向某个班的安排，课堂是其中一次上课。</p></details>
     <div className="toolbar academic-toolbar"><div className="tabs">{(Object.keys(TAB_LABELS) as Tab[]).map(value => <button className={`tab ${tab === value ? 'active' : ''}`} type="button" key={value} onClick={() => { setTab(value); setEditor(null); setShowImport(false); setFormError(null); }}>{TAB_LABELS[value]}</button>)}</div>{tab === 'schedule' || tab === 'offerings' ? <select className="m1-filter-control" aria-label="课表班级" value={classId} onChange={event => setClassId(event.target.value)}><option value="">全部班级</option>{data.classGroups.map(item => <option key={item.id} value={item.id}>{item.enrollmentYear ?? '未设置年份'} · {item.name}</option>)}</select> : null}</div>
     <p className="m1-callout">未被使用的基础资料可以删除；有授课历史的开课请归档、排课请取消，账号请停用。冲突与权限由服务端最终判定。</p>
     {notice ? <p className="notice-strip">{notice}</p> : null}

@@ -1,3 +1,4 @@
+import { ErrorMessage } from '../components/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { CapturePairing, LiveCapture } from '../captureTypes';
@@ -13,12 +14,13 @@ import {
   stopLiveCapture,
 } from '../data/liveCaptureApi';
 import { newIdempotencyKey } from '../data/actions';
-import { ApiError, describeError, isTerminalReadError } from '../data/errors';
+import { ApiError, describeError, isTerminalReadError, errorCodeText } from '../data/errors';
 import { collectPages } from '../data/pagination';
 import { connectWHEP } from '../capture/whep';
 import type { WHEPSession } from '../capture/whep';
 import { BadgeTag, Card, Field, TechDetails } from '../components/ui';
 import { formatDateTime, formatTimestamp } from '../format';
+import { featureProblem, getServiceCapabilities, useServiceCapabilities } from '../data/serviceCapabilities';
 
 const terminal = (capture: LiveCapture): boolean => capture.state === 'ready' || capture.state === 'failed';
 async function verifiedSources(sessionId: string): Promise<SourceRecord[]> {
@@ -37,6 +39,9 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   enabled: boolean;
   onUseMedia(mediaId: string): void;
 }): ReactElement {
+  const services = useServiceCapabilities(enabled);
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;};},[]);
   const [capture, setCapture] = useState<LiveCapture | null>(null);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [sourceId, setSourceId] = useState('');
@@ -124,6 +129,9 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   }
 
   const start = () => act(async () => {
+    const latest = await getServiceCapabilities();
+    if(!mounted.current)return;
+    if (!latest.live_capture.available) throw new Error(featureProblem(latest.live_capture));
     const next = await createLiveCapture(session.id, { source_record_id: sourceId, config_profile: 'phone-demo-v1' }, createKey.current);
     setCapture(next); setPairing(null); createKey.current = newIdempotencyKey();
     setNotice('采集已创建。下一步生成手机配对链接。');
@@ -179,6 +187,7 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   return (
     <div className="live-capture-layout">
       <Card title="实时课堂" subtitle="手机发布音视频，电脑实时观看；停止后录像进入现有回放与分析链路。" actions={capture === null ? undefined : <BadgeTag badge={stateBadge(capture.state)} />}>
+        <div className="onboarding-next"><strong>手机录制前先完成三步检查</strong><ol><li>手机与电脑连接允许设备互访的同一网络；校园网无法互访时可使用手机热点。</li><li>用手机打开下方生成的配对链接，确认可信 HTTPS 可访问；电脑上的 localhost 地址不能作为手机地址。</li><li>在手机页面允许摄像头和麦克风，先确认预览有画面、麦克风有输入活动，再开始录制。配对链接过期时重新生成。</li></ol><p>{services.data ? services.data.live_capture.available ? '采集服务已配置。网络、证书和手机权限仍须在实际手机上确认。' : featureProblem(services.data.live_capture) : services.error ? '无法确认采集服务状态，请重新检查或联系系统管理员。' : '正在检查采集服务…'}</p><button type="button" className="btn btn-secondary btn-sm" onClick={services.reload}>重新检查采集服务</button></div>
         {capture === null ? (
           <div className="capture-create">
             <label className="account-field">
@@ -187,17 +196,17 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
                 {sources.length === 0 ? <option value="">{sourcesLoading ? '正在读取来源…' : sourceError ? '来源读取失败' : '没有已核验且允许回放的来源'}</option> : sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}
               </select>
             </label>
-            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || captureLoading || captureUnavailable || sourceId === '' || !session.allowed_actions.includes('upload')} onClick={() => void start()}>
+            <button type="button" className="btn btn-primary" disabled={busy || pollStopped || captureLoading || captureUnavailable || sourceId === '' || !session.allowed_actions.includes('upload') || !services.data?.live_capture.available} onClick={() => void start()}>
               创建实时采集
             </button>
-            <p className="field-hint">在“素材与来源”登记并核验本节课堂的来源，再创建采集。手机采集与上传已有录像可以使用同一项合法来源。</p>
+            <p className="field-hint">没有可用来源时，请先登记来源并由学院教务或系统管理员核验回放用途。<a href={`#/sources?session=${session.id}`}>处理这节课堂的来源</a></p>
           </div>
         ) : (
           <>
             <div className="field-grid">
-              <Field label="连接状态">{capture.connection_state}</Field>
-              <Field label="录像状态">{capture.recording_state}</Field>
-              <Field label="音轨 / 视频轨">{capture.audio_track} / {capture.video_track}</Field>
+              <Field label="连接状态">{{unknown:'等待确认',connected:'手机已连接',disconnected:'手机已断开'}[capture.connection_state]}</Field>
+              <Field label="录像状态">{{waiting:'等待开始',recording:'正在录像',stopping:'正在停止',preparing:'正在准备回放',complete:'录像完成',cleanup_pending:'等待清理',cleaned:'已清理'}[capture.recording_state]}</Field>
+              <Field label="音轨 / 视频轨">音频：{{unknown:'等待确认',present:'已检测到',absent:'未检测到'}[capture.audio_track]} / 视频：{{unknown:'等待确认',present:'已检测到',absent:'未检测到'}[capture.video_track]}</Field>
               <Field label="服务端时长">{capture.duration_ms === null ? '尚未提供' : formatTimestamp(capture.duration_ms)}</Field>
               <Field label="开始时间">{capture.started_at === null ? '尚未开始' : formatDateTime(capture.started_at)}</Field>
               <Field label="结束时间">{capture.ended_at === null ? '尚未结束' : formatDateTime(capture.ended_at)}</Field>
@@ -211,11 +220,11 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
           </>
         )}
         {pairing === null ? null : <div className="capture-pairing"><strong>手机配对链接</strong><a href={pairing.phone_url} target="_blank" rel="noreferrer">{pairing.phone_url}</a><span>有效至 {formatDateTime(pairing.expires_at)}</span><button type="button" className="btn btn-secondary" onClick={() => void navigator.clipboard.writeText(pairing.phone_url).then(() => setNotice('配对链接已复制。')).catch(() => setError('浏览器拒绝复制，请手动选择链接。'))}>复制链接</button></div>}
-        {error === null ? null : <p className="notice-strip load-note-error">{error}</p>}
+        {error === null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={error}/></div>}
         {sourceError === null ? null : <p role="alert" className="notice-strip load-note-error">来源读取失败：{sourceError}</p>}
         {(sourceError !== null || captureUnavailable) && <button type="button" className="btn btn-secondary" disabled={sourcesLoading || captureLoading || busy} onClick={() => setReload(value => value + 1)}>重新检查来源与采集服务</button>}
         {notice === null ? null : <p className="notice-strip">{notice}</p>}
-        {capture?.error_code == null ? null : <p className="notice-strip load-note-error">采集失败：{capture.error_code}{capture.end_reason === null ? '' : ` · ${capture.end_reason}`}</p>}
+        {capture?.error_code == null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={`${errorCodeText(capture.error_code)}（错误码 ${capture.error_code}）`}/><p>请先检查手机连接、权限和采集服务；确认本次采集已停止后，再创建新的采集。</p><TechDetails summary="采集结束技术详情"><p>{capture.end_reason ?? "未提供结束原因"}</p></TechDetails></div>}
         {capture === null ? null : <TechDetails><ul className="tech-list"><li className="mono">live_capture.id = {capture.id}</li><li className="mono">media_asset_id = {capture.media_asset_id ?? 'null'}</li><li className="mono">media_prepare_run_id = {capture.media_prepare_run_id ?? 'null'}</li><li className="mono">allowed_actions = [{capture.allowed_actions.join(', ')}]</li></ul></TechDetails>}
       </Card>
       <Card title="实时画面" subtitle="观看断开不代表服务端录像已经停止。">
@@ -227,7 +236,7 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
         {!watching ? <p className="empty">尚未建立观看连接。手机可以继续录像，观看状态与录像状态相互独立。</p> : null}
       </Card>
       <Card title="课后分析" subtitle="实时采集只负责录像；转写、关键帧和报告仍走课后分析。">
-        <p className="muted">录像就绪后选择“用此录像继续处理”，再到“批次与操作”选择“举手与低头分析”。需要转写和六维教学报告时选择“完整分析”，这需要先配置语音与报告模型。实时观看阶段不会自动识别动作。</p>
+        <p className="muted">等待状态变为“录像就绪”后，点击“用此录像继续处理”。随后选择“举手与低头识别”或“语音转写与教学报告”。关闭观看、关闭浏览器与停止录像是不同操作；录制结束请明确点击“停止录像”并等待收尾。</p>
       </Card>
     </div>
   );

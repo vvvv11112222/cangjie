@@ -12,12 +12,18 @@ const h = vi.hoisted(() => ({
   getSessions: vi.fn(), getRun: vi.fn(), getResults: vi.fn(), getRevision: vi.fn(),
   getSessionMedia: vi.fn(), getMedia: vi.fn(), sessionKey: 'A#1', userId: 'A',
 }));
+vi.mock('../data/serviceCapabilities', async original => {
+  const actual=await original<typeof import('../data/serviceCapabilities')>();
+  const data=(await import('../../../contracts/examples/service-capabilities.json')).default;
+  return {...actual,getServiceCapabilities:async()=>data,useServiceCapabilities:()=>({data,error:null,reload:vi.fn()})};
+});
 vi.mock('../data/sources', async (original) => {
   const actual = await original<typeof import('../data/sources')>();
   return { ...actual, isApiMode: () => true, getMedia: h.getMedia, getSessionMedia: h.getSessionMedia,
     dataSource: { ...actual.dataSource, getSessions: h.getSessions, getRun: h.getRun,
       getResults: h.getResults, getRevision: h.getRevision, getMedia: h.getMedia, getSessionMedia: h.getSessionMedia } };
 });
+vi.mock('../data/m2Api', async original => ({...await original<typeof import('../data/m2Api')>(),getSource:async()=>({id:'source',session_id:sessionPage.items[0]!.id,rights_status:'verified',allowed_uses:['playback'],external_processing_allowed:false})}));
 vi.mock('../auth', () => ({ useAuth: () => ({ status: 'authenticated', sessionKey: h.sessionKey,
   me: { user_id: h.userId }, capabilities: null, error: null }) }));
 import { SessionDetailPage } from './SessionDetailPage';

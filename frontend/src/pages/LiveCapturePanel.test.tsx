@@ -9,6 +9,10 @@ import { parseSessionPage } from '../data/samples';
 const h = vi.hoisted(() => ({ sources: vi.fn(), active: vi.fn() }));
 vi.mock('../data/m2Api', () => ({ listSessionSources: (...args: unknown[]) => h.sources(...args) }));
 vi.mock('../data/liveCaptureApi', () => ({ getActiveLiveCapture: (...args: unknown[]) => h.active(...args), createLiveCapture: vi.fn(), createPairing: vi.fn(), createViewer: vi.fn(), getLiveCapture: vi.fn(), stopLiveCapture: vi.fn() }));
+vi.mock('../data/serviceCapabilities', async original => ({
+  ...await original<typeof import('../data/serviceCapabilities')>(),
+  useServiceCapabilities: () => ({ data: { live_capture: { available: true, reasons: [] } }, error: null, reload: vi.fn() }),
+}));
 import { LiveCapturePanel } from './LiveCapturePanel';
 const lesson = { ...parseSessionPage(sessionPage).items[0]!, allowed_actions: ['upload' as const] };
 const source = { id: 'source-id', title: '合法课堂录像', rights_status: 'verified', allowed_uses: ['playback', 'analysis'] };

@@ -985,6 +985,10 @@
             ]
           },
           "uniqueItems": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
         }
       },
       "required": [
@@ -2692,6 +2696,19 @@
             ]
           },
           "uniqueItems": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "original_filename": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\\\x00-\\x1f\\x7f]+$"
         }
       },
       "required": [
@@ -6179,6 +6196,94 @@
       },
       "required": [],
       "additionalProperties": false
+    },
+    "FeatureStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "reasons"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "MEDIA_WORKER_UNAVAILABLE",
+              "VISION_NOT_CONFIGURED",
+              "VISUAL_WORKER_UNAVAILABLE",
+              "ASR_NOT_CONFIGURED",
+              "REPORT_NOT_CONFIGURED",
+              "AUDIO_WORKER_UNAVAILABLE",
+              "BUDGET_UNAVAILABLE",
+              "CAPTURE_NOT_CONFIGURED"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "available": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reasons": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reasons": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ServiceCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checked_at",
+        "media_prepare",
+        "visual_analysis",
+        "audio_report",
+        "report_generation",
+        "live_capture"
+      ],
+      "properties": {
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "media_prepare": {
+          "$ref": "#/$defs/FeatureStatus"
+        },
+        "visual_analysis": {
+          "$ref": "#/$defs/FeatureStatus"
+        },
+        "audio_report": {
+          "$ref": "#/$defs/FeatureStatus"
+        },
+        "report_generation": {
+          "$ref": "#/$defs/FeatureStatus"
+        },
+        "live_capture": {
+          "$ref": "#/$defs/FeatureStatus"
+        }
+      }
     }
   }
 }

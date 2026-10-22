@@ -1188,6 +1188,17 @@
       "success_statuses": [
         200
       ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/service-capabilities",
+      "request": null,
+      "response": "ServiceCapabilities",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
     }
   ]
 }

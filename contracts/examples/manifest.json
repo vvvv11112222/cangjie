@@ -266,6 +266,31 @@
       "file": "invalid-media-query.json",
       "definition": "MediaQuery",
       "valid": false
+    },
+    {
+      "file": "service-capabilities.json",
+      "definition": "ServiceCapabilities",
+      "valid": true
+    },
+    {
+      "file": "service-capabilities-unavailable.json",
+      "definition": "ServiceCapabilities",
+      "valid": true
+    },
+    {
+      "file": "invalid-service-capabilities.json",
+      "definition": "ServiceCapabilities",
+      "valid": false
+    },
+    {
+      "file": "media-display-name.json",
+      "definition": "Media",
+      "valid": true
+    },
+    {
+      "file": "invalid-media-display-name-path.json",
+      "definition": "Media",
+      "valid": false
     }
   ],
   "case_sets": [

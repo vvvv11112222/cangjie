@@ -140,6 +140,7 @@ export function PlaybackPanel({
 
   return (
     <>
+      <p className="result-context">当前回放：{media?.original_filename || "历史录像（文件名未记录）"}。片段与证据仅匹配当前回放录像。</p>
       <Card
         title="回放"
         subtitle="选择本节课堂的一份录像回放。不同录像各自保留分析结果；切换回放不会覆盖录像或重新分析。"

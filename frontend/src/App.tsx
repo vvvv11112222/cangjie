@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import type { ReactElement } from 'react';
 import { useAuth } from './auth';
 import { AccountBar } from './components/AccountBar';
+import { RoleGuide } from './components/FirstUseGuide';
 import { NotificationBell } from './components/NotificationBell';
 import {
   IconCalendar,
@@ -217,7 +218,7 @@ export function App(): ReactElement {
   const sessionRoute = parseSessionRoute(hash);
   const detailId = sessionRoute.kind === 'detail' ? sessionRoute.sessionId : null;
   // 课堂详情属于课堂档案；未知地址回落到默认页，不留空白。
-  const currentItem = navItemAt(detailId !== null ? SESSIONS_PATH : hash) ?? navItemAt(DEFAULT_ROUTE);
+  const currentItem = navItemAt(detailId !== null ? SESSIONS_PATH : hash.split('?')[0] ?? hash) ?? navItemAt(DEFAULT_ROUTE);
   const currentPath = currentItem?.path ?? DEFAULT_ROUTE;
   const render = PAGE_RENDERERS[currentPath];
 
@@ -312,6 +313,7 @@ export function App(): ReactElement {
           </div>
         </header>
         <main id="main">
+          <RoleGuide />
           <M1RoleContext.Provider key={sessionKey} value={roles}>
           {sessionRoute.kind === 'invalid' ? (
             <PageNotice

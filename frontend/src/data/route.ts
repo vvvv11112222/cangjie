@@ -17,7 +17,7 @@ export type SessionRoute =
   | { kind: 'invalid'; message: string };
 
 export function parseSessionRoute(hash: string): SessionRoute {
-  const match = SESSION_DETAIL.exec(hash);
+  const match = SESSION_DETAIL.exec(hash.split('?')[0] ?? '');
   if (match === null) {
     return { kind: 'list' };
   }
@@ -32,6 +32,24 @@ export function parseSessionRoute(hash: string): SessionRoute {
   }
   // UUID 按值比较：地址里写成大写也要能命中同一个课堂（F10）。
   return { kind: 'detail', sessionId: normalizeId(decoded) };
+}
+
+export type SessionTab = 'run' | 'live' | 'transcript' | 'report' | 'playback' | 'visual';
+export function routeQuery(hash = typeof window === 'undefined' ? '' : window.location.hash): URLSearchParams {
+  return new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '');
+}
+export function sessionDetailHash(id: string, options: { tab?: SessionTab; mediaId?: string; upload?: boolean } = {}): string {
+  const params = new URLSearchParams();
+  if (options.tab) params.set('tab', options.tab);
+  if (options.mediaId) params.set('media', options.mediaId);
+  if (options.upload) params.set('start', 'upload');
+  return `#/sessions/${encodeURIComponent(id)}${params.size ? `?${params}` : ''}`;
+}
+export function sessionIntent(hash = typeof window === 'undefined' ? '' : window.location.hash): { tab: SessionTab; mediaId: string | null; upload: boolean } {
+  const query = routeQuery(hash);
+  const raw = query.get('media');
+  const tab = query.get('tab') as SessionTab | null;
+  return { tab: tab !== null && ['run','live','transcript','report','playback','visual'].includes(tab) ? tab : 'run', mediaId: raw !== null && isUuid(raw) ? normalizeId(raw) : null, upload: query.get('start') === 'upload' };
 }
 
 /**

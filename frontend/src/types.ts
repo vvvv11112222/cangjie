@@ -62,6 +62,7 @@ export interface Job {
 }
 
 export interface Run {
+  created_at?: string;
   id: string;
   session_id: string;
   media_asset_id: string;
@@ -126,6 +127,8 @@ export type MediaAction = 'prepare_media' | 'analyze' | 'playback' | 'select_pri
  * 对 kind=source 的媒体，服务端返回的是它派生播放资产（proxy）的地址。
  */
 export interface Media {
+  original_filename?: string | null;
+  created_at?: string;
   id: string;
   session_id: string;
   source_record_id: string | null;

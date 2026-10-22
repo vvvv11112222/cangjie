@@ -1,3 +1,4 @@
+import { ErrorMessage } from '../components/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { CreateRun, Revision, Run, Segment, Session } from '../types';
@@ -10,6 +11,7 @@ import { createRevision, listRevisions } from '../data/m3Api';
 import { describeError } from '../data/errors';
 import { Card, IdChip } from '../components/ui';
 import { formatDateTime, formatTimestamp } from '../format';
+import { getServiceCapabilities, useServiceCapabilities, featureProblem } from '../data/serviceCapabilities';
 
 function cloneSegments(segments: Segment[]): Segment[] { return segments.map((item) => ({ ...item })); }
 async function revisionHistory(sessionId: string, mediaAssetId: string): Promise<Revision[]> {
@@ -18,6 +20,7 @@ async function revisionHistory(sessionId: string, mediaAssetId: string): Promise
 
 export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreated }: { session: Session; initial: Revision; onChange?(revision: Revision): void; onRunCreated?(run: Run): void }): ReactElement {
   const { me, sessionKey } = useAuth();
+  const services = useServiceCapabilities();
   const accountScope = me?.user_id ?? sessionKey;
   const [current, setCurrent] = useState(initial);
   const [history, setHistory] = useState<Revision[]>([initial]);
@@ -73,6 +76,9 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
     const key = pendingIntent.keyFor(accountScope, session.id, intentSignature(session.id, input));
     setBusy(true); setError(null); setMessage(null);
     try {
+      const latest=await getServiceCapabilities();
+      if(requestGeneration!==generation.current)return;
+      if(!latest.report_generation.available) {setError(featureProblem(latest.report_generation));services.reload();return;}
       const run = await createRun(session.id, input, key);
       pendingIntent.resolve(accountScope, session.id, key);
       if (requestGeneration !== generation.current) return;
@@ -83,6 +89,7 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
 
   return (
     <Card title="转写修订" subtitle="每次保存都创建新快照；并发版本冲突时不会覆盖别人刚保存的内容。">
+      <p className="field-hint">{services.data ? services.data.report_generation.available ? "报告生成服务前置检查通过；重跑仍会检查本条转写和来源许可。" : featureProblem(services.data.report_generation) : "正在确认报告生成服务；未确认前暂停新建报告。"}<button type="button" className="text-button" onClick={services.reload}>重新检查报告服务</button></p>
       <div className="revision-toolbar">
         <label className="account-field"><span>查看版本</span><select value={current.id} disabled={busy} onChange={(event) => {
           const selected = history.find((item) => item.id === event.target.value);
@@ -90,7 +97,7 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
         }}>{history.map((item) => <option key={item.id} value={item.id}>第 {item.revision_no} 版 · {item.source_type} · {formatDateTime(item.created_at)}</option>)}</select></label>
         <div className="action-row">
           {session.allowed_actions.includes('edit_transcript') ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setEditing((value) => !value)}>{editing ? '取消编辑' : '修订转写'}</button> : null}
-          <button type="button" className="btn btn-primary" disabled={busy || editing || !session.allowed_actions.includes('analyze')} onClick={() => void regenerate()}>用此版本重新生成报告</button>
+          <button type="button" className="btn btn-primary" disabled={busy || editing || !session.allowed_actions.includes('analyze') || !services.data?.report_generation.available} onClick={() => void regenerate()}>用此版本重新生成报告</button>
         </div>
       </div>
       {editing ? <div className="revision-editor">
@@ -99,7 +106,7 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
         <button type="button" className="btn btn-primary" disabled={busy || reason.trim() === '' || segments.some((item) => item.text_content.trim() === '')} onClick={() => void save()}>保存为新版本</button>
       </div> : <p className="muted">当前查看第 {current.revision_no} 版，父版本 {current.parent_revision_id === null ? '无' : <IdChip id={current.parent_revision_id} />}。</p>}
       {message === null ? null : <p className="notice-strip">{message}</p>}
-      {error === null ? null : <p className="notice-strip load-note-error">{error}</p>}
+      {error === null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={error}/></div>}
     </Card>
   );
 }

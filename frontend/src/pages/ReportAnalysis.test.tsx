@@ -87,13 +87,13 @@ it('已过期依据保留文字，不请求回放', async () => {
   const { view, evidence } = viewWithAdvice(); evidence.availability = 'expired';
   await act(async () => root.render(<ReportPage view={view} />)); await click('查看依据');
   expect(container.textContent).toContain('原始依据已过期');
-  expect(h.media).not.toHaveBeenCalled(); expect(h.player).not.toHaveBeenCalled();
+  expect(h.media.mock.calls.filter(call=>call[1]!==false)).toHaveLength(0); expect(h.player).not.toHaveBeenCalled();
 });
 
 it('跨批次证据不会提供可回放入口', async () => {
   const { view, evidence } = viewWithAdvice(); evidence.run_id = 'different-run';
   await act(async () => root.render(<ReportPage view={view} />));
-  expect(container.querySelector('.report-citation')).toBeNull(); expect(h.media).not.toHaveBeenCalled();
+  expect(container.querySelector('.report-citation')).toBeNull(); expect(h.media.mock.calls.filter(call=>call[1]!==false)).toHaveLength(0);
 });
 
 it('授权失败或媒体不属于原课堂时不挂载播放器', async () => {

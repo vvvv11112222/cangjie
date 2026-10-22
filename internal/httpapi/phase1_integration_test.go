@@ -75,6 +75,12 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 		t.Fatal("login did not rotate the authenticated session")
 	}
 	adminCSRF = rotated["csrf_token"].(string)
+	requestJSON(t, newTestClient(t), http.MethodGet, server.URL+"/api/v1/service-capabilities", nil, "", http.StatusUnauthorized)
+	requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/service-capabilities?unknown=1", nil, "", http.StatusBadRequest)
+	capabilities := requestJSON(t, admin, http.MethodGet, server.URL+"/api/v1/service-capabilities", nil, "", http.StatusOK)
+	if capabilities["audio_report"].(map[string]any)["available"] != false {
+		t.Fatal("unconfigured audio was advertised as ready")
+	}
 	var revoked int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM teaching.auth_sessions a JOIN teaching.user_accounts u ON u.id=a.user_id WHERE u.username='admin' AND a.revoked_at IS NOT NULL`).Scan(&revoked); err != nil || revoked != 1 {
 		t.Fatalf("revoked admin sessions=%d err=%v", revoked, err)
@@ -95,6 +101,7 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 
 	academicClient := newTestClient(t)
 	academicCSRF := loginTestUser(t, academicClient, server.URL, "academic")
+	requestJSON(t, academicClient, http.MethodGet, server.URL+"/api/v1/service-capabilities", nil, "", http.StatusOK)
 	collegeA := queryID(t, pool, `SELECT id::text FROM teaching.org_units WHERE code='COL-A'`)
 	academicID := queryID(t, pool, `SELECT id::text FROM teaching.user_accounts WHERE username='academic'`)
 	requestJSON(t, academicClient, http.MethodPatch, server.URL+"/api/v1/users/"+academicID, map[string]any{"display_name": "Changed"}, academicCSRF, http.StatusForbidden)
@@ -128,6 +135,7 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 
 	teacherClient := newTestClient(t)
 	teacherCSRF := loginTestUser(t, teacherClient, server.URL, "teacher")
+	requestJSON(t, teacherClient, http.MethodGet, server.URL+"/api/v1/service-capabilities", nil, "", http.StatusOK)
 	secondRoom := requestJSON(t, admin, http.MethodPost, server.URL+"/api/v1/classrooms", map[string]any{"code": "ROOM-2", "name": "Room 2", "capacity": 40}, adminCSRF, http.StatusCreated)
 	schedule := requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/schedules", map[string]any{"offering_id": offering["id"], "classroom_id": classroom["id"], "starts_at": "2026-10-10T09:00:00+08:00", "ends_at": "2026-10-10T10:00:00+08:00", "status": "active"}, academicCSRF, http.StatusCreated)
 	requestJSON(t, academicClient, http.MethodPost, server.URL+"/api/v1/schedules", map[string]any{"offering_id": offering["id"], "classroom_id": classroom["id"], "starts_at": "2026-10-10T10:00:00+08:00", "ends_at": "2026-10-10T11:00:00+08:00", "status": "active"}, academicCSRF, http.StatusCreated)
@@ -148,6 +156,7 @@ func TestPhaseOneAuthorizationFlow(t *testing.T) {
 	requestJSON(t, teacherClient, http.MethodPost, server.URL+"/api/v1/sessions", map[string]any{"offering_id": offering["id"], "schedule_entry_id": schedule["id"], "title": "Wrong time", "planned_start_at": "2026-10-10T09:01:00+08:00", "planned_end_at": "2026-10-10T10:00:00+08:00", "is_demo": false}, teacherCSRF, http.StatusBadRequest)
 	supervisorClient := newTestClient(t)
 	supervisorCSRF := loginTestUser(t, supervisorClient, server.URL, "supervisor")
+	requestJSON(t, supervisorClient, http.MethodGet, server.URL+"/api/v1/service-capabilities", nil, "", http.StatusOK)
 	requestJSON(t, supervisorClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"title": nil}, supervisorCSRF, http.StatusForbidden)
 	requestJSON(t, supervisorClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"status": nil}, supervisorCSRF, http.StatusForbidden)
 	requestJSON(t, supervisorClient, http.MethodPatch, server.URL+"/api/v1/sessions/"+session["id"].(string), map[string]any{"title": "unauthorized"}, supervisorCSRF, http.StatusForbidden)

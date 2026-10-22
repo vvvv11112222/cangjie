@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/vvvv11112222/cangjie/internal/analysis"
 	"github.com/vvvv11112222/cangjie/internal/identity"
@@ -513,6 +514,11 @@ func (s *server) claimJob(w http.ResponseWriter, r *http.Request) {
 		s.writeServiceError(w, r, err)
 		return
 	}
+	jobID := ""
+	if claim != nil {
+		jobID = claim.JobID
+	}
+	s.announcements.announce(in.Capabilities, in.VisualEnabled, time.Now(), jobID)
 	if claim == nil {
 		w.Header().Set("Retry-After", "5")
 		w.WriteHeader(http.StatusNoContent)
@@ -548,6 +554,7 @@ func (s *server) heartbeatJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.announcements.heartbeat(id, time.Now())
 	writeData(w, r, http.StatusOK, value)
 }
 

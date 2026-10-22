@@ -190,8 +190,15 @@ export function LoadStateNote({
   if (status === 'signed_out') {
     return <p className="load-note">当前未登录，登录成功后会自动读取数据。</p>;
   }
-  if (status === 'paused') return <p className="load-note">{error}</p>;
-  return <p className="load-note load-note-error">{error ?? '读取数据失败。'}</p>;
+  if (status === 'paused') return <div className="load-note"><ErrorMessage text={error ?? '当前读取已暂停，请重新进入页面。'}/></div>;
+  return <div className="load-note load-note-error"><ErrorMessage text={error ?? '读取数据失败。请重新读取；仍失败时联系系统管理员。'}/></div>;
+}
+
+export function ErrorMessage({text}:{text:string}) {
+  const at=text.indexOf('（错误码 ');
+  const unknown=text.includes('未收录的错误码');
+  const main=unknown ? '当前操作未完成。请联系系统管理员，并提供下方技术详情。' : at>=0 ? text.slice(0,at) : text;
+  return <><span>{main}</span>{(at>=0 || unknown) && <TechDetails summary="错误技术详情"><p>{text}</p></TechDetails>}</>;
 }
 
 export function LoadControls({ actionLabel, loadMore }: { actionLabel: string | null; loadMore(): void }): ReactElement | null {
@@ -274,7 +281,7 @@ export function StageFlow({ run }: { run: Run }): ReactElement {
                     {job.status === 'running' ? ` · ${job.progress}%` : ''}
                   </span>
                   {job.error_code === null ? null : (
-                    <span className="stage-error-code mono">{job.error_code}</span>
+                    <TechDetails summary="阶段错误详情"><span className="stage-error-code mono">{job.error_code}</span></TechDetails>
                   )}
                 </>
               )}
@@ -315,7 +322,7 @@ export function RunErrorBox({ run }: { run: Run }): ReactElement {
       <div className="error-head">
         <span className="error-icon" aria-hidden="true"><IconAlert size={16} /></span>
         <span className="error-title">任务错误信息</span>
-        <span className="error-code mono">{run.error_code}</span>
+        <TechDetails summary="错误编号"><span className="error-code mono">{run.error_code}</span></TechDetails>
         {failed.length === 0 ? (
           <span className="error-stage muted">后端未给出失败阶段</span>
         ) : (

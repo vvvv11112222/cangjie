@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-21T12:00:00Z",
+  "media_prepare": {
+    "available": false,
+    "reasons": [
+      "MEDIA_WORKER_UNAVAILABLE"
+    ]
+  },
+  "visual_analysis": {
+    "available": false,
+    "reasons": [
+      "MEDIA_WORKER_UNAVAILABLE"
+    ]
+  },
+  "audio_report": {
+    "available": false,
+    "reasons": [
+      "MEDIA_WORKER_UNAVAILABLE"
+    ]
+  },
+  "report_generation": {
+    "available": false,
+    "reasons": [
+      "REPORT_NOT_CONFIGURED"
+    ]
+  },
+  "live_capture": {
+    "available": false,
+    "reasons": [
+      "CAPTURE_NOT_CONFIGURED"
+    ]
+  }
+}

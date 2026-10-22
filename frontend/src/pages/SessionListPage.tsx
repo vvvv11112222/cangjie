@@ -24,6 +24,8 @@ import { createSession, uploadSessionMedia } from '../data/sessionOps';
 import { UploadSourcePicker } from './UploadSourcePicker';
 import { isUuid } from '../data/ids';
 import { sessionSearchFromHash } from '../data/route';
+import { routeQuery as readRouteQuery, sessionDetailHash } from '../data/route';
+import { FirstUseGuide } from '../components/FirstUseGuide';
 
 /**
  * 课堂档案（《系统草图.html》的 CLASSROOM ARCHIVE）。
@@ -89,7 +91,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     ? sessionSearchFromHash(window.location.hash)
     : '';
   const [query, setQuery] = useState(routeQuery);
-  const [compose, setCompose] = useState<Compose>(null);
+  const [compose, setCompose] = useState<Compose>(() => readRouteQuery().get('start') === 'upload' ? 'upload' : null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const api = isApiMode();
 
@@ -160,13 +162,16 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {notes}
       {head}
 
+      <FirstUseGuide sessions={tasks.map(task=>task.session)} onUpload={()=>{setUploadNotice(null);setCompose('upload');}} />
+
       {uploadNotice && <p className="notice-strip" role="status">{uploadNotice}</p>}
       {compose === 'create' ? (
         <CreateSessionForm
           onCancel={() => setCompose(null)}
-          onCreated={() => {
+          onCreated={(created) => {
             setCompose(null);
             loaded.reload();
+            window.location.hash = sessionDetailHash(created.id, { upload: true });
           }}
         />
       ) : null}
@@ -174,10 +179,11 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
         <UploadMediaForm
           tasks={tasks}
           onCancel={() => setCompose(null)}
-          onUploaded={() => {
+          onUploaded={(sessionId, mediaId) => {
             setCompose(null);
-            setUploadNotice('录像已上传，可进入对应课堂继续进行举手与低头分析。');
+            setUploadNotice('录像已上传，可进入对应课堂继续进行举手与低头识别。');
             loaded.reload();
+            window.location.hash = sessionDetailHash(sessionId, { mediaId });
           }}
         />
       ) : null}
@@ -359,7 +365,7 @@ function CreateSessionForm({
   onCreated,
 }: {
   onCancel(): void;
-  onCreated(): void;
+  onCreated(session: { id: string }): void;
 }): ReactElement {
   const [offerings, setOfferings] = useState<Offering[] | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -418,8 +424,8 @@ function CreateSessionForm({
     }
     setBusy(true);
     try {
-      await createSession({ offeringId, title: title.trim(), plannedStartAt, plannedEndAt, isDemo });
-      onCreated();
+      const created = await createSession({ offeringId, title: title.trim(), plannedStartAt, plannedEndAt, isDemo });
+      onCreated(created);
     } catch (caught) {
       setError(describeError(caught));
     } finally {
@@ -428,15 +434,15 @@ function CreateSessionForm({
   }
 
   return (
-    <Card title="创建课堂" subtitle="一条课堂记录对应一次具体授课，请填写本次开始和结束时间，而不是整个学期。课堂须关联开课实例；课表冲突由服务端检查。">
+    <Card title="创建课堂" subtitle="课程是教学科目，开课关联学期、教师和班级；这里创建其中某一次上课的记录。">
       {offerings === null ? (
         <p className="load-note">正在读取开课实例……</p>
       ) : offerings.length === 0 ? (
-        <EmptyState text="当前范围内没有开课实例，先由学院教务或系统管理员在「教务与课表」里建好开课。" />
+        <><EmptyState text="当前范围内没有开课记录。请由学院教务或系统管理员先关联课程、学期、任课教师和班级。" /><a href="#/academic">前往教务与课表准备开课资料</a><p className="field-hint">没有教务入口时，请联系学院教务或系统管理员处理。</p></>
       ) : (
         <form className="directory-form" onSubmit={submit}>
           <label className="account-field">
-            <span>开课实例</span>
+            <span>选择课程与班级（开课记录）</span>
             <select value={offeringId} onChange={(event) => setOfferingId(event.target.value)} required>
               {offerings.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -459,7 +465,7 @@ function CreateSessionForm({
           </label>
           <label className="check-row">
             <input type="checkbox" checked={isDemo} onChange={(event) => setIsDemo(event.target.checked)} />
-            标记为示范数据（is_demo，检索时可以区分）
+            标记为演示课堂（与真实教学数据区分）
           </label>
           <div className="directory-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
@@ -493,7 +499,7 @@ function UploadMediaForm({
 }: {
   tasks: readonly SessionTaskView[];
   onCancel(): void;
-  onUploaded(): void;
+  onUploaded(sessionId: string, mediaId: string): void;
 }): ReactElement {
   const uploadable = tasks.filter((task) => task.session.allowed_actions.includes('upload'));
   const [sessionId, setSessionId] = useState(uploadable[0]?.session.id ?? '');
@@ -514,8 +520,8 @@ function UploadMediaForm({
     }
     setBusy(true); setError(null);
     try {
-      await uploadSessionMedia(sessionId, file, sourceRecordId.trim());
-      onUploaded();
+      const uploaded = await uploadSessionMedia(sessionId, file, sourceRecordId.trim());
+      onUploaded(sessionId, uploaded.id);
     } catch (caught) {
       setError(describeError(caught));
     } finally {
@@ -524,9 +530,9 @@ function UploadMediaForm({
   }
 
   return (
-    <Card title="上传课堂录像" subtitle="上传后媒体状态为 pending，时长与关键帧要等媒体检查完成。">
+    <Card title="上传课堂录像" subtitle="选择课堂与文件 → 选择或登记来源 → 上传 → 在课堂详情选择分析方式。上传本身不会启动识别。">
       {uploadable.length === 0 ? (
-        <EmptyState text="当前没有可上传的课堂：要么还没有课堂，要么服务端没有给你这些课堂的 upload 权限。" />
+        <EmptyState text="当前没有可上传的课堂。先点击“创建课堂”；已有课堂仍未显示时，请联系学院教务或系统管理员检查任课关联与授权范围。" />
       ) : (
         <form className="directory-form" onSubmit={submit}>
           <label className="account-field">
@@ -534,21 +540,22 @@ function UploadMediaForm({
             <select value={sessionId} disabled={busy} onChange={(event) => { setSessionId(event.target.value); setSourceRecordId(''); setError(null); }} required>
               {uploadable.map((task) => (
                 <option key={task.session.id} value={task.session.id}>
-                  {task.session.title}（{shortId(task.session.id)}）
+                  {task.session.title}
                 </option>
               ))}
             </select>
           </label>
-          <UploadSourcePicker key={sessionId} sessionId={sessionId} value={sourceRecordId} onChange={setSourceRecordId} manualFallback={false} disabled={busy} />
           <label className="account-field">
-            <span>录像文件</span>
+            <span>录像文件（MP4 / MOV / MKV）</span>
             <input
               type="file"
-              accept="video/*"
+              accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               required
             />
           </label>
+          {file && <p className="field-hint">已选择：{file.name}。下面登记或核验来源时会保留该文件。</p>}
+          <UploadSourcePicker key={sessionId} sessionId={sessionId} value={sourceRecordId} onChange={setSourceRecordId} manualFallback={false} disabled={busy} />
           <div className="directory-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
               {busy ? '上传中…' : '开始上传'}

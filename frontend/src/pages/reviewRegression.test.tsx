@@ -127,8 +127,8 @@ it('offers the real media preparation entry after uploading instead of claiming 
   vi.stubGlobal('FormData', class extends NativeFormData { override get(key: string) { return key === 'file' ? input.files![0]! : super.get(key); } });
   try { await submit(); } finally { vi.unstubAllGlobals(); }
   expect(h.upload).toHaveBeenCalledWith('A', expect.any(File), 'A-source');
-  expect(container.textContent).toContain('尚未开始媒体检查');
-  expect(container.querySelector('a')?.getAttribute('href')).toBe('#/sessions/A');
+  expect(container.textContent).toContain('尚未开始分析');
+  expect(container.querySelector('a')?.getAttribute('href')).toBe('#/sessions/A?media=media-a');
 });
 
 it.each([['teacher', null], ['supervisor', 'college'], ['academic_admin', 'college'], ['sys_admin', null]])('grants %s with the backend scope', async (role, scope) => {
