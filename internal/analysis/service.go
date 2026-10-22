@@ -214,10 +214,10 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Run
 	err := s.pool.QueryRow(ctx, `SELECT r.id::text,r.session_id::text,r.media_asset_id::text,r.mode,
 		r.input_transcript_revision_id::text,r.status,r.error_code,r.config_snapshot,
 		(SELECT id::text FROM teaching.reports WHERE run_id=r.id ORDER BY revision DESC LIMIT 1),
-		o.teacher_id::text,teaching.college_of(o.org_unit_id)::text
+		o.teacher_id::text,teaching.college_of(o.org_unit_id)::text,r.created_at
 		FROM teaching.analysis_runs r JOIN teaching.lesson_sessions ls ON ls.id=r.session_id
 		JOIN teaching.course_offerings o ON o.id=ls.offering_id WHERE r.id=$1`, id).
-		Scan(&run.ID, &run.SessionID, &run.MediaAssetID, &run.Mode, &run.InputTranscriptRevisionID, &run.Status, &run.ErrorCode, &snapshotJSON, &run.ReportID, &teacher, &college)
+		Scan(&run.ID, &run.SessionID, &run.MediaAssetID, &run.Mode, &run.InputTranscriptRevisionID, &run.Status, &run.ErrorCode, &snapshotJSON, &run.ReportID, &teacher, &college, &run.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, notFound()
 	}

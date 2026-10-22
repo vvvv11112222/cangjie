@@ -1,0 +1,20 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "source_record_id": "00000000-0000-4000-8000-000000000006",
+  "parent_asset_id": null,
+  "kind": "source",
+  "status": "pending",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "mime_type": "video/mp4",
+  "byte_size": 32,
+  "duration_ms": null,
+  "expires_at": "2027-10-21T12:00:00Z",
+  "playback_asset_id": null,
+  "playback_url": null,
+  "allowed_actions": [
+    "analyze"
+  ],
+  "original_filename": "合成课堂样例.mp4",
+  "created_at": "2026-10-21T12:00:00Z"
+}

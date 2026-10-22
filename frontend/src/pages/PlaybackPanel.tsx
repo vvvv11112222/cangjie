@@ -138,6 +138,7 @@ export function PlaybackPanel({
 
   return (
     <>
+      <p className="result-context">当前回放：{media?.original_filename || "历史录像（文件名未记录）"}。片段与证据仅匹配当前回放录像。</p>
       <Card
         title="回放"
         subtitle="播放的是课堂当前主媒体的播放代理；时间口径为原录像起点的整数毫秒，代理不裁剪、不变速，所以跳转时间与原录像一致。"

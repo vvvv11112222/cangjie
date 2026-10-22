@@ -1,3 +1,4 @@
+import { ResultContext } from '../components/ResultContext';
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence, Run, Segment, Session } from '../types';
@@ -61,7 +62,7 @@ export function TranscriptPage({
         <p className="eyebrow">转写与证据</p>
         <h1>转写</h1>
         <p className="muted">
-          片段起止时间为原录像起点的整数毫秒；speaker_label 为 unknown 表示未知说话人，不是空值。
+          按原录像时间展示识别内容，可在“回放”中点击片段核对声音；说话人未知表示系统未区分教师和学生。
         </p>
       </div>
       {ready ? <BadgeTag badge={runStatusBadge(results.run_status)} /> : null}
@@ -89,6 +90,7 @@ export function TranscriptPage({
     <div className="page">
       {embedded ? null : head}
       {embedded ? null : notes}
+      <ResultContext run={run} mediaId={revision?.media_asset_id ?? run?.media_asset_id} version={revision ? `转写第 ${revision.revision_no} 版` : "转写来源"}/>
 
       <Card
         title="结果摘要"
@@ -208,7 +210,7 @@ export function TranscriptPage({
       <Card title="转写片段" subtitle={`${segments.length} 段，按 segment_no 升序`}>
         {segments.length === 0 ? (
           <p className="empty">
-            segments 为空数组。当前 run_status={results.run_status}，须区分“尚未生成”与“确实无语音”。
+            {results.run_status === "queued" || results.run_status === "running" ? "转写还在处理中，请到分析进度查看当前阶段。" : "当前记录没有可展示的转写，请核对是否选择语音分析、录像是否有声音，以及任务是否成功。"}
           </p>
         ) : (
           <div className="table-wrap">

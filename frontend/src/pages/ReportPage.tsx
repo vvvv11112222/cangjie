@@ -1,3 +1,4 @@
+import { ResultContext } from '../components/ResultContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Evidence } from '../types';
@@ -104,6 +105,7 @@ export function ReportPage({
       {embedded ? null : head}
       {embedded ? null : notes}
 
+      <ResultContext key={report.run_id} runId={report.run_id} mediaId={report.provenance?.media_asset_id} version={`报告第 ${report.revision} 版`}/>
       <Card title="报告状态" subtitle="AI 分析用于教学复盘；草稿经人工复核后才能发布。">
         <div className="field-grid">
           <Field label="报告版本">第 {report.revision} 版</Field>
