@@ -120,6 +120,20 @@ it('cancelling report edits restores all saved fields before editing again', asy
   expect(container.querySelector<HTMLTextAreaElement>('.report-editor textarea')?.value).toBe(report.summary);
 });
 
+it('keeps report choices stable and clears the old review reason when changing reports', async () => {
+  const other:Report={...reportFixture,id:'other-choice',summary:'另一份报告摘要',allowed_actions:['review'],status:'in_review'};
+  reports=[other,reportFixture];
+  await mount(<ReportWorkflowPanel session={session} initial={reportFixture}/>);
+  const choices=()=>[...container.querySelectorAll<HTMLOptionElement>('.workflow-toolbar option')].map(item=>({id:item.value,label:item.textContent}));
+  const before=choices();
+  const input=container.querySelector<HTMLInputElement>('.workflow-toolbar input')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'仅适用于上一份报告');input.dispatchEvent(new Event('input',{bubbles:true}));});
+  await select(other.id);
+  expect(choices()).toEqual(before);
+  expect(container.querySelector<HTMLInputElement>('.workflow-toolbar input')?.value).toBe('');
+  expect(choices().find(item=>item.id===other.id)?.label).toContain('另一份报告摘要');
+});
+
 it('reviews one pending observation at a time and advances only after the server accepts it', async () => {
   const first = {...reportFixture.observations[0]!, review_status:'unreviewed' as const};
   const second = {...first,id:'next-observation',observation_text:'下一条需要核对的内容'};
@@ -216,7 +230,7 @@ it('loads evidence and disclosures for the selected report run and discards late
   await mount(<ReportPage embedded view={reportView()}/>); await select(next.id);
   expect(container.textContent).toContain('正在加载所选报告'); expect(button('编辑草稿').disabled).toBe(true);
   await select(reportFixture.id); await act(async () => delayed.resolve(result));
-  expect(container.textContent).not.toContain('另一批次报告');
+  expect(container.querySelector('.summary-text')?.textContent).not.toContain('另一批次报告');
   h.source.getResults.mockResolvedValue(result); await select(next.id);
   expect(h.source.getResults).toHaveBeenLastCalledWith(next.run_id);
   expect(container.textContent).toContain('所选批次的证据'); expect(container.textContent).not.toContain('报告的 run_id=');

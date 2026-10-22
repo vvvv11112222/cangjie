@@ -16,7 +16,7 @@ function writable(report: Report): WritableObservation[] {
 }
 async function reportHistory(sessionId: string): Promise<Report[]> {
   const items = await collectPages((cursor) => listReports(sessionId, cursor));
-  return [...new Map(items.map((item) => [item.id, item])).values()].sort((a, b) => b.revision - a.revision);
+  return [...new Map(items.map((item) => [item.id, item])).values()].sort((a, b) => b.revision - a.revision || a.id.localeCompare(b.id));
 }
 
 export function ReportWorkflowPanel({ session, initial, onChange, onPublicationChanged, contextReady = true, evidenceById, onSelectEvidence }: {
@@ -57,9 +57,9 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   }, [initial]);
 
   const adopt = (next: Report): void => {
-    if (next.id !== report.id) setShowAllReviews(false);
+    if (next.id !== report.id) { setShowAllReviews(false); setReason(''); }
     setReport(next); setSummary(next.summary); setObservations(writable(next)); setDimensions(next.dimensions.map((item) => ({ ...item }))); setEditing(false);
-    setHistory((items) => [next, ...items.filter((item) => item.id !== next.id)]); onChange?.(next);
+    setHistory((items) => items.some(item=>item.id===next.id) ? items.map(item=>item.id===next.id ? next : item) : [next,...items]); onChange?.(next);
   };
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
     <div className="workflow-toolbar">
       <label className="account-field"><span>报告版本</span><select disabled={busy} value={report.id} onChange={(event) => {
         const selected = history.find((item) => item.id === event.target.value); if (selected !== undefined) adopt(selected);
-      }}>{history.map((item, index) => <option key={item.id} value={item.id}>记录 {index + 1} · 第 {item.revision} 版 · {reportStatusBadge(item.status).label}</option>)}</select></label>
+      }}>{history.map(item => <option key={item.id} value={item.id} title={item.id}>第 {item.revision} 版 · {reportStatusBadge(item.status).label} · {Array.from(item.summary).slice(0,24).join('') || '暂无摘要'}{Array.from(item.summary).length>24 ? '…' : ''}</option>)}</select></label>
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setHistoryReload((value) => value + 1)}>刷新报告版本</button>
       {report.allowed_actions.some(action => ['edit', 'revise', 'submit', 'confirm_report', 'review', 'withdraw'].includes(action)) ? <label className="account-field"><span>操作说明（写操作必填）</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明修改或复核原因" /></label> : null}
     </div>
