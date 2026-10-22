@@ -34,7 +34,11 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.Load()
+	lookup, err := config.LoadLookup()
+	if err != nil {
+		return err
+	}
+	cfg, err := config.FromLookup(lookup)
 	if err != nil {
 		return err
 	}
@@ -42,6 +46,10 @@ func run() error {
 		return err
 	}
 	if err := analysis.ValidateReportPrompt(cfg.ReportEnabled, cfg.ReportPromptVersion, cfg.ReportPromptSHA256); err != nil {
+		return err
+	}
+	cloudASR, err := analysis.LoadCloudASR(func(key string) string { value, _ := lookup(key); return value })
+	if err != nil {
 		return err
 	}
 
@@ -68,10 +76,6 @@ func run() error {
 	schemaCancel()
 	if schemaErr != nil {
 		return schemaErr
-	}
-	cloudASR, err := analysis.LoadCloudASR(os.Getenv)
-	if err != nil {
-		return err
 	}
 	analysisService := analysis.NewService(pool.Pool, mediaStore, analysis.Config{
 		CloudASR:      cloudASR,
