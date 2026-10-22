@@ -26,6 +26,7 @@ import { isUuid } from '../data/ids';
 import { sessionSearchFromHash } from '../data/route';
 import { routeQuery as readRouteQuery, sessionDetailHash } from '../data/route';
 import { FirstUseGuide } from '../components/FirstUseGuide';
+import { collectPages } from '../data/pagination';
 
 /**
  * 课堂档案（《系统草图.html》的 CLASSROOM ARCHIVE）。
@@ -377,23 +378,26 @@ function CreateSessionForm({
   const [isDemo, setIsDemo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setOfferings(null); setError(null);
     void (async () => {
       try {
-        const [offeringPage, coursePage, classPage] = await Promise.all([
-          listOfferings(),
-          listCourses(),
-          listClassGroups(),
+        const [allOfferings, allCourses, allClasses] = await Promise.all([
+          collectPages(listOfferings),
+          collectPages(listCourses),
+          collectPages(listClassGroups),
         ]);
         if (cancelled) {
           return;
         }
-        setOfferings(offeringPage.items);
-        setCourses(coursePage.items);
-        setClasses(classPage.items);
-        setOfferingId(offeringPage.items[0]?.id ?? '');
+        const activeOfferings = allOfferings.filter(item => item.status === 'active');
+        setOfferings(activeOfferings);
+        setCourses(allCourses);
+        setClasses(allClasses);
+        setOfferingId(activeOfferings[0]?.id ?? '');
       } catch (caught) {
         if (!cancelled) {
           setOfferings([]);
@@ -404,7 +408,7 @@ function CreateSessionForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadRevision]);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -435,10 +439,12 @@ function CreateSessionForm({
 
   return (
     <Card title="创建课堂" subtitle="课程是教学科目，开课关联学期、教师和班级；这里创建其中某一次上课的记录。">
+      <p className="field-hint">例如：“操作系统 · 秋季学期 · 李老师 · 软件2301班”是一条开课记录；周一上午的一次上课在这里创建。<a href="#/academic?tab=offerings">查看或维护开课实例</a>（由学院教务或系统管理员维护）。TEAM-WEB-DEV 是本机试用资料，正式使用时请先建立实际开课记录。</p>
       {offerings === null ? (
         <p className="load-note">正在读取开课实例……</p>
       ) : offerings.length === 0 ? (
-        <><EmptyState text="当前范围内没有开课记录。请由学院教务或系统管理员先关联课程、学期、任课教师和班级。" /><a href="#/academic">前往教务与课表准备开课资料</a><p className="field-hint">没有教务入口时，请联系学院教务或系统管理员处理。</p></>
+        error ? <div role="alert"><p>开课资料读取失败：{error}</p><button type="button" className="btn btn-secondary" onClick={() => setLoadRevision(value => value + 1)}>重新读取开课资料</button></div>
+          : <><EmptyState text="当前范围内没有可创建课堂的有效开课记录。请由学院教务或系统管理员先关联课程、学期、任课教师和班级。" /><a href="#/academic?tab=offerings">前往教务与课表准备开课资料</a><p className="field-hint">没有教务入口时，请联系学院教务或系统管理员处理。</p></>
       ) : (
         <form className="directory-form" onSubmit={submit}>
           <label className="account-field">

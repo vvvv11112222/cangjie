@@ -31,6 +31,7 @@ import type { Classroom, Course, Offering, Schedule, Term } from '../data/m1Api'
 import { calendarWeekRange, collectPages } from '../data/pagination';
 import { isApiMode } from '../data/sources';
 import { formatDateTime } from '../format';
+import { routeQuery } from '../data/route';
 
 type Tab = 'schedule' | 'offerings' | 'courses' | 'terms' | 'classrooms';
 type Editor =
@@ -53,6 +54,11 @@ interface AcademicData {
 
 const EMPTY: AcademicData = { terms: [], courses: [], classrooms: [], offerings: [], schedules: [], classGroups: [], orgUnits: [], users: [] };
 const TAB_LABELS: Record<Tab, string> = { schedule: '本周课表', offerings: '开课实例', courses: '课程', terms: '学期', classrooms: '教室' };
+
+function requestedTab(): Tab {
+  const value = routeQuery().get('tab');
+  return value !== null && Object.hasOwn(TAB_LABELS, value) ? value as Tab : 'schedule';
+}
 
 function academicError(cause: unknown): string {
   const text = describeError(cause);
@@ -95,7 +101,7 @@ export function AcademicPage(): ReactElement {
   const isAdmin = me?.roles.some(role => role.role_code === 'sys_admin') ?? false;
   const canManage = api && status === 'authenticated' && (isAdmin || (me?.roles.some(role => role.role_code === 'academic_admin') ?? false));
   const [data, setData] = useState<AcademicData>(EMPTY);
-  const [tab, setTab] = useState<Tab>('schedule');
+  const [tab, setTab] = useState<Tab>(requestedTab);
   const [classId, setClassId] = useState('');
   const [editor, setEditor] = useState<Editor | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -106,6 +112,12 @@ export function AcademicPage(): ReactElement {
   const [notice, setNotice] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<Schedule | null>(null);
   const canEditTab = canManage && (isAdmin || (tab !== 'terms' && tab !== 'classrooms'));
+
+  useEffect(() => {
+    const followLink = () => { setTab(requestedTab()); setEditor(null); setShowImport(false); setFormError(null); };
+    window.addEventListener('hashchange', followLink);
+    return () => window.removeEventListener('hashchange', followLink);
+  }, []);
 
   async function reload(): Promise<void> {
     if (!api || status !== 'authenticated') return;

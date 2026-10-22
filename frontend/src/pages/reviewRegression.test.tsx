@@ -40,6 +40,22 @@ import { SessionListPage } from './SessionListPage';
 import { App } from '../App';
 import { AcademicPage } from './AcademicPage';
 
+it('a direct offering link opens the correct academic tab', async () => {
+  window.history.replaceState(null, '', '#/academic?tab=offerings');
+  await mount(<AcademicPage/>);
+  expect(container.querySelector('.academic-toolbar .tab.active')?.textContent).toBe('开课实例');
+  expect(container.textContent).toContain('新增开课实例');
+  window.history.replaceState(null, '', '#/academic');
+});
+
+it('academic administrators can choose teacher/supervisor grants without seeing system-wide role choices', async () => {
+  h.auth = { ...h.auth, me: { ...h.auth.me!, roles: [{ id: 'academic-role', role_code: 'academic_admin', scope_org_id: 'college' }] } };
+  await mount(<AccountsPage/>); await click('账号资料 / 授予新角色');
+  const options = [...container.querySelectorAll('form select')][2]!.querySelectorAll('option');
+  expect([...options].map(option => option.value)).toEqual(['', 'supervisor', 'teacher']);
+  expect(container.textContent).toContain('暂不支持自定义角色或逐项勾选功能');
+});
+
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const run = { id: 'run-a', session_id: 'A', mode: 'full', status: 'running', jobs: [], stage_plan: [], error_code: null, limitations: [], allowed_actions: [] } as unknown as Run;

@@ -19,10 +19,10 @@ import { collectPages } from '../data/pagination';
 
 const MAX_PAGES = 5;
 const ROLE_PERMISSIONS: Record<RoleCode, string> = {
-  sys_admin: '全校最高权限',
-  academic_admin: '本学院课表、督导与教师权限管理',
-  supervisor: '查看录像与报告、编辑草稿、复核教学观察、发布教学报告',
-  teacher: '查看录像与报告、上传课堂录像、发起分析任务、编辑草稿',
+  sys_admin: '全校范围：维护账号和教务资料，核验来源、上传分析、复核发布及治理；仍遵守来源许可和删除保护。',
+  academic_admin: '本学院：维护课程、班级、开课和课表，管理允许的教师/督导账号并核验来源；本角色不读取课堂音视频正文。',
+  supervisor: '授权学院：查看录像、转写和报告，修订转写、编辑草稿、复核发布；本角色不上传录像或发起分析。',
+  teacher: '本人开课：创建课堂、上传录像、发起分析，查看和修订内容；发布报告需要督导或管理员。',
 };
 
 async function loadAllUsers(): Promise<{ items: ManagedUser[]; hasMore: boolean }> {
@@ -36,7 +36,7 @@ async function loadAllUsers(): Promise<{ items: ManagedUser[]; hasMore: boolean 
 }
 
 function AccountsHead({ count, onCreate }: { count: number | null; onCreate?: () => void }): ReactElement {
-  return <header className="page-head accounts-page-head"><div><p className="eyebrow">ACCOUNTS &amp; PERMISSIONS</p><h1>全校账号与权限</h1><p className="muted">系统管理员不隶属任何学院；其他角色按所属学院管理。</p></div>{onCreate ? <div className="page-actions"><button type="button" className="btn btn-primary" onClick={onCreate}><IconPlus size={16}/>新增账号</button></div> : null}{count === null ? null : <span className="sr-only">共 {count} 个账号</span>}</header>;
+  return <header className="page-head accounts-page-head"><div><p className="eyebrow">ACCOUNTS &amp; PERMISSIONS</p><h1>全校账号与权限</h1><p className="muted">系统管理员不隶属任何学院；其他角色按所属学院管理。</p><details><summary>如何调整账号权限？</summary><p>点击账号右侧“账号资料 / 授予新角色”，选择角色并保存；在账号详情下方可查询和撤销已有角色。一个账号可以兼任多个角色。</p><p>系统按开发文档提供四种固定角色。可以调整谁担任角色及其授权范围，暂不支持自定义角色或逐项勾选功能。所有操作仍由服务端核验。</p><ul>{ROLE_CODES.map(code => <li key={code}><strong>{roleLabel(code)}：</strong>{ROLE_PERMISSIONS[code]}</li>)}</ul></details></div>{onCreate ? <div className="page-actions"><button type="button" className="btn btn-primary" onClick={onCreate}><IconPlus size={16}/>新增账号</button></div> : null}{count === null ? null : <span className="sr-only">共 {count} 个账号</span>}</header>;
 }
 
 export function AccountsPage(): ReactElement {
@@ -99,6 +99,11 @@ function AccountsView({ offline }: { offline: boolean }): ReactElement {
 interface UserInput { displayName: string; status: UserStatus; username: string; orgUnitId: string; password: string }
 function UserForm({ units, user, onCancel, onSave }: { units: readonly OrgUnit[]; user: ManagedUser | null; onCancel(): void; onSave(input: UserInput, role: RoleCode | ''): Promise<string | null> }): ReactElement {
   const [displayName, setDisplayName] = useState(user?.displayName ?? ''); const [username, setUsername] = useState(user?.username ?? ''); const [orgUnitId, setOrgUnitId] = useState(user?.orgUnitId ?? units[0]?.id ?? ''); const [status, setStatus] = useState<UserStatus>(user?.status ?? 'active'); const [password, setPassword] = useState(''); const [role, setRole] = useState<RoleCode | ''>(''); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const { me } = useAuth();
+  const isSystemAdmin = me?.roles?.some(binding => binding.role_code === 'sys_admin') ?? false;
+  const isAcademicAdmin = me?.roles?.some(binding => binding.role_code === 'academic_admin') ?? false;
+  const isSelf = user !== null && user.id.toLowerCase() === me?.user_id.toLowerCase();
+  const grantableRoles = ROLE_CODES.filter(code => isSystemAdmin || (isAcademicAdmin && !isSelf && (code === 'teacher' || code === 'supervisor')));
   const formRef = useRef<HTMLFormElement>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
@@ -119,7 +124,7 @@ function UserForm({ units, user, onCancel, onSave }: { units: readonly OrgUnit[]
     return () => dialog?.removeEventListener('keydown', onKeyDown);
   }, [onCancel]);
   const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (busy) return; if (user === null && password.length < 12) { setError('初始密码至少 12 位。'); return; } setBusy(true); setError(await onSave({ displayName: displayName.trim(), status, username, orgUnitId, password }, role)); setBusy(false); };
-  return <><header className="accounts-editor-head"><div><p className="eyebrow">ACCOUNT &amp; PERMISSIONS</p><h2 id="account-editor-title">{user === null ? '新增账号' : `账号资料：${user.displayName}`}</h2><p className="muted small">{user === null ? '账号资料与角色绑定分别由服务端校验。' : '可修改账号资料并授予新角色；已有角色可在下方查询和撤销。'}</p></div><button type="button" className="icon-button" aria-label="关闭" disabled={busy} onClick={onCancel}>×</button></header><form ref={formRef} className="accounts-editor-form" onSubmit={submit}><label className="account-field"><span>姓名</span><input value={displayName} onChange={event => setDisplayName(event.target.value)} required/></label><label className="account-field"><span>登录账号</span><input value={username} onChange={event => setUsername(event.target.value)} disabled={user !== null} required/></label><label className="account-field"><span>所属学院 / 院系</span><select value={orgUnitId} disabled={user !== null} onChange={event => setOrgUnitId(event.target.value)} required>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label className="account-field"><span>状态</span><select value={status} onChange={event => setStatus(event.target.value as UserStatus)}>{USER_STATUSES.map(value => <option key={value} value={value}>{USER_STATUS_LABEL[value]}</option>)}</select></label><label className="account-field"><span>授予新角色（可选）</span><select value={role} onChange={event => setRole(event.target.value as RoleCode | '')}><option value="">不新增角色</option>{ROLE_CODES.map(value => <option key={value} value={value}>{roleLabel(value)}</option>)}</select></label>{user === null ? <label className="account-field"><span>初始密码（至少 12 位）</span><input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} required/></label> : null}<div className="accounts-permission-preview"><strong>新角色权限</strong><p>{role === '' ? '本次不新增角色绑定。' : ROLE_PERMISSIONS[role]}</p></div>{error ? <p className="notice-strip"><IconAlert size={14} aria-hidden="true"/>保存失败：{error}</p> : null}<div className="form-actions"><button type="button" className="btn btn-secondary" disabled={busy} onClick={onCancel}>取消</button><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? '保存中…' : '保存'}</button></div></form></>;
+  return <><header className="accounts-editor-head"><div><p className="eyebrow">ACCOUNT &amp; PERMISSIONS</p><h2 id="account-editor-title">{user === null ? '新增账号' : `账号资料：${user.displayName}`}</h2><p className="muted small">{user === null ? '账号资料与角色绑定分别由服务端校验。' : '可修改账号资料并授予新角色；已有角色可在下方查询和撤销。'}</p></div><button type="button" className="icon-button" aria-label="关闭" disabled={busy} onClick={onCancel}>×</button></header><form ref={formRef} className="accounts-editor-form" onSubmit={submit}><label className="account-field"><span>姓名</span><input value={displayName} onChange={event => setDisplayName(event.target.value)} required/></label><label className="account-field"><span>登录账号</span><input value={username} onChange={event => setUsername(event.target.value)} disabled={user !== null} required/></label><label className="account-field"><span>所属学院 / 院系</span><select value={orgUnitId} disabled={user !== null} onChange={event => setOrgUnitId(event.target.value)} required>{units.map(unit => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label><label className="account-field"><span>状态</span><select value={status} onChange={event => setStatus(event.target.value as UserStatus)}>{USER_STATUSES.map(value => <option key={value} value={value}>{USER_STATUS_LABEL[value]}</option>)}</select></label><label className="account-field"><span>授予新角色（可选）</span><select value={role} onChange={event => setRole(event.target.value as RoleCode | '')}><option value="">不新增角色</option>{grantableRoles.map(value => <option key={value} value={value}>{roleLabel(value)}</option>)}</select></label>{user === null ? <label className="account-field"><span>初始密码（至少 12 位）</span><input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} required/></label> : null}<div className="accounts-permission-preview"><strong>新角色权限</strong><p>{role === '' ? '本次不新增角色绑定。' : ROLE_PERMISSIONS[role]}</p></div>{error ? <p className="notice-strip"><IconAlert size={14} aria-hidden="true"/>保存失败：{error}</p> : null}<div className="form-actions"><button type="button" className="btn btn-secondary" disabled={busy} onClick={onCancel}>取消</button><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? '保存中…' : '保存'}</button></div></form></>;
 }
 
 function RoleBindings({userId, units}: {userId: string; units: readonly OrgUnit[]}): ReactElement {
