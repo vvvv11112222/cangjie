@@ -196,6 +196,6 @@ function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((med
       {personError && <p role="alert">{personError}</p>}
       {hasPlayer && records}
     </Card>
-    <Card title="观察范围与限制"><ul>{summary.limitations.map((text, index) => <li key={index}>{text}</li>)}</ul><TechDetails><p>批次：{run.id}；模型：{summary.model.name}；版本：{summary.model.revision}</p></TechDetails></Card>
+    <TechDetails summary="查看观察范围与限制"><ul>{summary.limitations.map((text, index) => <li key={index}>{text}</li>)}</ul><p>批次：{run.id}；模型：{summary.model.name}；版本：{summary.model.revision}</p></TechDetails>
   </>;
 }

@@ -59,7 +59,7 @@ export function formatIntervals(intervals: Interval[]): string {
 }
 
 /**
- * 按样例书写时的时区显示业务时间，避免因开发机时区不同而改变展示值。
+ * 业务时间统一显示北京时间；不在每一条时间后重复技术时区。
  * 输入为 RFC3339（带偏移），无法解析时原样返回并标记。
  */
 export function formatDateTime(value: string): string {
@@ -71,8 +71,12 @@ export function formatDateTime(value: string): string {
   }
   const [, year, month, day, hour, minute, second, offset] = match;
   const clock = second ? `${hour}:${minute}:${second}` : `${hour}:${minute}`;
-  const zone = offset === 'Z' ? 'UTC+00:00' : offset ? `UTC${offset}` : '无时区';
-  return `${year}-${month}-${day} ${clock} (${zone})`;
+  if (!offset) return `${year}-${month}-${day} ${clock}`;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return `${value}（时间格式无法解析）`;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(instant);
+  const part = (type: string) => parts.find(item => item.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}${second ? `:${part('second')}` : ''}`;
 }
 
 export function truncateHash(hash: string | null): string {

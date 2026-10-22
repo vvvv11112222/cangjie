@@ -120,6 +120,30 @@ it('cancelling report edits restores all saved fields before editing again', asy
   expect(container.querySelector<HTMLTextAreaElement>('.report-editor textarea')?.value).toBe(report.summary);
 });
 
+it('reviews one pending observation at a time and advances only after the server accepts it', async () => {
+  const first = {...reportFixture.observations[0]!, review_status:'unreviewed' as const};
+  const second = {...first,id:'next-observation',observation_text:'下一条需要核对的内容'};
+  const reviewable:Report={...reportFixture,status:'in_review',allowed_actions:['review','confirm_report'],observations:[first,second]};
+  reports=[reviewable];
+  h.reviewReport.mockImplementation(async (_id,input)=>({...reviewable,lock_version:reviewable.lock_version+1,observations:[{...first,review_status:input.action==='accept'?'accepted':'rejected'},second]}));
+  await mount(<ReportWorkflowPanel session={session} initial={reviewable}/>);
+  expect(container.querySelectorAll('.review-row')).toHaveLength(1);
+  expect(container.querySelector('.review-row')?.textContent).toContain(first.observation_text);
+  expect(h.reviewReport).not.toHaveBeenCalled();
+  const explanation=container.querySelector<HTMLInputElement>('.workflow-toolbar input')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(explanation,'核对当前观察');explanation.dispatchEvent(new Event('input',{bubbles:true}));});
+  h.reviewReport.mockRejectedValueOnce(new Error('暂时无法保存复核'));
+  await click('确认');
+  expect(container.querySelector('.review-row')?.textContent).toContain(first.observation_text);
+  await click('确认');
+  expect(h.reviewReport).toHaveBeenCalledWith(reviewable.id,expect.objectContaining({observation_id:first.id,action:'accept'}));
+  expect(container.querySelectorAll('.review-row')).toHaveLength(1);
+  expect(container.querySelector('.review-row')?.textContent).toContain(second.observation_text);
+  expect(button('确认整篇内容').disabled).toBe(true);
+  await click('查看全部观察与处理记录');
+  expect(container.querySelectorAll('.review-row')).toHaveLength(2);
+});
+
 it('recovers an export status read without keeping a stale error', async () => {
   vi.useFakeTimers();
   const report: Report = { ...reportFixture, status: 'published', allowed_actions: ['export'] }; reports = [report];

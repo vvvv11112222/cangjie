@@ -260,6 +260,15 @@ def wait_ready(config, timeout=35):
     raise RuntimeError('Readiness timeout; inspect local api/web/worker logs')
 
 
+def seed_demo(config, state):
+    # The team-web launcher owns a loopback-only, development database. This
+    # explicit command is never part of prepare/start or a production migration.
+    if config.get('ports') != {'web':8088,'api':18088,'database':55437}:
+        raise RuntimeError('Demo seed requires the dedicated local team-web deployment')
+    sql(config, state, (ROOT / 'deploy/team-web/demo-classrooms.sql').read_text(encoding='utf-8'))
+    print('50 marked demo classrooms ready; no media permissions, analysis or model calls were created')
+
+
 def start(config, state):
     from capture_dev import identity
     current = records(state)
@@ -310,6 +319,7 @@ def main():
     setup.add_argument('--vision-batch-size',type=int,choices=(1,8,16))
     sub.add_parser('start'); sub.add_parser('start-detached'); sub.add_parser('stop'); sub.add_parser('status')
     sub.add_parser('startup-paths')
+    sub.add_parser('seed-demo', help='Explicitly add 50 fictional classrooms to this local development database; no analysis')
     worker = sub.add_parser('supervise-worker'); worker.add_argument('--job', required=True)
     args = parser.parse_args(); state = args.data_root.resolve(); state.mkdir(parents=True, exist_ok=True)
     if args.command == 'supervise-worker':
@@ -336,6 +346,7 @@ def main():
         print('Team website running: http://127.0.0.1:8088/#/sessions'); return 0
     if args.command == 'start': start(config, state)
     elif args.command == 'stop': stop(config, state); print('Team website stopped')
+    elif args.command == 'seed-demo': seed_demo(config, state)
     else: print(json.dumps({name: alive(record) for name, record in records(state).items()}))
     return 0
 

@@ -10,6 +10,16 @@ from unittest.mock import MagicMock, patch
 import team_web as dev
 
 class TeamWebTests(unittest.TestCase):
+    def test_demo_seeding_requires_explicit_dedicated_local_deployment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state)
+            with patch.object(dev,'sql') as query:
+                dev.seed_demo(config,state)
+                self.assertIn('generate_series(1,50)',query.call_args.args[2])
+                config['ports']['database']=5432
+                with self.assertRaisesRegex(RuntimeError,'dedicated local'):
+                    dev.seed_demo(config,state)
+                self.assertEqual(query.call_count,1)
     def test_existing_later_alias_is_reused_before_a_free_drive(self):
         state=Path('课堂部署')
         drives={letter:MagicMock(name=letter) for letter in ('V','W','Y','Z')}

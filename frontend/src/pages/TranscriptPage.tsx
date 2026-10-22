@@ -137,10 +137,10 @@ export function TranscriptPage({
           </ul>
         </TechDetails>
         {results.limitations.length > 0 ? (
-          <p className="notice-strip">
+          <TechDetails summary="查看转写范围与限制"><p>
             <IconAlert size={14} aria-hidden="true" />
             结果限制：{results.limitations.join('；')}
-          </p>
+          </p></TechDetails>
         ) : null}
       </Card>
 

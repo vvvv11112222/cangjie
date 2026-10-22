@@ -6,6 +6,8 @@ import {SourceSetup} from '../components/SourceSetup';
 import {ServiceChecklist} from '../components/ServiceChecklist';
 import {ReportProgress} from '../components/ReportProgress';
 import {report} from '../data/samples';
+import {sessionPage} from '../data/samples';
+import {FirstUseGuide} from '../components/FirstUseGuide';
 import ready from '../../../contracts/examples/service-capabilities.json';
 
 const h=vi.hoisted(()=>({create:vi.fn(),verify:vi.fn()}));
@@ -49,4 +51,15 @@ it('points a reader without review rights to the responsible role',async()=>{
  await act(async()=>root.render(<ReportProgress report={{...report,status:'draft',allowed_actions:[]}}/>));
  expect(node.textContent).toContain('当前账号没有本步骤的操作权限');
  expect(node.querySelector('[aria-current=step]')?.textContent).toBe('草稿与提交复核');
+});
+
+it('keeps repeat-user help compact and opens the guide from the help link',async()=>{
+ window.location.hash='#/sessions';
+ await act(async()=>root.render(<FirstUseGuide sessions={sessionPage.items}/>));
+ expect(node.querySelector<HTMLDetailsElement>('.first-use-guide')?.open).toBe(false);
+ await act(async()=>{window.location.hash='#/sessions?help=1';window.dispatchEvent(new Event('hashchange'));});
+ expect(node.querySelector<HTMLDetailsElement>('.first-use-guide')?.open).toBe(true);
+ expect(node.textContent).toContain('课堂是其中某一次上课');
+ expect(node.textContent).toContain('先完成本录像的视觉分析');
+ window.location.hash='#/sessions';
 });

@@ -152,6 +152,7 @@ export function ReportPage({
       </Card>
 
       {isApiMode() && session !== null ? <ReportWorkflowPanel session={session} initial={report}
+        evidenceById={evidenceById} onSelectEvidence={selectEvidence}
         contextReady={context !== null} onChange={setReport}
         onPublicationChanged={(id) => { setCurrentReportId(id); onPublicationChanged?.(); }} /> : null}
 
@@ -161,7 +162,8 @@ export function ReportPage({
       </Card> : <>
 
       <Card title="课堂概览" subtitle="概括本次可见的教学主线和最值得复盘的内容。">
-        {report.provenance?.limitations.length ? <p className="notice-strip">分析范围说明：{report.provenance.limitations.map(reportLimitation).join('；')}</p> : null}
+        <p className="field-hint">AI分析需结合原录像核对；没有证据的内容不作为教学结论。</p>
+        {report.provenance?.limitations.length ? <TechDetails summary="查看分析范围与限制"><p>{report.provenance.limitations.map(reportLimitation).join('；')}</p></TechDetails> : null}
         <p className="summary-text">{report.summary === '' ? '（空）' : report.summary}</p>
         <div className="cite-row">
           <span className="field-label">引用证据</span>
@@ -177,7 +179,8 @@ export function ReportPage({
         <ReportEvidence key={activeEvidence.id} evidence={activeEvidence} onClose={() => { setSelectedEvidence(null); evidenceTrigger.current?.focus(); }} />
       </div>}
 
-      <Card title="溯源与限制" subtitle="记录模型版本、提示词摘要、输入清单摘要、覆盖和来源。">
+      <TechDetails summary="报告生成记录与限制">
+      <Card title="溯源与限制" subtitle="记录模型版本、覆盖和来源，供核对时查看。">
         {report.provenance === null ? (
           <p className="empty">这份历史报告缺少完整的生成记录，无法补证，请结合原始课堂核对。</p>
         ) : (
@@ -224,6 +227,7 @@ export function ReportPage({
           </>
         )}
       </Card>
+      </TechDetails>
 
       {/* 样例口径说明收进折叠区：引用不一致仍要显示，但不占业务视线（UI约定第 4 节）。 */}
       <TechDetails summary="样例数据核对">

@@ -2245,6 +2245,17 @@ code {
   margin-top: 16px;
 }
 
+.first-use-guide > summary {
+  cursor: pointer;
+  color: var(--brand);
+  padding: 12px 0;
+  font-weight: 600;
+}
+
+.first-use-guide > .card { margin-top: 8px; }
+.review-row > div:first-child { min-width: 0; flex: 1; }
+.review-row > .action-row { flex-shrink: 0; }
+
 .review-row {
   display: flex;
   justify-content: space-between;

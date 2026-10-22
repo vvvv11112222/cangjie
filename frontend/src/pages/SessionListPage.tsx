@@ -92,6 +92,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     ? sessionSearchFromHash(window.location.hash)
     : '';
   const [query, setQuery] = useState(routeQuery);
+  const [dataScope, setDataScope] = useState<'all' | 'real' | 'demo'>('all');
   const [compose, setCompose] = useState<Compose>(() => readRouteQuery().get('start') === 'upload' ? 'upload' : null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const api = isApiMode();
@@ -103,7 +104,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const truncated = injectedTasks === undefined && loaded.data.nextCursor !== null;
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空数组假装"没有课堂"。
   const ready = injectedTasks !== undefined || loaded.hasData;
-  const showSearchScope = ready && query.trim() !== '' && truncated;
+  const showSearchScope = ready && (query.trim() !== '' || filter !== 'all' || dataScope !== 'all') && truncated;
 
   // 筛选与搜索都在已加载的这一页上做：列表接口只有 cursor/limit，没有筛选参数。
   const shown = useMemo(() => {
@@ -111,9 +112,10 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     return tasks.filter(
       (task) =>
         (filter === 'all' || bucketOf(task) === filter) &&
+        (dataScope === 'all' || task.session.is_demo === (dataScope === 'demo')) &&
         (keyword === '' || task.session.title.toLowerCase().includes(keyword)),
     );
-  }, [tasks, filter, query]);
+  }, [tasks, filter, query, dataScope]);
 
   const head = (
     <header className="page-head">
@@ -205,11 +207,12 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
             ))}
           </div>
           <div className="toolbar-actions">
+            <label className="account-field"><span className="sr-only">课堂类型</span><select aria-label="课堂类型" value={dataScope} onChange={event=>setDataScope(event.target.value as typeof dataScope)}><option value="all">全部记录</option><option value="real">真实课堂</option><option value="demo">仅演示课堂</option></select></label>
             <input
               className="input filter-search"
               type="search"
               aria-label="筛选课堂"
-              placeholder="搜索课程、教师、班级"
+              placeholder="搜索课堂标题"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -218,6 +221,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setFilter('all');
+                setDataScope('all');
                 setQuery('');
                 if (injectedTasks === undefined && routeQuery !== '') {
                   window.location.hash = '#/sessions';
@@ -233,7 +237,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {showSearchScope ? (
         <div className="notice-strip search-scope-note">
           <IconInfo size={14} />
-          <span>当前结果只搜索已加载的课堂，后续页面可能还有匹配项。</span>
+          <span>{query.trim() ? '当前结果只搜索已加载的课堂，后续页面可能还有匹配项。' : '当前仅筛选已加载的课堂，后续页面可能还有匹配项。'}</span>
           <button type="button" className="btn btn-secondary btn-sm" disabled={loaded.actionLabel === null} onClick={loaded.loadMore}>
             {loaded.actionLabel ?? '正在读取…'}
           </button>
@@ -273,12 +277,12 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                         <strong>{session.title}</strong>
                         {session.is_demo ? <Pill label="示范数据" tone="blue" /> : null}
                       </div>
-                      <div className="cell-meta mono">
+                      <details className="cell-meta"><summary>查看编号</summary>
                         <span title={`session.id = ${session.id}`}>课堂编号 {shortId(session.id)}</span>
                         <span title={`session.offering_id = ${session.offering_id}`}>
                           开课 {shortId(session.offering_id)}
                         </span>
-                      </div>
+                      </details>
                     </td>
                     <td className="muted">—</td>
                     <td className="muted">—</td>
@@ -288,9 +292,6 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                     </td>
                     <td>
                       <BadgeTag badge={sessionStatusBadge(session.status)} />
-                      <div className="muted tiny" title="session.transcript_lock_version">
-                        转写版本 v{session.transcript_lock_version}
-                      </div>
                     </td>
                     <td>
                       <a className="cell-link" href={`#/sessions/${session.id}`}>
@@ -311,13 +312,14 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
         <div className="table-footer">
           <span>
             共 {shown.length} 条记录
-            {shown.length === tasks.length ? '' : `（已筛选，本页共 ${tasks.length} 条）`}，已按当前角色过滤
+            {shown.length === tasks.length ? '' : `（已筛选，本页共 ${tasks.length} 条）`}
           </span>
-          <span className="badge badge-gray">{origin.kind === 'api' ? '接口课堂档案' : '固定样例档案'}</span>
+          {origin.kind !== 'api' && <span className="badge badge-gray">演示数据</span>}
         </div>
       </section>
 
       {/* 样例数据核对是给开发看的口径说明，收进折叠区，不占业务视线（UI约定第 4 节）。 */}
+      <TechDetails summary="课堂记录技术详情">
       {tasks.map(({ session, disclosures }) =>
         disclosures.length === 0 ? null : (
           <TechDetails key={`notes-${session.id}`} summary={`样例数据核对：${session.title}`}>
@@ -344,6 +346,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
           </p>
         </TechDetails>
       ))}
+      </TechDetails>
     </div>
   );
 }

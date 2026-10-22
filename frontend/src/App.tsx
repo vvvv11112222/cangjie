@@ -306,6 +306,7 @@ export function App(): ReactElement {
           </div>
           {CLASSROOM_SEARCH_PATHS.has(currentPath) ? <GlobalSessionSearch hash={hash} /> : null}
           <div className="topbar-actions">
+            <a className="btn btn-secondary btn-sm" href="#/sessions?help=1">使用帮助</a>
             {/* 待办提醒（草图的 notification-button）。 */}
             <NotificationBell />
             {/* 账号入口：登录、退出、切换账号都在顶栏右上角。 */}
@@ -342,6 +343,7 @@ export function App(): ReactElement {
         </main>
         <footer className="workspace-footer">
           <span>观课 · 让教学观察有据可循</span>
+          <span>时间均为北京时间</span>
         </footer>
       </div>
     </div>

@@ -236,7 +236,7 @@ export function PlaybackPanel({
               <>
                 {/* 预检只是附加信息，不阻挡播放器出现：检查期间照常渲染播放器。 */}
                 {probe.status === 'checking' ? (
-                  <p className="load-note">正在检查播放地址（发送一次 1 字节的 Range 请求）……</p>
+                  <p className="load-note">正在检查录像能否播放……</p>
                 ) : null}
                 <MediaPlayer
                   key={playbackUrl}

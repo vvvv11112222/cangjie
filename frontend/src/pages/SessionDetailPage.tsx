@@ -487,9 +487,9 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                     : `${runModeLabel(shownRun.mode)} · ${runStatusBadge(shownRun.status).label}${
                         isRunActive(shownRun)
                           ? poll.error === null
-                            ? ' · 每 2 秒刷新'
-                            : ' · 轮询中断，显示的是上次结果'
-                          : ' · 已进入终态，停止刷新'
+                            ? ' · 进度自动更新'
+                            : ' · 更新暂时中断，显示上次进度'
+                          : ''
                       }`
                 }
                 actions={shownRun === null ? undefined : <BadgeTag badge={runStatusBadge(shownRun.status)} />}

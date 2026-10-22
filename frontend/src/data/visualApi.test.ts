@@ -34,6 +34,7 @@ describe('正式视觉结果', () => {
     expect(summary.media_asset_id).toBe(example.media_asset_id);
   });
   it('兼容 Go/PostgreSQL 返回的微秒时间', () => {
-    expect(formatDateTime('2026-10-19T21:54:28.804341+08:00')).toBe('2026-10-19 21:54:28 (UTC+08:00)');
+    expect(formatDateTime('2026-10-19T21:54:28.804341+08:00')).toBe('2026-10-19 21:54:28');
+    expect(formatDateTime('2026-10-19T13:54:28Z')).toBe('2026-10-19 21:54:28');
   });
 });
