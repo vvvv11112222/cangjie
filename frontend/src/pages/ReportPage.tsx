@@ -106,6 +106,7 @@ export function ReportPage({
       {embedded ? null : notes}
 
       <ResultContext key={report.run_id} runId={report.run_id} mediaId={report.provenance?.media_asset_id} version={`报告第 ${report.revision} 版`}/>
+      <TechDetails summary="报告版本与状态详情">
       <Card title="报告状态" subtitle="AI 分析用于教学复盘；草稿经人工复核后才能发布。">
         <div className="field-grid">
           <Field label="报告版本">第 {report.revision} 版</Field>
@@ -151,6 +152,7 @@ export function ReportPage({
         </TechDetails>
       </Card>
 
+      </TechDetails>
       {isApiMode() && session !== null ? <ReportWorkflowPanel session={session} initial={report}
         evidenceById={evidenceById} onSelectEvidence={selectEvidence}
         contextReady={context !== null} onChange={setReport}

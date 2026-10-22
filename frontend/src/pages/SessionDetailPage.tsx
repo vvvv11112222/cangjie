@@ -515,10 +515,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       <RunErrorBox run={shownRun} />
                     )}
                     {shownRun.limitations.length > 0 ? (
-                      <p className="notice-strip">
-                        <IconAlert size={14} aria-hidden="true" />
-                        批次限制：{shownRun.limitations.join('；')}
-                      </p>
+                      <TechDetails summary="查看本次分析范围与限制"><p>{shownRun.limitations.join('；')}</p></TechDetails>
                     ) : null}
                   </>
                 )}

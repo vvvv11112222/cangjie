@@ -27,13 +27,14 @@ export function CitedEvidence({ ids, evidenceById, onSelect }: {
   ids: string[]; evidenceById: Map<string, Evidence>; onSelect(evidence: Evidence): void;
 }): ReactElement {
   if (ids.length === 0) return <span className="muted">没有可引用的课堂记录</span>;
-  return <span className="report-citations">{ids.map((id, index) => {
+  const links=ids.map((id, index) => {
     const evidence = evidenceById.get(id);
     if (evidence === undefined) return <span key={id} className="muted">第 {index + 1} 处依据暂未加载</span>;
     return <button type="button" key={id} className="btn btn-secondary report-citation" onClick={() => onSelect(evidence)}>
       查看依据 · {formatTimestamp(evidence.start_ms)}–{formatTimestamp(evidence.end_ms)} · {Array.from(evidence.description).slice(0, 80).join('') || '课堂记录'}{Array.from(evidence.description).length > 80 ? '…' : ''}
     </button>;
-  })}</span>;
+  });
+  return <div className="report-citations">{links[0]}{links.length>1 && <details><summary>其他 {links.length-1} 处依据</summary>{links.slice(1)}</details>}</div>;
 }
 
 /** Playback is requested for the evidence's own media, never the current primary media. */

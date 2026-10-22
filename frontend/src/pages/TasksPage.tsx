@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useAuth } from '../auth';
-import { BadgeTag, EmptyState, LoadControls, LoadStateNote, RunErrorBox, StageFlow } from '../components/ui';
+import { BadgeTag, EmptyState, LoadControls, LoadStateNote, RunErrorBox, StageFlow, TechDetails } from '../components/ui';
 import { IconUpload } from '../components/icons';
 import { cancelRun } from '../data/actions';
 import { ApiError, describeError } from '../data/errors';
@@ -154,7 +154,7 @@ export function TasksPage(): ReactElement {
       <div className="task-head"><div><h2>{session.title}</h2><p className="muted small">{formatDateTime(session.planned_start_at)} · {runModeLabel(run.mode)}</p></div><BadgeTag badge={runStatusBadge(run.status)}/></div>
       <StageFlow run={run}/>
       {run.error_code === null ? null : <RunErrorBox run={run}/>} 
-      {run.limitations.length === 0 ? null : <p className="notice-strip">限制：{run.limitations.join('；')}</p>}
+      {run.limitations.length === 0 ? null : <TechDetails summary="查看本次分析范围与限制"><p>{run.limitations.join('；')}</p></TechDetails>}
       <div className="task-footer"><span>阶段完成 {run.jobs.filter((job) => job.status === 'succeeded').length}/{run.stage_plan.length}</span><div className="page-actions">
         <a className="btn btn-secondary btn-sm" href={`#/sessions/${session.id}`}>查看课堂</a>
         {run.allowed_actions.includes('cancel') ? <button className="btn btn-secondary btn-sm" type="button" disabled={busyId === run.id} onClick={() => void cancel(run.id)}>{busyId === run.id ? '取消中…' : '取消任务'}</button> : null}
