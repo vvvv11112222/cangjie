@@ -14,4 +14,3 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 if /i not "%~2"=="--no-browser" start "" "http://127.0.0.1:8088/#/sessions"
 exit /b 0
-
