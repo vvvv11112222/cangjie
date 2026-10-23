@@ -34,7 +34,7 @@ cmd.exe /c tools\start_team_web.bat D:/cangjie-data/team-web
 
 `prepare` 构建正式 Go 和前端、初始化独立数据库、按摘要执行001—013迁移、初始化删除账本、创建开发账号及幂等试用课堂。不会清空数据库、重写迁移或覆盖已有账号密码。已有私有配置会保留凭据。准备新构建前先停止本部署。
 
-Windows 的 PostgreSQL 工具在部分中文路径下无法初始化；使用 ASCII 路径最简便。若必须使用中文路径，在第一次 `prepare` 前用 PowerShell 的原生 `subst.exe` 将运行时根目录和数据根目录分别映射到空闲的 V/W/Y/Z 盘；不要替换其他盘的映射。后续 BAT 启动脚本会通过目录标记复用或重建所需映射。Go、PostgreSQL 可执行文件和数据均使用对应映射。没有空闲盘时明确报错。启动使用普通 BAT，不要求修改 PowerShell 执行策略；可选 PS1 仅适用于本机策略允许的环境。
+Windows 的 PostgreSQL 工具在部分中文路径下无法初始化；使用 ASCII 路径最简便。若必须使用中文路径，在第一次 `prepare` 前用 PowerShell 的原生 `subst.exe` 将运行时根目录和数据根目录分别映射到空闲的 V/W/Y/Z 盘；不要替换其他盘的映射。后续 BAT 启动脚本会调用Python统一复用或重建所需映射。Windows拒绝SUBST或盘符用尽时，会尝试在ASCII路径的LOCALAPPDATA/Cangjie/runtime-links中创建持久目录联接；仅复用确认指向原目录的联接，不移动或复制数据库。没有创建权限且无可复用联接时明确停止。Go、PostgreSQL 可执行文件和数据均使用对应映射。没有空闲盘时明确报错。启动使用普通 BAT，不要求修改 PowerShell 执行策略；可选 PS1 仅适用于本机策略允许的环境。
 
 数据默认在仓库忽略目录 `var/team-web`，也可指定其他项目数据目录。自定义目录时每次传入同一个 `-DataRoot` / `--data-root`；根 BAT 使用默认目录。更换数据目录会连接另一套数据，不是导入旧数据库。
 

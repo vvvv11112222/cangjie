@@ -4,6 +4,7 @@ Private state stays in the chosen project data directory. Never resets a databas
 changes migration history, installs drivers or terminates processes by name.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -45,9 +46,30 @@ def ascii_root(state):
     for letter in ('V', 'W', 'Y', 'Z'):
         drive = Path(letter + ':/')
         if drive.exists(): continue
-        subprocess.run(['subst.exe', letter + ':', str(state)], check=True, creationflags=HIDDEN)
-        return drive
-    raise RuntimeError('No free drive alias for PostgreSQL Unicode path compatibility')
+        result = subprocess.run(['subst.exe', letter + ':', str(state)], capture_output=True, creationflags=HIDDEN)
+        if result.returncode == 0: return drive
+        break  # A restricted logon may deny DOS-device mappings for every letter.
+    return junction_root(state)
+
+
+def junction_root(state):
+    """ASCII directory alias when Windows denies SUBST; never move database data."""
+    local = Path(os.environ.get('LOCALAPPDATA', ''))
+    if not local.is_absolute() or not str(local).isascii():
+        raise RuntimeError('No ASCII local application directory for database path compatibility')
+    digest = hashlib.sha256(os.path.normcase(str(state.resolve())).encode('utf-8')).hexdigest()[:24]
+    link = local / 'Cangjie/runtime-links' / digest
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if link.exists():
+        if os.path.samefile(link, state): return link
+        raise RuntimeError('Database directory alias belongs to another directory; it was preserved')
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+        'New-Item -ItemType Junction -Path $env:CANGJIE_LINK -Target $env:CANGJIE_TARGET -ErrorAction Stop | Out-Null'],
+        env={**os.environ, 'CANGJIE_LINK':str(link), 'CANGJIE_TARGET':str(state.resolve())},
+        capture_output=True, creationflags=HIDDEN)
+    if result.returncode or not link.exists() or not os.path.samefile(link, state):
+        raise RuntimeError('Could not create local database directory alias; existing data was preserved')
+    return link
 
 
 def environment(config, state):
@@ -332,7 +354,7 @@ def main():
         for target in (state,):
             marker = target / '.team-web-alias-owner'
             if not marker.exists(): marker.write_text(secrets.token_hex(16), encoding='ascii')
-            print(str(target), flush=True)
+            print(str(ascii_root(target)), flush=True)
         return 0
     if args.command == 'start-detached':
         with (state / 'launcher.log').open('ab') as output:
