@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
-import { Card, EmptyState } from '../components/ui';
 import { IconInfo } from '../components/icons';
+import { Card,EmptyState } from '../components/ui';
 
 export interface PlannedPage {
   kicker: string;
@@ -15,9 +15,9 @@ export function PlaceholderPage({ page }: { page: PlannedPage }): ReactElement {
     <div className="page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">{page.kicker}</p>
+          
           <h1>{page.title}</h1>
-          <p className="muted">{page.description}</p>
+          
         </div>
       </header>
 

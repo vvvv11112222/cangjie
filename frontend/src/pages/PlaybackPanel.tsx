@@ -6,31 +6,30 @@
  * 时间与目标的挑选逻辑在 data/playback.ts，可单独单元测试。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { MediaPlayer } from '../components/MediaPlayer';
+import { useEffect,useMemo,useRef,useState } from 'react';
 import type { SeekRequest } from '../components/MediaPlayer';
+import { MediaPlayer } from '../components/MediaPlayer';
 import { IconAlert } from '../components/icons';
 import {
-  BadgeTag,
-  Card,
-  EmptyState,
-  Field,
-  IdChip,
-  LoadControls,
-  LoadStateNote,
-  TechDetails,
+BadgeTag,
+Card,
+EmptyState,
+Field,
+IdChip,
+LoadControls,
+LoadStateNote
 } from '../components/ui';
-import { isApiMode } from '../data/sources';
+import type { useMediaDetail,useSessionMedia,useSessionTranscript } from '../data/hooks';
 import { usePlaybackProbe } from '../data/hooks';
-import type { useMediaDetail, useSessionTranscript, useSessionMedia } from '../data/hooks';
 import {
-  activeTargetId,
-  isJumpable,
-  jumpTargets,
-  playbackTranscript,
+activeTargetId,
+isJumpable,
+jumpTargets,
+playbackTranscript,
 } from '../data/playback';
-import { evidenceKindLabel, formatDateTime, formatTimestamp, mediaKindLabel, mediaStatusBadge } from '../format';
+import { isApiMode } from '../data/sources';
+import { evidenceKindLabel,formatDateTime,formatTimestamp,mediaKindLabel,mediaStatusBadge } from '../format';
 
 type MediaDetailResult = ReturnType<typeof useMediaDetail>;
 type TranscriptResult = ReturnType<typeof useSessionTranscript>;
@@ -140,10 +139,10 @@ export function PlaybackPanel({
 
   return (
     <>
-      <p className="result-context">当前回放：{media?.original_filename || "历史录像（文件名未记录）"}。片段与证据仅匹配当前回放录像。</p>
+      <p className="result-context">当前回放：{media?.original_filename || "历史录像（文件名未记录）"}</p>
       <Card
         title="回放"
-        subtitle="选择本节课堂的一份录像回放。不同录像各自保留分析结果；切换回放不会覆盖录像或重新分析。"
+        
         actions={
           playbackUrl === null ? undefined : (
             <button
@@ -252,44 +251,18 @@ export function PlaybackPanel({
                   reloadToken={retryNonce}
                   suspended={detail.status !== 'ready'}
                 />
-                {api ? null : (
-                  <p className="load-note">
-                    固定样例模式播放的是仓库内自带的合成样例视频
-                    （frontend/public/samples/m2-playback-demo.mp4，无真实课堂内容）。
-                    拖动进度条与时间跳转都要静态服务支持 Range：`npm run dev` 和
-                    `npx vite preview` 支持；`python -m http.server` 不支持，只能从头连续播放。
-                    接口模式下播放地址来自服务端，由 Go 按协议返回 200/206/416。
-                  </p>
-                )}
+                
               </>
             )}
 
             {/* 协议字段原样保留，只是从业务视线里下沉到折叠区。 */}
-            <TechDetails>
-              <ul className="tech-list">
-                <li className="mono">media.id = {media.id}</li>
-                <li className="mono">media.session_id = {media.session_id}</li>
-                <li className="mono">media.source_record_id = {media.source_record_id ?? 'null'}</li>
-                <li className="mono">media.parent_asset_id = {media.parent_asset_id ?? 'null'}</li>
-                <li className="mono">media.kind = {media.kind}</li>
-                <li className="mono">media.status = {media.status}</li>
-                <li className="mono">media.sha256 = {media.sha256}</li>
-                <li className="mono">media.mime_type = {media.mime_type}</li>
-                <li className="mono">media.byte_size = {media.byte_size}</li>
-                <li className="mono">media.duration_ms = {media.duration_ms ?? 'null'}</li>
-                <li className="mono">media.expires_at = {media.expires_at ?? 'null'}</li>
-                <li className="mono">media.playback_asset_id = {media.playback_asset_id ?? 'null'}</li>
-                <li className="mono">media.playback_url = {media.playback_url ?? 'null'}</li>
-                <li className="mono">media.allowed_actions = [{media.allowed_actions.join(', ')}]</li>
-              </ul>
-            </TechDetails>
-          </>
+                      </>
         )}
       </Card>
 
       <Card
         title="跳到证据与片段"
-        subtitle="片段与证据的时间都是原录像起点毫秒；点击后播放器定位到该时间点。过期或已移除的证据不能定位，与协议 EVIDENCE_UNAVAILABLE 一致。"
+        
       >
         <LoadStateNote status={transcript.status} error={transcript.error} />
         <LoadControls actionLabel={transcript.actionLabel} loadMore={transcript.loadMore} />

@@ -24,9 +24,7 @@ const rows: readonly (readonly [string, string, string, string, string])[] = [
 ];
 
 export function RolePermissions({ onClose }: { onClose(): void }): ReactElement {
-  return <Card title="角色权限对照表" subtitle="查看每种角色能做什么，以及能处理哪个范围的数据。" actions={<button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>收起权限对照表</button>}>
+  return <Card title="角色权限对照表"  actions={<button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>收起权限对照表</button>}>
     <div className="table-wrap"><table className="table"><caption className="sr-only">系统四种固定角色的操作与数据范围</caption><thead><tr><th scope="col">操作</th>{ROLE_CODES.map(role => <th scope="col" key={role}>{roleLabel(role)}</th>)}</tr></thead><tbody>{rows.map(([operation, ...permissions]) => <tr key={operation}><th scope="row">{operation}</th>{permissions.map((text, index) => <td key={ROLE_CODES[index]}>{text}</td>)}</tr>)}</tbody></table></div>
-    <p className="field-hint">“无”表示该角色单独不具备此操作权限。一个账号兼任多个角色时，各角色的操作及范围分别生效，不能把不同角色的范围拼成新的权限；教师兼任督导可以按督导范围复核，复核本人课堂会记录“本人复核”。</p>
-    <p className="field-hint">实际操作还须满足录像来源许可、数据有效期和任务状态等条件。此表用于查看规则；授予或撤销角色请打开对应账号资料，不能在此表勾选修改。</p>
-  </Card>;
+          </Card>;
 }

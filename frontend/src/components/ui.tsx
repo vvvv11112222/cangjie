@@ -1,20 +1,20 @@
-import type { ReactElement, ReactNode } from 'react';
-import type { JobStatus, Run } from '../types';
-import type { Badge, Tone } from '../format';
-import { jobStageLabel, jobStatusBadge, runActionLabel, shortId } from '../format';
-import type { Disclosure } from '../data/viewModel';
-import type { LoadStatus } from '../data/loadState';
+import type { ReactElement,ReactNode } from 'react';
 import { errorCodeText } from '../data/errors';
-import {
-  IconAlert,
-  IconCheck,
-  IconChevronRight,
-  IconClock,
-  IconDot,
-  IconInfo,
-  IconPause,
-} from './icons';
+import type { LoadStatus } from '../data/loadState';
+import type { Disclosure } from '../data/viewModel';
+import type { Badge,Tone } from '../format';
+import { jobStageLabel,jobStatusBadge,runActionLabel,shortId } from '../format';
+import type { JobStatus,Run } from '../types';
 import type { IconProps } from './icons';
+import {
+IconAlert,
+IconCheck,
+IconChevronRight,
+IconClock,
+IconDot,
+IconInfo,
+IconPause,
+} from './icons';
 
 /**
  * 状态标签的图标按色调固定。成功、处理中、失败三档在颜色、图标、文字上都能区分，
@@ -50,6 +50,7 @@ export function Pill({
 }
 
 export function Card({
+  guideId,
   title,
   subtitle,
   icon,
@@ -57,6 +58,7 @@ export function Card({
   children,
 }: {
   title: string;
+  guideId?: string;
   subtitle?: string;
   /** 卡片标题左侧的小图标；不传则只显示文字标题。 */
   icon?: ReactNode;
@@ -64,7 +66,7 @@ export function Card({
   children: ReactNode;
 }): ReactElement {
   return (
-    <section className="card">
+    <section className="card" data-guide={guideId}>
       <header className="card-head">
         <div className="card-heading">
           {icon ? <span className="card-icon">{icon}</span> : null}
@@ -315,18 +317,6 @@ export function RunErrorBox({ run }: { run: Run }): ReactElement {
         )}
       </div>
       {run.error_code === null ? null : <p className="error-explanation">{errorCodeText(run.error_code)}</p>}
-      <TechDetails>
-        <RunFields run={run} />
-        <ul className="tech-list">
-          {run.jobs
-            .filter((job) => job.error_code !== null)
-            .map((job) => (
-              <li key={job.id} className="mono">
-                {job.stage} · {job.status} · {job.error_code} · 尝试 {job.attempts}/{job.max_attempts}
-              </li>
-            ))}
-        </ul>
-      </TechDetails>
-    </div>
+          </div>
   );
 }

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ApiError, describeError } from '../data/errors';
-import { getModelSettings, updateModelSettings } from '../data/modelSettings';
-import type { ModelSettings, ModelValues } from '../data/modelSettings';
-import { Card, TechDetails } from '../components/ui';
+import { useEffect,useRef,useState } from 'react';
+import { Card,TechDetails } from '../components/ui';
+import { ApiError,describeError } from '../data/errors';
+import type { ModelSettings,ModelValues } from '../data/modelSettings';
+import { getModelSettings,updateModelSettings } from '../data/modelSettings';
 
 export function ModelSettingsPanel({onApplied}:{onApplied?():void}) {
  const [view,setView]=useState<ModelSettings|null>(null);
@@ -45,9 +45,9 @@ export function ModelSettingsPanel({onApplied}:{onApplied?():void}) {
  const textField=(key:keyof ModelValues,label:string,options:{numeric?:boolean;url?:boolean;hint?:string}={})=><label className="account-field" key={key}><span>{label}</span><input aria-label={label} value={String(values?.[key]??'')} type={options.url?'url':options.numeric?'number':'text'} min={options.numeric?1:undefined} step={options.numeric?1:undefined} maxLength={options.numeric?undefined:2048} onChange={event=>change(key,options.numeric?Number(event.target.value):event.target.value)} />{options.hint&&<small className="field-hint">{options.hint}</small>}</label>;
  const keyField=(kind:'asr'|'report')=>{
   const isASR=kind==='asr',configured=isASR?view?.asr_key_configured:view?.report_key_configured;
-  return <div className="model-key-field"><label className="account-field"><span>{isASR?'语音':'报告'} API Key</span><input type="password" autoComplete="new-password" maxLength={4096} value={isASR?asrKey:reportKey} disabled={isASR?clearASR:clearReport} placeholder={configured?'已设置；留空保留现有密钥':'尚未设置，请输入密钥'} onChange={event=>{dirty.current=true;(isASR?setASRKey:setReportKey)(event.target.value);}} /></label><p className="field-hint">{configured?'已有密钥已保存，不会返回到浏览器。':'该模型尚未配置密钥。'}接口地址变更时需重新填写密钥。</p>{configured&&<label className="check-row"><input type="checkbox" checked={isASR?clearASR:clearReport} onChange={event=>{dirty.current=true;(isASR?setClearASR:setClearReport)(event.target.checked);}}/>清除已有{isASR?'语音':'报告'}密钥（需同时关闭云端分析）</label>}</div>;
+  return <div className="model-key-field"><label className="account-field"><span>{isASR?'语音':'报告'} API Key</span><input type="password" autoComplete="new-password" maxLength={4096} value={isASR?asrKey:reportKey} disabled={isASR?clearASR:clearReport} placeholder={configured?'已设置；留空保留现有密钥':'尚未设置，请输入密钥'} onChange={event=>{dirty.current=true;(isASR?setASRKey:setReportKey)(event.target.value);}} /></label>{configured&&<label className="check-row"><input type="checkbox" checked={isASR?clearASR:clearReport} onChange={event=>{dirty.current=true;(isASR?setClearASR:setClearReport)(event.target.checked);}}/>清除已有{isASR?'语音':'报告'}密钥（需同时关闭云端分析）</label>}</div>;
  };
- return <Card title="语音与报告模型配置" subtitle="仅系统管理员可修改，沿用当前百炼兼容接口。空闲时保存即可应用，无需手动改文件或重启。">
+ return <Card guideId="model-settings" title="语音与报告模型配置" >
   <p className="field-hint">保存配置不会请求云端模型。单价与预算以人民币填写，两个模型共用月预算；报告使用系统内置六维教学分析模板。</p>
   <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={()=>setRefresh(value=>value+1)}>重新读取配置状态</button>
   {view&&!view.can_apply&&<p className="notice-strip" role="status">存在排队、运行中的分析或待核对账单。可以填写配置，处理完这些任务或账单后再保存应用。</p>}
@@ -60,7 +60,7 @@ export function ModelSettingsPanel({onApplied}:{onApplied?():void}) {
    <section><h3>教学报告</h3>{textField('report_api_base','报告接口基础地址',{url:true})}{textField('report_model','报告模型名称')}{textField('report_revision','报告模型版本 / 修订标识')}{keyField('report')}{textField('report_input_cny_per_million_tokens','报告输入单价（元 / 百万 token）')}{textField('report_output_cny_per_million_tokens','报告输出单价（元 / 百万 token）')}</section></div>
    <div className="model-settings-grid">{textField('monthly_budget_cny','语音与报告共享月预算（元）')}{textField('price_version','价格版本标识',{hint:'例如按实际核对日期及计费档位命名。'})}</div>
    <label className="account-field"><span>价格来源与计费档位说明</span><textarea maxLength={2048} value={values.price_source} onChange={event=>change('price_source',event.target.value)} /></label>
-   <details><summary>单次请求 token 上限</summary><p className="field-hint">这些上限参与单次费用预留。月预算需要覆盖至少一次语音与一次报告请求。</p><div className="model-settings-grid">{textField('asr_max_input_tokens','语音输入 token 上限',{numeric:true})}{textField('asr_max_output_tokens','语音输出 token 上限',{numeric:true})}{textField('report_max_input_tokens','报告输入 token 上限',{numeric:true})}{textField('report_max_output_tokens','报告输出 token 上限',{numeric:true})}</div></details>
+   <details><summary>单次请求 token 上限</summary><div className="model-settings-grid">{textField('asr_max_input_tokens','语音输入 token 上限',{numeric:true})}{textField('asr_max_output_tokens','语音输出 token 上限',{numeric:true})}{textField('report_max_input_tokens','报告输入 token 上限',{numeric:true})}{textField('report_max_output_tokens','报告输出 token 上限',{numeric:true})}</div></details>
    <label className="check-row"><input type="checkbox" checked={confirmed} onChange={event=>{dirty.current=true;setConfirmed(event.target.checked);}}/>已核对同地域、同模型和相应档位的实际计费方式、单价及共享月预算</label>
    <label className="account-field"><span>本次配置变更说明</span><textarea value={reason} maxLength={1000} onChange={event=>{dirty.current=true;setReason(event.target.value);}} placeholder="记录配置目的、实际模型版本或别名限制；不要填写密钥。" required /></label>
    <button type="submit" className="btn btn-primary" disabled={busy||!view?.can_apply}>{busy?'正在保存并应用…':'保存并应用模型配置'}</button>

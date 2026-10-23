@@ -1,17 +1,17 @@
-import { useEffect, useState } from 'react';
-import type { FormEvent, ReactElement } from 'react';
-import { BadgeTag, Card, EmptyState, IdChip, TechDetails } from '../components/ui';
-import { IconAlert, IconInfo, IconSettings } from '../components/icons';
+import type { FormEvent,ReactElement } from 'react';
+import { useEffect,useState } from 'react';
+import { useAuth } from '../auth';
+import { IconAlert,IconInfo,IconSettings } from '../components/icons';
+import { BadgeTag,Card,EmptyState,IdChip,TechDetails } from '../components/ui';
 import { describeError } from '../data/errors';
-import { getOperations, listModelCalls, reconcileModelCall } from '../data/m4Api';
+import { getOperations,listModelCalls,reconcileModelCall } from '../data/m4Api';
 import { isApiMode } from '../data/sources';
 import {
-  formatDateTime,
-  modelCallStatusBadge,
-  workerCapabilityLabel,
+formatDateTime,
+modelCallStatusBadge,
+workerCapabilityLabel,
 } from '../format';
-import type { ModelCall, Operations, ReconcileCall } from '../types';
-import { useAuth } from '../auth';
+import type { ModelCall,Operations,ReconcileCall } from '../types';
 import { ModelSettingsPanel } from './ModelSettingsPanel';
 
 function formatBytes(bytes: number): string {
@@ -168,9 +168,9 @@ export function OperationsPage(): ReactElement {
     <div className="page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">WORKSPACE SETTINGS</p>
+          
           <h1>运行与设置</h1>
-          <p className="muted">查看工作空间的任务、存储、Worker 与模型预算状态。</p>
+          
         </div>
         {api ? <button type="button" className="btn btn-secondary" disabled={refreshDisabled} onClick={() => setReloadKey((value) => value + 1)}>刷新状态</button> : null}
       </header>
@@ -181,7 +181,7 @@ export function OperationsPage(): ReactElement {
       </p>
 
       {!api ? (
-        <Card title="需要接口模式" subtitle="固定样例没有运维数据，不能伪造 Worker、存储或真实费用。">
+        <Card title="需要接口模式" >
           <EmptyState text="设置 VITE_DATA_SOURCE=api 并登录系统管理员账号后查看运行状态。" />
         </Card>
       ) : null}
@@ -198,7 +198,7 @@ export function OperationsPage(): ReactElement {
           </div>
           <div className="operations-grid">
             <BudgetPanel operations={operations} />
-            <Card title="Worker 状态" subtitle="只展示最后活动时间，不自行推断在线或离线。" icon={<IconSettings size={18} />}>
+            <Card title="Worker 状态"  icon={<IconSettings size={18} />}>
               {operations.workers.length === 0 ? <EmptyState text="尚无 Worker 活动记录。" /> : (
                 <div className="table-wrap"><table className="table"><thead><tr><th>Worker</th><th>能力</th><th>最后活动</th></tr></thead><tbody>{operations.workers.map((worker) => <tr key={worker.worker_id}><td><strong>{worker.worker_id}</strong></td><td>{worker.capabilities.map(workerCapabilityLabel).join('、')}</td><td>{formatDateTime(worker.last_seen_at)}</td></tr>)}</tbody></table></div>
               )}
@@ -208,7 +208,7 @@ export function OperationsPage(): ReactElement {
       ) : null}
 
       {api ? (
-        <Card title="模型调用账目" subtitle="unknown 表示费用结果不确定，必须由系统管理员查账后处理。">
+        <Card title="模型调用账目" >
           {callsLoading ? <p className="load-note">正在读取模型账目……</p> : null}
           {message ? <p className="notice-strip">{message}</p> : null}
           {callsError ? <div className="notice-strip"><span className="load-note-error">{callsError}</span><button type="button" className="btn btn-secondary btn-sm" disabled={refreshDisabled} onClick={() => setReloadKey((value) => value + 1)}>重新读取账目</button></div> : null}

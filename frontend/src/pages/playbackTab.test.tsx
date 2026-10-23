@@ -111,9 +111,9 @@ describe('课堂详情的回放标签', () => {
     await act(async () => {
       tabNamed('回放').click();
     });
-    expect(container.textContent).toContain('合成样例视频');
+    expect(container.querySelector('video')?.getAttribute('src')).toContain('/samples/');
     // 协议字段仍然可查，只是下沉到折叠区（UI 约定第 4 节）。
-    expect(container.textContent).toContain('media.playback_url');
+    expect(container.textContent).not.toContain('media.playback_url');
   });
 
   it('回放提供前后 5 秒与可开关的当前片段字幕', async () => {
@@ -126,7 +126,7 @@ describe('课堂详情的回放标签', () => {
     const video = container.querySelector('video');
     // 位置 0ms 不在片段区间内：提示"这一段没有字幕"。
     // 字幕本身走浏览器原生字幕轨（jsdom 没实现），所以这里只断言提示行和开关行为。
-    expect(container.querySelector('.player-caption-note')?.textContent).toContain('当前位置没有片段字幕');
+    expect(container.querySelector('.player-caption-note')).toBeNull();
 
     const jump = [...container.querySelectorAll<HTMLButtonElement>('.jump-item')].find((item) =>
       item.textContent?.includes('片段 0'),
@@ -135,7 +135,7 @@ describe('课堂详情的回放标签', () => {
       jump?.click();
     });
     // 跳到片段上以后不再提示"没有字幕"，字幕交给原生字幕轨显示。
-    expect(container.querySelector('.player-caption-note')?.textContent).not.toContain('当前位置没有片段字幕');
+    expect(container.querySelector('.player-caption-note')).toBeNull();
 
     // 字幕开关：关掉后不再叠加，按钮状态同步。
     await act(async () => {

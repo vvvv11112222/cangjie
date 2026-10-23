@@ -1,14 +1,12 @@
-import { ErrorMessage } from '../components/ui';
-import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Dimension, Evidence, ExportFormat, Report, ReportExport, Session, WritableObservation } from '../types';
+import { useEffect,useRef,useState } from 'react';
+import { BadgeTag,Card,ErrorMessage } from '../components/ui';
 import { newIdempotencyKey } from '../data/actions';
-import { copyReport, createExport, getExport, listReports, patchReport, publishReport, reviewReport, withdrawReport } from '../data/m3Api';
-import { describeError, isTerminalReadError } from '../data/errors';
+import { describeError,isTerminalReadError } from '../data/errors';
+import { copyReport,createExport,getExport,listReports,patchReport,publishReport,reviewReport,withdrawReport } from '../data/m3Api';
 import { collectPages } from '../data/pagination';
-import { BadgeTag, Card } from '../components/ui';
-import { dimensionLabel, formatDateTime, reportStatusBadge, reviewStatusBadge } from '../format';
-import { ReportProgress } from '../components/ReportProgress';
+import { dimensionLabel,formatDateTime,reportStatusBadge,reviewStatusBadge } from '../format';
+import type { Dimension,Evidence,ExportFormat,Report,ReportExport,Session,WritableObservation } from '../types';
 import { CitedEvidence } from './ReportAnalysis';
 
 function writable(report: Report): WritableObservation[] {
@@ -126,9 +124,9 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
     finally { setBusy(false); }
   }
 
-  return <Card title="复核、发布与导出" subtitle="可查看历史报告；编辑或复核前请填写操作原因。发布前须完成整篇确认。" actions={<BadgeTag badge={reportStatusBadge(report.status)} />}>
-    <ReportProgress report={report}/>
-    <div className="workflow-toolbar">
+  return <Card title="复核、发布与导出"  actions={<BadgeTag badge={reportStatusBadge(report.status)} />}>
+    
+    <div data-guide="report-review" className="workflow-toolbar">
       <label className="account-field"><span>报告版本</span><select disabled={busy} value={report.id} onChange={(event) => {
         const selected = history.find((item) => item.id === event.target.value); if (selected !== undefined) adopt(selected);
       }}>{history.map(item => <option key={item.id} value={item.id} title={item.id}>第 {item.revision} 版 · {reportStatusBadge(item.status).label} · {Array.from(item.summary).slice(0,24).join('') || '暂无摘要'}{Array.from(item.summary).length>24 ? '…' : ''}</option>)}</select></label>
@@ -158,7 +156,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
         </div>
         <div className="action-row"><button type="button" className="btn btn-secondary" disabled={blocked || editing || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'accept', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已确认，继续核对下一条。')}>确认</button><button type="button" className="btn btn-danger" disabled={blocked || editing || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'reject', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已驳回，发布内容将排除该项。')}>驳回</button></div>
       </div>)}
-      {!showAllReviews && !nextObservation && <p className="notice-strip">全部观察已处理。核对整篇内容后即可确认并发布。</p>}
+      {!showAllReviews && !nextObservation && null}
     </div> : null}
     {report.allowed_actions.includes('export') ? <div className="export-row"><label className="account-field"><span>导出格式</span><select disabled={blocked} value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}><option value="pdf">PDF</option><option value="json">JSON</option></select></label><button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => void exportReport()}>导出当前发布版</button></div> : null}
     {shownExport === null ? null : <p className="notice-strip">导出状态：{({ queued: '排队中', running: '生成中', succeeded: '已生成', failed: '生成失败', expired: '已过期' })[shownExport.status]}{shownExport.error_code === null ? '' : ` · ${shownExport.error_code}`}{shownExport.download_url === null ? '' : <> · <a href={shownExport.download_url}>下载文件</a>（有效至 {formatDateTime(shownExport.expires_at)}）</>}</p>}

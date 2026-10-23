@@ -1,69 +1,64 @@
-import { useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import type { ReactElement } from 'react';
+import { useEffect,useRef,useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useAuth } from '../auth';
-import { cancelRun, createRun, uploadMedia } from '../data/actions';
-import { ApiError, describeError } from '../data/errors';
-import { isUuid } from '../data/ids';
-import {
-  fixtureSession,
-  useRunPolling,
-  useSessionDetail,
-  useMediaDetail,
-  useSessionMedia,
-  useSessionReport,
-  useSessionTranscript,
-} from '../data/hooks';
-import { isRunActive } from '../data/loaders';
-import { pickPlaybackMediaId } from '../data/playback';
-import { fixtures } from '../data/samples';
-import { isApiMode } from '../data/sources';
-import type { MediaAction } from '../data/sources';
-import type { CreateRun, RunMode } from '../types';
-import {
-  formatDateTime,
-  runModeLabel,
-  runStatusBadge,
-  sessionActionLabel,
-  sessionStatusBadge,
-  shortId,
-} from '../format';
-import {
-  BadgeTag,
-  ErrorMessage,
-  Card,
-  DataSourceNote,
-  Field,
-  IdChip,
-  LoadControls,
-  LoadStateNote,
-  RunErrorBox,
-  RunFields,
-  StageFlow,
-  TechDetails,
-} from '../components/ui';
 import { IconAlert } from '../components/icons';
-import {
-  actionStateFor,
-  emptyActionState,
-  intentSignature,
-  processingMediaId,
-  writeActionState,
-} from './sessionActions';
-import type { ActionState, MediaChoice } from './sessionActions';
-import { pendingIntent } from './pendingIntent';
-import { ReportPage } from './ReportPage';
-import { TranscriptPage } from './TranscriptPage';
-import { PlaybackPanel } from './PlaybackPanel';
-import { LiveCapturePanel } from './LiveCapturePanel';
-import { DeletionPanel } from './DeletionPanel';
-import { VisualPanel } from './VisualPanel';
-import { UploadSourcePicker } from './UploadSourcePicker';
-import { sessionIntent, parseSessionRoute } from '../data/route';
-import { getServiceCapabilities, useServiceCapabilities, featureProblem } from '../data/serviceCapabilities';
-import { getSource } from '../data/m2Api';
-import { useSourceRecord } from '../data/useSourceRecord';
 import { ServiceChecklist } from '../components/ServiceChecklist';
+import {
+BadgeTag,
+Card,
+ErrorMessage,
+LoadControls,
+LoadStateNote,
+RunErrorBox,
+StageFlow,
+TechDetails
+} from '../components/ui';
+import { cancelRun,createRun,uploadMedia } from '../data/actions';
+import { ApiError,describeError } from '../data/errors';
+import {
+fixtureSession,
+useMediaDetail,
+useRunPolling,
+useSessionDetail,
+useSessionMedia,
+useSessionReport,
+useSessionTranscript,
+} from '../data/hooks';
+import { isUuid } from '../data/ids';
+import { isRunActive } from '../data/loaders';
+import { getSource } from '../data/m2Api';
+import { pickPlaybackMediaId } from '../data/playback';
+import { parseSessionRoute,sessionIntent } from '../data/route';
+import { fixtures } from '../data/samples';
+import { featureProblem,getServiceCapabilities,useServiceCapabilities } from '../data/serviceCapabilities';
+import type { MediaAction } from '../data/sources';
+import { isApiMode } from '../data/sources';
+import { useSourceRecord } from '../data/useSourceRecord';
+import {
+formatDateTime,
+runModeLabel,
+runStatusBadge,
+sessionStatusBadge,
+shortId
+} from '../format';
+import type { CreateRun,RunMode } from '../types';
+import { DeletionPanel } from './DeletionPanel';
+import { LiveCapturePanel } from './LiveCapturePanel';
+import { pendingIntent } from './pendingIntent';
+import { PlaybackPanel } from './PlaybackPanel';
+import { ReportPage } from './ReportPage';
+import type { ActionState,MediaChoice } from './sessionActions';
+import {
+actionStateFor,
+emptyActionState,
+intentSignature,
+processingMediaId,
+writeActionState,
+} from './sessionActions';
+import { TranscriptPage } from './TranscriptPage';
+import { UploadSourcePicker } from './UploadSourcePicker';
+import { VisualPanel } from './VisualPanel';
 
 type Tab = 'run' | 'live' | 'transcript' | 'report' | 'playback' | 'visual';
 
@@ -373,20 +368,14 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     <div className="page">
       <header className="page-head">
         <div>
-          <p className="eyebrow">
-            <a href="#/sessions">← 返回课堂列表</a>
-          </p>
-          <h1>{session?.title ?? '课堂详情'}</h1>
-          <p className="muted">
-            {session === null
-              ? '从课堂列表进入后显示该课堂的批次、转写和报告。'
-              : `${formatDateTime(session.planned_start_at)} – ${formatDateTime(session.planned_end_at)}`}
-          </p>
+          
+          <a className="text-button" href="#/sessions">← 返回课堂列表</a><h1>{session?.title ?? '课堂详情'}</h1>{session&&<span className="muted small">{formatDateTime(session.planned_start_at)} – {formatDateTime(session.planned_end_at)}</span>}
+          
         </div>
         {session === null ? null : <BadgeTag badge={sessionStatusBadge(session.status)} />}
       </header>
 
-      <DataSourceNote sources={detail.origin.sources} label={detail.origin.label} note={detail.origin.note} />
+      
       <LoadStateNote status={detail.status} error={detail.error} />
       <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
 
@@ -394,7 +383,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
         detail.status === 'ready' ? <p className="empty">找不到该课堂，或不在当前账号可见范围。</p> : null
       ) : (
         <>
-          <div className="tab-bar" role="tablist" aria-label="课堂详情">
+          <div data-guide="classroom-tabs" className="tab-bar" role="tablist" aria-label="课堂详情">
             {TABS.map((item) => (
               <button
                 key={item.key}
@@ -411,57 +400,13 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
 
           {tab === 'run' ? (
             <>
-              <Card title="当前课堂与录像" subtitle="先上传录像，再选择分析方式。回放、转写和报告分别在上方标签中查看。">
+              <Card title="当前课堂与录像" >
                 <p className="result-context">处理目标：{targetMedia?.original_filename || (targetMedia ? `历史录像（${formatDateTime(targetMedia.created_at ?? '')}）` : '尚未选择录像')}。{shownRun && <>最近一次分析：{runModeLabel(shownRun.mode)}，{shownRun.created_at ? formatDateTime(shownRun.created_at) : '旧记录未提供提交时间'}。{mediaTarget !== shownRun.media_asset_id && '所选处理目标与这次分析的录像不同，请核对后再提交。'}</>}</p>
-                <TechDetails summary="课堂与录像编号详情">
-                <div className="field-grid">
-                  <Field label="课堂 ID">
-                    <IdChip id={session.id} />
-                  </Field>
-                  <Field label="主媒体">
-                    {session.primary_media_asset_id === null ? (
-                      <span className="muted">null</span>
-                    ) : (
-                      <IdChip id={session.primary_media_asset_id} />
-                    )}
-                  </Field>
-                  <Field label="最新批次">
-                    {session.latest_run_id === null ? <span className="muted">null</span> : <IdChip id={session.latest_run_id} />}
-                  </Field>
-                  <Field label="当前报告">
-                    {session.current_report_id === null ? <span className="muted">null</span> : <IdChip id={session.current_report_id} />}
-                  </Field>
-                  <Field label="允许操作">
-                    {session.allowed_actions.length === 0
-                      ? '无'
-                      : session.allowed_actions.map(sessionActionLabel).join('、')}
-                  </Field>
-                  <Field label="处理目标媒体">
-                    {mediaTarget === null ? <span className="muted">尚无（先上传录像）</span> : <IdChip id={mediaTarget} />}
-                  </Field>
-                </div>
-                </TechDetails>
-                {/* 协议字段原样保留，只是从业务视线里下沉到折叠区。 */}
-                <TechDetails>
-                  <ul className="tech-list">
-                    <li className="mono">session.id = {session.id}</li>
-                    <li className="mono">session.offering_id = {session.offering_id}</li>
-                    <li className="mono">session.schedule_entry_id = {session.schedule_entry_id ?? 'null'}</li>
-                    <li className="mono">session.status = {session.status}</li>
-                    <li className="mono">session.is_demo = {String(session.is_demo)}</li>
-                    <li className="mono">session.transcript_lock_version = {session.transcript_lock_version}</li>
-                    <li className="mono">session.primary_media_asset_id = {session.primary_media_asset_id ?? 'null'}</li>
-                    <li className="mono">session.latest_run_id = {session.latest_run_id ?? 'null'}</li>
-                    <li className="mono">session.current_report_id = {session.current_report_id ?? 'null'}</li>
-                    <li className="mono">
-                      session.allowed_actions = [{session.allowed_actions.join(', ')}]
-                    </li>
-                  </ul>
-                </TechDetails>
-              </Card>
+                                {/* 协议字段原样保留，只是从业务视线里下沉到折叠区。 */}
+                              </Card>
 
               {detail.runError === null ? null : (
-                <Card title="批次读取失败" subtitle="这是读取错误，不等于该课堂没有批次。">
+                <Card title="批次读取失败" >
                   <div className="notice-strip">
                     <IconAlert size={14} aria-hidden="true" />
                     <ErrorMessage text={detail.runError}/>
@@ -509,9 +454,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                   <>
                     {/* 与课堂任务页共用同一套阶段流程和错误区，避免同一批次两种样子。 */}
                     <StageFlow run={shownRun} />
-                    {shownRun.error_code === null ? (
-                      <TechDetails summary="批次编号与状态详情"><RunFields run={shownRun} /></TechDetails>
-                    ) : (
+                    {shownRun.error_code === null ? null : (
                       <RunErrorBox run={shownRun} />
                     )}
                     {shownRun.limitations.length > 0 ? (
@@ -521,9 +464,8 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 )}
               </Card>
 
-              <Card title="下一步：上传或选择分析" subtitle="举手与低头识别查看画面；语音转写与教学报告处理带声音的录像。上传成功后不会自动调用模型。">
-                <p className="field-hint">综合报告会采用课程与课表登记、语音文字，以及这段录像已完成的举手和低头结果。需要综合学生动作时，请先完成“举手与低头识别”，再生成报告；已有转写可在“转写”中直接生成新报告，无需重复识别语音。</p>
-                {api && <ServiceChecklist data={services.data} error={services.error} onReload={()=>{services.reload();targetSource.reload();selectedDetail.reload();media.reload();}}/>}
+              <Card title="录像分析" >
+                                {api && <ServiceChecklist data={services.data} error={services.error} onReload={()=>{services.reload();targetSource.reload();selectedDetail.reload();media.reload();}}/>}
                 {mediaTarget === null ? <p className="onboarding-next">还没有选择录像。请先点击“上传录像”，在同一区域登记或选择来源。</p> : targetSource.data && !mediaAllows('analyze') ? <p className="onboarding-next">{targetSource.data.rights_status !== 'verified' ? '录像来源尚未通过核验。' : !targetSource.data.allowed_uses.includes('analysis') ? '该来源尚未获准分析用途。未申请过该用途时，需要重新登记来源。' : '当前录像状态或当前账号授权暂不允许分析。'}请联系学院教务或系统管理员处理。<a href={`#/sources?session=${session.id}`}>前往这节课堂的来源登记与核验</a></p> : null}
                 {targetMedia && !targetSource.data && <div className="field-hint">正在确认录像来源与云端处理许可。{targetSource.error && <>读取失败，请重新检查。<TechDetails><p>{targetSource.error}</p></TechDetails></>}</div>}
                 {targetSource.data && !targetSource.data.external_processing_allowed && <p className="field-hint">语音与报告需要额外的云端音频、文本处理许可；本地举手与低头识别可按已获准的分析用途执行。<a href={`#/sources?session=${session.id}`}>查看或核验来源</a></p>}
@@ -535,7 +477,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       className="btn btn-secondary"
                       disabled={!api || action.busy}
                       aria-expanded={action.uploadOpen}
-                      aria-controls="classroom-upload-form"
+                      aria-controls="classroom-upload-form" data-guide="upload-recording"
                       onClick={openUpload}
                     >
                       上传录像
@@ -556,12 +498,12 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                       type="button"
                       className="btn btn-primary"
                       disabled={fullDisabled}
-                      onClick={() => void submitAnalyze('full')}
+                      data-guide="speech-analyze" onClick={() => void submitAnalyze('full')}
                     >
                       语音转写与教学报告
                     </button>
                   ) : null}
-                  {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={visualDisabled} onClick={() => void submitAnalyze('visual_only')}>举手与低头识别</button> : null}
+                  {showAnalyze ? <button type="button" className="btn btn-secondary" disabled={visualDisabled} data-guide="visual-analyze" onClick={() => void submitAnalyze('visual_only')}>举手与低头识别</button> : null}
                   {canCancel ? (
                     <button type="button" className="btn btn-danger" disabled={!api || action.busy} onClick={() => void submitCancel()}>
                       取消批次
@@ -641,8 +583,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 {!api ? <p className="load-note">固定样例模式未接入后端，操作按钮不可用。</p> : null}
                 {action.uploadOpen ? (
                   <div className="upload-form" id="classroom-upload-form" ref={uploadForm}>
-                    <p className="load-note" style={{ gridColumn: '1 / -1' }}>选择录像文件和来源后，点击“提交上传”。关闭文件选择窗口后，也可以在这里重新选文件。</p>
-                    <label className="account-field">
+                                        <label className="account-field">
                       <span>录像文件（必填）</span>
                       <input
                         ref={uploadFile}
@@ -718,7 +659,7 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
                 }}
               />
             ) : (
-              <Card title="实时课堂" subtitle="该能力只连接真实 Go API 与媒体服务。">
+              <Card title="实时课堂" >
                 <p className="empty">固定样例模式不伪造实时画面。切换到接口模式后可创建手机采集。</p>
               </Card>
             )

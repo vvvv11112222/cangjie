@@ -30,7 +30,7 @@ it('loads every offering/course/class page and excludes archived offerings', asy
   expect(options).toHaveLength(1); expect(options[0]?.value).toBe('second');
   expect(options[0]?.textContent).toContain('操作系统'); expect(options[0]?.textContent).toContain('软件2301');
   expect(h.offerings).toHaveBeenCalledWith('next'); expect(h.courses).toHaveBeenCalledWith('courses-2'); expect(h.groups).toHaveBeenCalledWith('classes-2');
-  expect(node.querySelector('a[href="#/academic?tab=offerings"]')).not.toBeNull();
+  expect(node.querySelector('a[href="#/academic?tab=offerings"]')).toBeNull();
 });
 it('shows a failed later page as an error and retries without claiming no offerings exist', async () => {
   h.offerings.mockRejectedValueOnce(new Error('合成分页故障'));

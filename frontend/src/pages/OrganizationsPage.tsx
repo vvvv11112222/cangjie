@@ -11,27 +11,27 @@
  *   - 筛选在前端已加载的数据上做，因为列表接口只有 cursor/limit。
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import type { FormEvent, ReactElement } from 'react';
-import { Card, EmptyState } from '../components/ui';
-import { DeleteUnusedButton } from '../components/ManagementActions';
+import type { FormEvent,ReactElement } from 'react';
+import { useCallback,useEffect,useState } from 'react';
 import { useAuth } from '../auth';
-import { IconAlert, IconInfo, IconList, IconPlus } from '../components/icons';
-import { isApiMode } from '../data/sources';
-import { describeError } from '../data/errors';
+import { IconAlert,IconInfo,IconList,IconPlus } from '../components/icons';
+import { DeleteUnusedButton } from '../components/ManagementActions';
+import { Card,EmptyState } from '../components/ui';
+import type { ClassGroup,ClassGroupInput,OrgUnit,OrgUnitInput,OrgUnitKind } from '../data/academicApi';
 import {
-  ORG_UNIT_KINDS,
-  ORG_UNIT_KIND_LABEL,
-  createClassGroup,
-  createOrgUnit,
-  listClassGroups,
-  listOrgUnits,
-  orgUnitName,
-  parsePositiveInteger,
-  patchClassGroup,
-  patchOrgUnit,
+ORG_UNIT_KINDS,
+ORG_UNIT_KIND_LABEL,
+createClassGroup,
+createOrgUnit,
+listClassGroups,
+listOrgUnits,
+orgUnitName,
+parsePositiveInteger,
+patchClassGroup,
+patchOrgUnit,
 } from '../data/academicApi';
-import type { ClassGroup, ClassGroupInput, OrgUnit, OrgUnitInput, OrgUnitKind } from '../data/academicApi';
+import { describeError } from '../data/errors';
+import { isApiMode } from '../data/sources';
 
 type Tab = 'colleges' | 'classes';
 /** 每页最多 100 条（协议第 1 节的 limit 上界），最多翻 5 页，避免一次拉太多。 */
@@ -60,11 +60,9 @@ function OrganizationsHead(): ReactElement {
   return (
     <header className="page-head">
       <div>
-        <p className="eyebrow">ORGANIZATION</p>
+        
         <h1>学院、年级与班级</h1>
-        <p className="muted">
-          班级按入学年份筛选；入学年份不是组织层级。未使用的资料可删除；有引用的资料保留历史。
-        </p>
+        
       </div>
     </header>
   );
@@ -367,7 +365,7 @@ function UnitForm({
   }
 
   return (
-    <Card title={unit === null ? '新增学院 / 院系' : `编辑：${unit.name}`} subtitle="保存后会重新读取列表。">
+    <Card title={unit === null ? '新增学院 / 院系' : `编辑：${unit.name}`} >
       <form className="directory-form" onSubmit={submit}>
         <label className="account-field">
           <span>名称</span>
@@ -466,7 +464,7 @@ function GroupForm({
   }
 
   return (
-    <Card title={group === null ? '新增班级' : `编辑：${group.name}`} subtitle="保存后会重新读取列表。">
+    <Card title={group === null ? '新增班级' : `编辑：${group.name}`} >
       <form className="directory-form" onSubmit={submit}>
         <label className="account-field">
           <span>名称</span>

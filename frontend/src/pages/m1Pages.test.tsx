@@ -8,7 +8,7 @@ describe('M1 页面固定样例骨架', () => {
       .map(Page => renderToStaticMarkup(<Page />)).join('\n');
     for (const label of ['教务与课表', '教学工作台', '全校管理工作台', '课堂录像管理', '素材与来源', '分析任务']) expect(html).toContain(label);
     expect(html).toContain('固定样例模式没有教务与来源样例');
-    expect(html).toContain('当前协议没有跨课堂批次列表');
+    expect(html).not.toContain('当前协议没有跨课堂批次列表');
   });
 
   it('按草图保留 M1 页面关键区块和按钮位置', () => {
@@ -20,7 +20,7 @@ describe('M1 页面固定样例骨架', () => {
 
     const management = renderToStaticMarkup(<ManagementPage />);
     expect(management.match(/management-entry/g)).toHaveLength(3);
-    expect(management).toContain('最高权限 · 全校范围');
+    expect(management).not.toContain('最高权限 · 全校范围');
 
     const recordings = renderToStaticMarkup(<RecordingsPage />);
     for (const label of ['全部学院', '全部年级', '全部班级', '重置筛选', '上传录像并分析']) expect(recordings).toContain(label);

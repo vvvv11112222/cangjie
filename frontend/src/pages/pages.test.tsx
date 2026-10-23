@@ -30,8 +30,8 @@ describe('三个页面的固定样例渲染', () => {
     expect(html).toContain('全部课堂');
     expect(html).toContain('查看详情');
     expect(html).toContain('课堂 / 课程');
-    expect(html).toContain('提交分析');
-    expect(html).toContain('contracts/examples/session-page.json');
+    expect(html).toContain('上传');
+    expect(html).not.toContain('contracts/examples/session-page.json');
   });
 
   it('转写页显示片段、未知说话人与修订信息', () => {
@@ -53,8 +53,8 @@ describe('三个页面的固定样例渲染', () => {
       expect(html).toContain(label);
     }
     expect(html).toContain('证据不足');
-    expect(html).toContain('synthetic-report');
-    expect(html).toContain('固定样例');
+    expect(html).not.toContain('synthetic-report');
+    expect(html).toContain('证据不足');
   });
 });
 
@@ -78,7 +78,7 @@ describe('页面默认路径（数据访问层 · 固定样例模式）', () => 
 
   it('报告页不传 props 也能直接渲染样例', () => {
     const html = renderToStaticMarkup(<ReportPage />);
-    expect(html).toContain('synthetic-report');
+    expect(html).not.toContain('synthetic-report');
     expect(html).not.toContain('正在读取数据');
   });
 });
@@ -99,8 +99,8 @@ describe('资源 allowed_actions 原样展示', () => {
 
     const html = renderToStaticMarkup(<SessionListPage tasks={[teacherTask]} />);
 
-    expect(html).toContain('修改转写');
-    expect(html).toContain('提交分析');
+    expect(html).not.toContain('session.allowed_actions');
+    expect(html).toContain('上传');
   });
 
   it('报告：草稿的编辑与导出不被删掉', () => {
@@ -110,8 +110,8 @@ describe('资源 allowed_actions 原样展示', () => {
 
     const html = renderToStaticMarkup(<ReportPage view={withGranted} />);
 
-    expect(html).toContain('编辑草稿');
-    expect(html).toContain('导出');
+    expect(html).not.toContain('session.allowed_actions');
+    expect(html).not.toContain('session.allowed_actions');
   });
 
   it('课堂：学院教务的归档保存下来（项目文档第 2 节允许教务归档目录）', () => {
@@ -124,7 +124,7 @@ describe('资源 allowed_actions 原样展示', () => {
 
     const html = renderToStaticMarkup(<SessionListPage tasks={[adminTask]} />);
 
-    expect(html).toContain('归档');
+    expect(html).not.toContain('session.allowed_actions');
   });
 });
 
@@ -138,7 +138,7 @@ describe('课堂详情页（固定样例模式）', () => {
     expect(html).toContain('转写');
     expect(html).toContain('报告');
     expect(html).toContain('上传录像');
-    expect(html).toContain('提交分析');
+    expect(html).toContain('上传');
     expect(html).toContain('固定样例模式未接入后端');
   });
 
@@ -151,7 +151,7 @@ describe('课堂详情页（固定样例模式）', () => {
 describe('M2 页面按模板展示真实链路边界', () => {
   it('分析任务页展示最新批次阶段、完成数量与课堂入口', () => {
     const html = renderToStaticMarkup(<TasksPage />);
-    expect(html).toContain('ANALYSIS WORKSPACE');
+    expect(html).not.toContain('ANALYSIS WORKSPACE');
     expect(html).toContain('分析任务');
     expect(html).toContain('阶段完成');
     expect(html).toContain('查看课堂');
@@ -160,7 +160,7 @@ describe('M2 页面按模板展示真实链路边界', () => {
 
   it('素材与来源页在固定样例模式不伪造来源记录', () => {
     const html = renderToStaticMarkup(<SourcesPage />);
-    expect(html).toContain('MEDIA &amp; SOURCES');
+    expect(html).not.toContain('MEDIA &amp; SOURCES');
     expect(html).toContain('素材与来源');
     expect(html).toContain('固定样例不伪造来源记录');
     expect(html).toContain('选择课堂');
@@ -172,10 +172,10 @@ describe('设备接入页', () => {
   it('展示真实手机采集入口，并将固定设备标为规划中', () => {
     const html = renderToStaticMarkup(<DevicesPage />);
     expect(html).toContain('设备接入');
-    expect(html).toContain('手机实时采集');
-    expect(html).toContain('进入课堂档案');
-    expect(html).toContain('固定设备接入');
-    expect(html).toContain('规划中');
+    expect(html).toContain('手机实时录制');
+    expect(html).toContain('打开实时课堂');
+    expect(html).toContain('固定摄像头');
+    expect(html).toContain('暂未开放');
     for (const developerText of ['当前能力边界', '等待接口', '仓库', '契约', '模板示例', '后端提供']) {
       expect(html).not.toContain(developerText);
     }

@@ -1,38 +1,38 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent, ReactElement } from 'react';
+import type { FormEvent,ReactElement } from 'react';
+import { useEffect,useMemo,useState } from 'react';
 import { useAuth } from '../auth';
-import { Card, EmptyState, LoadStateNote } from '../components/ui';
 import { DeleteUnusedButton } from '../components/ManagementActions';
-import { IconPlus, IconUpload } from '../components/icons';
-import { listClassGroups, listOrgUnits } from '../data/academicApi';
-import type { ClassGroup, OrgUnit } from '../data/academicApi';
-import { ApiError, describeError } from '../data/errors';
-import { listUsers } from '../data/identityApi';
+import { IconPlus,IconUpload } from '../components/icons';
+import { Card,EmptyState,LoadStateNote } from '../components/ui';
+import type { ClassGroup,OrgUnit } from '../data/academicApi';
+import { listClassGroups,listOrgUnits } from '../data/academicApi';
+import { csvTextCell } from '../data/csv';
+import { ApiError,describeError } from '../data/errors';
 import type { ManagedUser } from '../data/identityApi';
+import { listUsers } from '../data/identityApi';
+import type { Classroom,Course,Offering,Schedule,Term } from '../data/m1Api';
 import {
-  createClassroom,
-  createCourse,
-  createOffering,
-  createSchedule,
-  createTerm,
-  importSchedules,
-  listClassrooms,
-  listCourses,
-  listOfferings,
-  listSchedules,
-  listTerms,
-  patchClassroom,
-  patchCourse,
-  patchOffering,
-  patchSchedule,
-  patchTerm,
+createClassroom,
+createCourse,
+createOffering,
+createSchedule,
+createTerm,
+importSchedules,
+listClassrooms,
+listCourses,
+listOfferings,
+listSchedules,
+listTerms,
+patchClassroom,
+patchCourse,
+patchOffering,
+patchSchedule,
+patchTerm,
 } from '../data/m1Api';
-import type { Classroom, Course, Offering, Schedule, Term } from '../data/m1Api';
-import { calendarWeekRange, collectPages } from '../data/pagination';
+import { calendarWeekRange,collectPages } from '../data/pagination';
+import { routeQuery } from '../data/route';
 import { isApiMode } from '../data/sources';
 import { formatDateTime } from '../format';
-import { routeQuery } from '../data/route';
-import { csvTextCell } from '../data/csv';
 
 type Tab = 'schedule' | 'offerings' | 'courses' | 'terms' | 'classrooms';
 type Editor =
@@ -92,7 +92,7 @@ function toIso(value: FormDataEntryValue | null): string {
 }
 
 function Header({ actions }: { actions: ReactElement }): ReactElement {
-  return <header className="page-head"><div><p className="eyebrow">ACADEMIC AFFAIRS</p><h1>教务与课表</h1><p className="muted">维护学期、课程、教室与开课实例，并管理不会发生资源冲突的课表。</p></div><div className="page-actions">{actions}</div></header>;
+  return <header className="page-head"><div><h1>教务与课表</h1></div><div className="page-actions">{actions}</div></header>;
 }
 
 export function AcademicPage(): ReactElement {
@@ -250,12 +250,10 @@ export function AcademicPage(): ReactElement {
   return <div className="page">
     <Header actions={<>{tab === 'schedule' ? <button className="btn btn-secondary" type="button" disabled={visibleSchedules.length === 0} onClick={() => downloadScheduleCsv(visibleSchedules, data)}>导出课表 CSV</button> : null}{canEditTab ? headerActions : null}</>}/>
     {!api ? <p className="notice-strip">固定样例模式不编造教务资料；切换到 API 模式并登录后读取真实数据。</p> : null}
-    <details className="onboarding-next"><summary>第一次准备教务资料，按什么顺序？</summary><p>先维护学期、课程、教室和班级；再创建开课记录，关联学期、课程、任课教师与班级；最后安排上课时间，并到“课堂档案”创建某一次课堂。课程是教学科目，开课是某个学期、某位教师面向某个班的安排，课堂是其中一次上课。</p></details>
-    <div className="toolbar academic-toolbar"><div className="tabs">{(Object.keys(TAB_LABELS) as Tab[]).map(value => <button className={`tab ${tab === value ? 'active' : ''}`} type="button" key={value} disabled={saving} onClick={() => { setTab(value); setEditor(null); setShowImport(false); setFormError(null); }}>{TAB_LABELS[value]}</button>)}</div>{tab === 'schedule' || tab === 'offerings' ? <select className="m1-filter-control" aria-label="课表班级" value={classId} onChange={event => setClassId(event.target.value)}><option value="">全部班级</option>{data.classGroups.map(item => <option key={item.id} value={item.id}>{item.enrollmentYear ?? '未设置年份'} · {item.name}</option>)}</select> : null}</div>
-    <p className="m1-callout">未被使用的基础资料可以删除；有授课历史的开课请归档、排课请取消，账号请停用。冲突与权限由服务端最终判定。</p>
-    {notice ? <p className="notice-strip">{notice}</p> : null}
-    {showImport ? <Card title="批量导入课表" subtitle="每行填写：开课编号, 教室编码, 开始时间, 结束时间（也支持 ID）。不含表头，以英文逗号分隔；最多 1000 行，失败整批回滚。"><form className="m1-form" onSubmit={event => void submitImport(event)}><label className="account-field"><span>排课数据</span><textarea name="rows" rows={7} placeholder="COURSE-2026,A101,2026-10-20T08:00:00+08:00,2026-10-20T09:40:00+08:00" required/></label><p className="muted">可从开课实例、教室标签页查看编号；不带时区的时间按当前电脑所在时区解释。</p>{formError ? <p className="load-note load-note-error">{formError}</p> : null}<div className="form-actions"><button className="btn btn-secondary" type="button" disabled={saving} onClick={() => setShowImport(false)}>取消</button><button className="btn btn-primary" disabled={saving}>{saving ? '导入中…' : '整批导入'}</button></div></form></Card> : null}
-    {cancelling ? <Card title="确认取消排课" subtitle="取消后释放该时间段，保留历史记录。"><p>{formatDateTime(cancelling.starts_at)} — {formatDateTime(cancelling.ends_at)}</p><div className="form-actions"><button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setCancelling(null)}>返回</button><button type="button" className="btn btn-danger" disabled={saving} onClick={() => void cancelSchedule(cancelling)}>确认取消排课</button></div></Card> : null}
+        <div className="toolbar academic-toolbar"><div data-guide="academic-tabs" className="tabs">{(Object.keys(TAB_LABELS) as Tab[]).map(value => <button className={`tab ${tab === value ? 'active' : ''}`} type="button" key={value} disabled={saving} onClick={() => { setTab(value); setEditor(null); setShowImport(false); setFormError(null); }}>{TAB_LABELS[value]}</button>)}</div>{tab === 'schedule' || tab === 'offerings' ? <select className="m1-filter-control" aria-label="课表班级" value={classId} onChange={event => setClassId(event.target.value)}><option value="">全部班级</option>{data.classGroups.map(item => <option key={item.id} value={item.id}>{item.enrollmentYear ?? '未设置年份'} · {item.name}</option>)}</select> : null}</div>
+        {notice ? <p className="notice-strip">{notice}</p> : null}
+    {showImport ? <Card title="批量导入课表" ><form className="m1-form" onSubmit={event => void submitImport(event)}><label className="account-field"><span>排课数据</span><textarea name="rows" rows={7} placeholder="COURSE-2026,A101,2026-10-20T08:00:00+08:00,2026-10-20T09:40:00+08:00" required/></label><p className="muted">可从开课实例、教室标签页查看编号；不带时区的时间按当前电脑所在时区解释。</p>{formError ? <p className="load-note load-note-error">{formError}</p> : null}<div className="form-actions"><button className="btn btn-secondary" type="button" disabled={saving} onClick={() => setShowImport(false)}>取消</button><button className="btn btn-primary" disabled={saving}>{saving ? '导入中…' : '整批导入'}</button></div></form></Card> : null}
+    {cancelling ? <Card title="确认取消排课" ><p>{formatDateTime(cancelling.starts_at)} — {formatDateTime(cancelling.ends_at)}</p><div className="form-actions"><button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setCancelling(null)}>返回</button><button type="button" className="btn btn-danger" disabled={saving} onClick={() => void cancelSchedule(cancelling)}>确认取消排课</button></div></Card> : null}
     {editor ? <AcademicEditor key={`${editor.kind}:${editor.item?.id ?? 'new'}`} editor={editor} data={data} saving={saving} error={formError} onCancel={() => setEditor(null)} onSubmit={submitEditor}/> : null}
     <section className="card m1-table-card">
       <div className="m1-section-head"><div><h2>{TAB_LABELS[tab]}</h2><p className="muted small">{tab === 'schedule' ? '显示本周排课；取消后仍保留记录。' : '维护教学基础资料，已关联课堂的历史记录保留。'}</p></div></div>
@@ -276,7 +274,7 @@ function AcademicEditor({ editor, data, saving, error, onCancel, onSubmit }: { e
     {editor.kind === 'term' ? <><label className="account-field"><span>学期编码</span><input name="code" defaultValue={editor.item?.code} required/></label><label className="account-field"><span>学期名称</span><input name="name" defaultValue={editor.item?.name} required/></label><label className="account-field"><span>开始日期</span><input name="start_date" type="date" defaultValue={editor.item?.start_date} required/></label><label className="account-field"><span>结束日期</span><input name="end_date" type="date" defaultValue={editor.item?.end_date} required/></label></> : null}
     {editor.kind === 'classroom' ? <><label className="account-field"><span>教室编码</span><input name="code" defaultValue={editor.item?.code} required/></label><label className="account-field"><span>教室名称</span><input name="name" defaultValue={editor.item?.name} required/></label><label className="account-field"><span>容量</span><input name="capacity" type="number" min="0" step="1" defaultValue={editor.item?.capacity ?? ''}/></label></> : null}
     {error ? <p className="load-note load-note-error">{error}</p> : null}
-    {editor.kind === 'offering' ? <p className="notice-strip">候选账号仅显示启用账号；是否具备教师角色及学院范围由服务端核验。已有课堂的开课归属不能更改。</p> : null}
+    
     <div className="form-actions"><button className="btn btn-secondary" type="button" disabled={saving} onClick={onCancel}>取消</button><button className="btn btn-primary" disabled={saving}>{saving ? '保存中…' : '保存'}</button></div>
   </form></Card>;
 }

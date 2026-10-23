@@ -1,17 +1,16 @@
-import { ErrorMessage } from '../components/ui';
-import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { CreateRun, Revision, Run, Segment, Session } from '../types';
-import { createRun } from '../data/actions';
+import { useEffect,useRef,useState } from 'react';
 import { useAuth } from '../auth';
+import { Card,ErrorMessage,IdChip } from '../components/ui';
+import { createRun } from '../data/actions';
+import { describeError } from '../data/errors';
+import { createRevision,listRevisions } from '../data/m3Api';
 import { collectPages } from '../data/pagination';
+import { featureProblem,getServiceCapabilities,useServiceCapabilities } from '../data/serviceCapabilities';
+import { formatDateTime,formatTimestamp } from '../format';
+import type { CreateRun,Revision,Run,Segment,Session } from '../types';
 import { pendingIntent } from './pendingIntent';
 import { intentSignature } from './sessionActions';
-import { createRevision, listRevisions } from '../data/m3Api';
-import { describeError } from '../data/errors';
-import { Card, IdChip } from '../components/ui';
-import { formatDateTime, formatTimestamp } from '../format';
-import { getServiceCapabilities, useServiceCapabilities, featureProblem } from '../data/serviceCapabilities';
 
 function cloneSegments(segments: Segment[]): Segment[] { return segments.map((item) => ({ ...item })); }
 async function revisionHistory(sessionId: string, mediaAssetId: string): Promise<Revision[]> {
@@ -88,7 +87,7 @@ export function TranscriptRevisionPanel({ session, initial, onChange, onRunCreat
   }
 
   return (
-    <Card title="转写修订" subtitle="每次保存都创建新快照；并发版本冲突时不会覆盖别人刚保存的内容。">
+    <Card title="转写修订" >
       <p className="field-hint">{services.data ? services.data.report_generation.available ? "报告生成服务前置检查通过；重跑仍会检查本条转写和来源许可。" : featureProblem(services.data.report_generation) : "正在确认报告生成服务；未确认前暂停新建报告。"}<button type="button" className="text-button" onClick={services.reload}>重新检查报告服务</button></p>
       <div className="revision-toolbar">
         <label className="account-field"><span>查看版本</span><select value={current.id} disabled={busy} onChange={(event) => {
