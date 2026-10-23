@@ -1,19 +1,5 @@
+"""Assemble internal visual observations for the formal Worker adapter."""
 from collections import Counter
-import csv
-import html
-import io
-import base64
-from pathlib import Path
-
-DISPLAY_NAMES={'hand_raise':'举手','head_down':'低头','leave_seat':'离座','possible_phone':'疑似持手机',
-               'entry':'进入教室','exit':'离开教室','late_entry':'可能迟到','early_exit':'可能早退'}
-DISPLAY_STATUS={'candidate_found':'发现动作，待核对','no_candidate':'可判断的画面中未发现',
-                'insufficient':'画面或条件不足','not_enabled':'未开启'}
-
-
-def clock(ms):
-    seconds = ms / 1000
-    return f"{int(seconds // 60):02d}:{seconds % 60:06.3f}"
 
 
 def build_report(job_id, title, metadata, config, points, events, snapshots, stats, provenance, coverage, elapsed, limitations):
@@ -67,7 +53,7 @@ def build_report(job_id, title, metadata, config, points, events, snapshots, sta
             name, reason = unsupported[code]
             dimensions.append({"dimension_code": code, "name": name, "status": "insufficient", "summary": "证据不足", "limitation": reason})
     return {
-        "schema_version": "vision-lab-0.4", "job_id": job_id, "title": title,
+        "schema_version": "cangjie-vision-internal-v1", "job_id": job_id, "title": title,
         "report_type": "local_visual_observation", "is_team_contract_result": False,
         "metadata": metadata, "configuration": config.model_dump(), "provenance": provenance,
         "coverage": coverage, "statistics": {**stats, "sample_count": len(points), "valid_count_samples": len(known),
@@ -90,138 +76,3 @@ def build_report(job_id, title, metadata, config, points, events, snapshots, sta
             "需要完整六维教学报告时，再接入语音转写、课程信息和人工复核后的视觉证据。",
         ],
     }
-
-
-def markdown_report(report):
-    s, c = report["statistics"], report["coverage"]
-    title = report["title"].replace("\n", " ")
-    lines = [f"# {title}", "", "本报告记录系统从录像中发现的动作，需要结合原画面核对。看不清的部分不会算作没有动作。", "",
-             f"- 录像时长：{clock(report['metadata']['duration_ms'])}",
-             f"- 实际分析范围：{clock(c['start_ms'])}—{clock(c['end_ms'])}",
-             f"- 时间范围覆盖：{c['percent_of_video']}%；每隔 {1/report['configuration']['sampling_fps']:g} 秒检查一次画面，不代表每个人的动作都看得清。",
-             f"- 检查了 {s['sample_count']} 张画面，其中 {s['valid_count_samples']} 张能统计可见人数。",
-             f"- 平均可见人数：{s['average_visible_count']}；范围：{s['min_visible_count']}—{s['max_visible_count']}",
-             f"- 计数方法：{report['provenance'].get('counting_method','person')}；逐帧举手峰值：{s.get('max_simultaneous_hand_raise','未知')}；出现举手的采样帧：{s.get('hand_positive_sample_frames','未知')}",
-             f"- 分析耗时：{s['elapsed_seconds']} 秒；执行器：{report['provenance'].get('provider','CPUExecutionProvider')}", "",
-             "## 动作观察结果", "", "| 项目 | 观察结果 | 持续动作段数 | 方法或限制 |", "| --- | --- | --- | --- |"]
-    for cap in report["capabilities"]:
-        lines.append(f"| {DISPLAY_NAMES.get(cap['event_type'],cap['event_type'])} | {DISPLAY_STATUS.get(cap['status'],cap['status'])} | {cap['candidate_count'] if cap['candidate_count'] is not None else '暂时无法判断'} | {cap['reason'] or cap['method']} |")
-    if 'hand_evaluable_ratio' in s:
-        lines += ["", "## 发现举手的画面", "",
-                  f"能判断是否举手的部分占 {s['hand_evaluable_ratio']:.1%}。这里只统计看得清的动作；遮挡、远处的人可能遗漏，摸脸也可能混淆。一个人一直举手会出现在多张画面里，所以画面张数不等于举手次数。", "",
-                  "| 录像位置 | 发现举手人数 | 能判断是否举手的人数 | 可见人数 |", "| --- | --- | --- | --- |"]
-        positive=[p for p in report['counts'] if (p.get('hand_raise_count') or 0)>0]
-        for point in positive[:150]:
-            lines.append(f"| {clock(point['timestamp_ms'])} | {point['hand_raise_count']} | {point.get('hand_evaluable_count','未知')} | {point['visible_count']} |")
-        if not positive:
-            lines.append("| 能判断的画面中未发现举手，仍可能有遗漏 | — | — | — |")
-        if len(positive)>150:
-            lines.append("报告展示前 150 个正例采样时刻，完整逐帧数据见 CSV / JSON。")
-    lines += ["", "## 发现动作的时间段", ""]
-    for event in report["events"]:
-        review={'unreviewed':'待人工核对','accepted':'人工已确认','rejected':'人工已排除'}.get(event['review_status'],event['review_status'])
-        lines.append(f"- {DISPLAY_NAMES.get(event['event_type'],event['label'])}：{clock(event['start_ms'])}—{clock(event['end_ms'])}，人物编号 {event['track_id']}，{review}。")
-    if not report["events"]:
-        lines.append("本次未产生可报告候选；需结合上方能力状态判断，不能据此认定没有行为。")
-    lines += [""]
-    if report.get('layout'):
-        layout=report['layout']
-        lines += ["## 自动区域观察", "", f"座位区域 {len(layout['seats'])} 个；入口状态：{layout['entrance_status']}。",layout['seat_note'],layout['entrance_note'],""]
-    if report.get('persons'):
-        lines += ["## 按人物查看", "", "编号用于在本次录像中查找人物，不代表姓名。遮挡或镜头切换后，同一个人的编号可能改变。画面张数不等于动作次数。", "",
-                  "| 人物编号 | 出现时间 | 检查画面数 | 发现举手的画面数 | 发现低头的画面数 |", "| --- | --- | --- | --- | --- |"]
-        for person in report['persons']:
-            lines.append(f"| {person['track_id']} | {clock(person['first_ms'])}–{clock(person['last_ms'])} | {person['sample_count']} | {person['summary']['hand_raise']} | {person['summary']['head_down']} |")
-    lines += ["", "## 逐帧复核记录", "", "模型原始判断与复核结果分别保留；单帧复核不代表确认整段持续事件，未复核内容仍为自动分析草稿。", "",
-              "| 编号 | 时间 | 行为 | 模型原值 | 复核结论 | 依据 | 复核者 |", "| --- | --- | --- | --- | --- | --- | --- |"]
-    for person in report.get('persons',[]):
-        for o in person['observations']:
-            for kind,record in o.get('reviews',{}).items():
-                def verdict(value):return '检出' if value is True else '未见' if value is False else '无法判断'
-                clean=lambda v:str(v).replace('|','／').replace('\n',' ')
-                lines.append(f"| {person['track_id']} | {clock(o['timestamp_ms'])} | {kind} | {verdict(o['behaviors'][kind])} | {verdict(record['value'])} | {clean(record['reason'])} | {clean(record['reviewer'])} |")
-    lines += ["", "## 六维证据完整性", ""]
-    for dim in report["dimensions"]:
-        lines.append(f"- {dim['name']}：{dim['summary']} {dim['limitation']}")
-    lines += ["", "## 分析限制", ""] + [f"- {v}" for v in report["limitations"]]
-    lines += ["", "## 下一步建议", ""] + [f"- {v}" for v in report["recommendations"]]
-    lines += ["", "## 模型与验收状态", "", report["quality_validation"]["reason"], ""]
-    for name, item in report["provenance"]["weights"].items():
-        lines.append(f"- {name}：SHA-256 `{item['sha256']}`；来源 {item['url']}")
-    return "\n".join(lines)
-
-
-def csv_text(value):
-    # CSV quoting does not stop spreadsheet formula interpretation. Preserve JSON originals.
-    if isinstance(value, str) and (
-        value.startswith(('\t', '\r', '\n')) or value.lstrip().startswith(('=', '+', '-', '@'))
-    ):
-        return "'" + value
-    return value
-
-
-def csv_counts(report):
-    buffer = io.StringIO(newline="")
-    writer = csv.writer(buffer)
-    keys = ["timestamp_ms", "frame_index", "visible_count", "brightness", "sharpness", "valid", "pose_evaluated", "hand_raise_count", "hand_evaluable_count", "head_down_count", "head_evaluable_count"]
-    writer.writerow(keys)
-    for row in report["counts"]:
-        writer.writerow([csv_text(row.get(k)) for k in keys])
-    return "\ufeff" + buffer.getvalue()
-
-
-def csv_persons(report):
-    buffer=io.StringIO(newline='');writer=csv.writer(buffer)
-    keys=['track_id','timestamp_ms','frame_index','seat_id','hand_raise','head_down','leave_seat','possible_phone','pitch','yaw','roll','pose_available']
-    review_keys=[f'{kind}_{field}' for kind in keys[4:8] for field in ('review_value','review_reason','reviewer','reviewed_at')]
-    writer.writerow(keys+review_keys+['original_file','annotated_file','detection_confidence'])
-    for person in report.get('persons',[]):
-        for o in person['observations']:
-            row = [person['track_id'],o['timestamp_ms'],o['frame_index'],o['seat_id'],
-                             *['unknown' if o['behaviors'][k] is None else int(o['behaviors'][k]) for k in keys[4:8]],
-                             *[(o.get('head_angles') or {}).get(k) for k in ('pitch','yaw','roll')],o['pose_available'],
-                             *[('' if k not in o.get('reviews',{}) else ('unknown' if o['reviews'][k]['value'] is None else int(o['reviews'][k]['value']))) if field=='value' else o.get('reviews',{}).get(k,{}).get(field,'')
-                               for k in keys[4:8] for field in ('value','reason','reviewer','reviewed_at')],
-                             *[o.get(k,'') for k in ('original_file','annotated_file','detection_confidence')]]
-            writer.writerow([csv_text(value) for value in row])
-    return '\ufeff'+buffer.getvalue()
-
-
-def html_report(report, directory):
-    esc = html.escape
-    body = []
-    table = False
-    for line in markdown_report(report).splitlines():
-        if line.startswith('|'):
-            if line.startswith('| ---'): continue
-            cells = [esc(c.strip()) for c in line.strip('|').split('|')]
-            if not table:
-                body.append('<table><thead><tr>'+''.join(f'<th>{c}</th>' for c in cells)+'</tr></thead><tbody>')
-                table = True
-            else:
-                body.append('<tr>'+''.join(f'<td>{c}</td>' for c in cells)+'</tr>')
-            continue
-        if table:
-            body.append('</tbody></table>')
-            table = False
-        if line.startswith("# "): body.append(f"<h1>{esc(line[2:])}</h1>")
-        elif line.startswith("## "): body.append(f"<h2>{esc(line[3:])}</h2>")
-        elif line: body.append(f"<p>{esc(line)}</p>")
-    if table: body.append('</tbody></table>')
-    reviewed_frames={o['timestamp_ms']:o for p in report.get('persons',[]) for o in p['observations'] if o.get('reviews')}
-    if reviewed_frames:
-        body.append('<h2>逐帧复核原画面（最多 30 张）</h2>')
-        for timestamp,o in list(sorted(reviewed_frames.items()))[:30]:
-            filename=o.get('original_file')
-            if not filename:continue
-            path=directory/'evidence'/filename
-            if path.is_file():
-                encoded=base64.b64encode(path.read_bytes()).decode('ascii')
-                body.append(f"<figure><img src='data:image/jpeg;base64,{encoded}'/><figcaption>复核对应原画面 {clock(timestamp)}</figcaption></figure>")
-    body.append("<h2>证据画面（最多 30 张，标注图供辅助复核）</h2>")
-    for snapshot in report["snapshots"][:30]:
-        path = directory / "evidence" / snapshot["annotated_file"]
-        if path.is_file():
-            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-            body.append(f"<figure><img src='data:image/jpeg;base64,{encoded}'/><figcaption>原录像时间 {clock(snapshot['timestamp_ms'])}</figcaption></figure>")
-    return "<!doctype html><html lang='zh-CN'><meta charset='utf-8'><title>课堂视觉报告</title><style>body{max-width:960px;margin:40px auto;padding:0 24px;font:16px/1.8 system-ui;color:#173044}h1,h2{color:#0f766e}p,td{overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #dfe8e9;padding:8px;text-align:left}th{background:#e6f4f0}figure{display:inline-block;width:45%;vertical-align:top;margin:12px}img{width:100%;border-radius:8px}@media print{figure{break-inside:avoid}}</style>" + "".join(body) + "</html>"

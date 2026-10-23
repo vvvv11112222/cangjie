@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 ROOT = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.get("VISION_DATA_ROOT", ROOT.parent / "var" / "vision"))
 MODELS = Path(os.environ.get("VISION_MODEL_ROOT", ROOT.parent / "var" / "vision-models"))
-VERSION = "vision-lab-0.4.3"
+VERSION = "cangjie-vision-core-1.0.0"
 MAX_UPLOAD = 4 * 1024**3
 
 

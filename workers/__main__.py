@@ -9,25 +9,15 @@ from workers.vision_core.media import digest_file, ffmpeg_executable
 
 
 def main():
-    parser = argparse.ArgumentParser(description="团队视频 Worker 与本地视觉验收入口")
+    parser = argparse.ArgumentParser(description="观课音视频处理 Worker")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("runtime-info", help="查看处理器版本和实际 FFmpeg 摘要")
-    run = commands.add_parser("run", help="领取 Go 正式任务（需要内部接口已实现）")
+    run = commands.add_parser("run", help="领取后端音视频处理任务")
     run.add_argument("--once", action="store_true")
     commands.add_parser("cleanup-once", help="只领取一项后端删除清理并回报，需要显式启用")
     models = commands.add_parser("prepare-models", help="从已下载目录复制并校验固定模型")
     models.add_argument("--source", type=Path, required=True)
     models.add_argument("--output", type=Path, default=Path("var/vision-models"))
-    local = commands.add_parser("analyze-local", help="本地 P1 行为分析，输出视觉观察报告")
-    local.add_argument("video", type=Path)
-    local.add_argument("--output", type=Path, required=True)
-    local.add_argument("--config", type=Path, help="AnalysisConfig JSON；未提供时全视频、2 FPS")
-    handoff = commands.add_parser("export-visual", help="将已有本地报告导出为联合接入包，不重新推理")
-    handoff.add_argument("report", type=Path)
-    handoff.add_argument("--output", type=Path, required=True)
-    handoff.add_argument("--without-images", action="store_true", help="不复制图片，保留证据缺失说明")
-    for key in ("session-id", "run-id", "media-asset-id"):
-        handoff.add_argument("--" + key)
     args = parser.parse_args()
     if args.command == "runtime-info":
         from workers.video.visual import model_identity
@@ -50,22 +40,6 @@ def main():
                 shutil.copyfile(args.source / name, target)
         (args.output / "manifest.json").write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"已准备 {len(registry)} 个固定模型：{args.output.resolve()}")
-    elif args.command == "analyze-local":
-        from workers.video.local import analyze_local
-        config = json.loads(args.config.read_text(encoding="utf-8")) if args.config else None
-        def progress(**values):
-            if values.get("sample_count", 0) % 20 == 0:
-                print(values.get("message", ""), flush=True)
-        report = analyze_local(args.video, args.output, config, progress=progress)
-        print(json.dumps({"output": str(args.output.resolve()), "statistics": report["statistics"]}, ensure_ascii=False, indent=2))
-    elif args.command == "export-visual":
-        from workers.video.handoff import export_handoff
-        binding = {key: getattr(args, key) for key in ('session_id', 'run_id', 'media_asset_id')}
-        if any(binding.values()) and not all(binding.values()):
-            parser.error('课堂、批次、媒体三个编号必须成套提供')
-        summary = export_handoff(args.report, args.output, binding=binding if all(binding.values()) else None,
-                                 include_images=not args.without_images)
-        print(json.dumps(summary, ensure_ascii=False, indent=2))
     elif args.command in ("run", "cleanup-once"):
         from workers.common.config import Settings
         from workers.common.runner import Runner
