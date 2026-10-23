@@ -9,10 +9,10 @@
  * 所以 <video> 的秒数 × 1000 就是原录像毫秒，跳转时不做偏移换算。
  */
 
-import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { PLAYBACK_SPEEDS, formatSpeed, msToSeconds, secondsToMs } from '../data/playback';
+import { useEffect,useRef,useState } from 'react';
 import type { PlaybackSpeed } from '../data/playback';
+import { PLAYBACK_SPEEDS,formatSpeed,msToSeconds,secondsToMs } from '../data/playback';
 import { formatTimestamp } from '../format';
 import { IconAlert } from './icons';
 
@@ -201,12 +201,6 @@ function MediaPlayerInstance({
    * 它只作为视频下面的一行说明，不再压在画面上：覆盖层会挡住原生进度条与播放键，
    * 这也是"当前片段没有字幕挡住了进度条和暂停开关"的直接修复。
    */
-  const hasSegmentHere = captions.some(
-    (segment) => positionMs >= segment.start_ms && positionMs < segment.end_ms,
-  );
-  const captionNote =
-    showCaptions && captions.length > 0 && !hasSegmentHere ? '当前位置没有片段字幕' : null;
-
   return (
     <div className="player">
       <video
@@ -276,13 +270,7 @@ function MediaPlayerInstance({
         字幕状态单独一行，永远占位（避免出现/消失时控件跳动）：
         命中片段时说明字幕位置，没命中时说清楚"这一段没有字幕"。
       */}
-      <p className="load-note player-caption-note">
-        {captionNote ?? '字幕由浏览器原生字幕轨显示在播放控件上方（画中画字幕取决于浏览器支持）。'}
-      </p>
-      <p className="load-note">
-        播放器聚焦时按 ← / → 可前后 5 秒；倍速只影响播放速度，不改变时间轴与原录像时间的对应关系。
-      </p>
-      {failed ? (
+                  {failed ? (
         <div>
         <p className="notice-strip">
           <IconAlert size={14} aria-hidden="true" />

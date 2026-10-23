@@ -179,7 +179,7 @@ describe('详情页动作状态与会话绑定（评审意见 N01）', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(container.textContent).toContain('手机发布音视频，电脑实时观看');
+    expect(container.textContent).not.toContain('手机发布音视频，电脑实时观看');
     expect(buttonWithExactText('创建实时采集')).not.toBeNull();
     expect(container.textContent).toContain('没有已核验且允许回放的来源');
     await act(async () => buttonWithExactText('视觉观察')!.click());

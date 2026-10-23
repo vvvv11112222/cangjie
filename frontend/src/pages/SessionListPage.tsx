@@ -1,32 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
-import type { ReactElement } from 'react';
-import type { SessionTaskView } from '../data/viewModel';
-import { useSessionTasks } from '../data/hooks';
-import { formatDateTime, sessionActionLabel, sessionStatusBadge, shortId } from '../format';
+import type { FormEvent,ReactElement } from 'react';
+import { useEffect,useMemo,useState } from 'react';
+import { IconAlert,IconInfo,IconPlay,IconPlus,IconRefresh,IconUpload } from '../components/icons';
 import {
-  BadgeTag,
-  Card,
-  DataSourceNote,
-  DisclosureList,
-  EmptyState,
-  LoadControls,
-  LoadStateNote,
-  Pill,
-  TechDetails,
+BadgeTag,
+Card,
+EmptyState,
+LoadControls,
+LoadStateNote,
+Pill
 } from '../components/ui';
-import { IconAlert, IconInfo, IconPlay, IconPlus, IconRefresh, IconUpload } from '../components/icons';
+import type { ClassGroup,Course,Offering } from '../data/academicApi';
+import { listClassGroups,listCourses,listOfferings,offeringLabel } from '../data/academicApi';
 import { describeError } from '../data/errors';
-import { isApiMode } from '../data/sources';
-import { listClassGroups, listCourses, listOfferings, offeringLabel } from '../data/academicApi';
-import type { ClassGroup, Course, Offering } from '../data/academicApi';
-import { createSession, uploadSessionMedia } from '../data/sessionOps';
-import { UploadSourcePicker } from './UploadSourcePicker';
+import { useSessionTasks } from '../data/hooks';
 import { isUuid } from '../data/ids';
-import { sessionSearchFromHash } from '../data/route';
-import { routeQuery as readRouteQuery, sessionDetailHash } from '../data/route';
-import { FirstUseGuide } from '../components/FirstUseGuide';
 import { collectPages } from '../data/pagination';
+import { routeQuery as readRouteQuery,sessionDetailHash,sessionSearchFromHash } from '../data/route';
+import { createSession,uploadSessionMedia } from '../data/sessionOps';
+import { isApiMode } from '../data/sources';
+import type { SessionTaskView } from '../data/viewModel';
+import { formatDateTime,sessionStatusBadge } from '../format';
+import { UploadSourcePicker } from './UploadSourcePicker';
 
 /**
  * 课堂档案（《系统草图.html》的 CLASSROOM ARCHIVE）。
@@ -74,15 +68,6 @@ export function bucketOf(task: SessionTaskView): Exclude<Filter, 'all'> | 'other
   return session.primary_media_asset_id === null && run === null ? 'empty' : 'other';
 }
 
-function Reference({ label, id }: { label: string; id: string | null }): ReactElement {
-  return (
-    <span className="reference">
-      <span className="reference-label">{label}</span>
-      {id === null ? <span className="muted">null</span> : <span className="mono">{shortId(id)}</span>}
-    </span>
-  );
-}
-
 export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskView[] } = {}): ReactElement {
   const loaded = useSessionTasks(injectedTasks === undefined);
   const tasks = injectedTasks ?? loaded.data.tasks;
@@ -92,6 +77,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     ? sessionSearchFromHash(window.location.hash)
     : '';
   const [query, setQuery] = useState(routeQuery);
+  const [dataScope, setDataScope] = useState<'all' | 'real' | 'demo'>('all');
   const [compose, setCompose] = useState<Compose>(() => readRouteQuery().get('start') === 'upload' ? 'upload' : null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const api = isApiMode();
@@ -103,7 +89,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const truncated = injectedTasks === undefined && loaded.data.nextCursor !== null;
   // 数据没准备好（接口模式加载中/失败）时不渲染明细：避免用空数组假装"没有课堂"。
   const ready = injectedTasks !== undefined || loaded.hasData;
-  const showSearchScope = ready && query.trim() !== '' && truncated;
+  const showSearchScope = ready && (query.trim() !== '' || filter !== 'all' || dataScope !== 'all') && truncated;
 
   // 筛选与搜索都在已加载的这一页上做：列表接口只有 cursor/limit，没有筛选参数。
   const shown = useMemo(() => {
@@ -111,29 +97,28 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
     return tasks.filter(
       (task) =>
         (filter === 'all' || bucketOf(task) === filter) &&
+        (dataScope === 'all' || task.session.is_demo === (dataScope === 'demo')) &&
         (keyword === '' || task.session.title.toLowerCase().includes(keyword)),
     );
-  }, [tasks, filter, query]);
+  }, [tasks, filter, query, dataScope]);
 
   const head = (
     <header className="page-head">
       <div>
-        <p className="eyebrow">CLASSROOM ARCHIVE</p>
+
         <h1>课堂档案</h1>
-        <p className="muted">
-          关联课程与录像，保留每一次教学观察的来处。
-        </p>
+
       </div>
       {/*
         草图的页头操作：学院教务只有"创建课堂"，其它角色还能"上传课堂录像"。
         固定样例模式没有后端，这两个写操作按钮不渲染（避免点了必然失败）。
       */}
       <div className="heading-actions">
-          <button type="button" className="btn btn-secondary" disabled={!api} title={!api ? '接口模式下可创建课堂' : undefined} onClick={() => setCompose('create')}>
+          <button type="button" className="btn btn-secondary" disabled={!api} title={!api ? '接口模式下可创建课堂' : undefined} data-guide="create-classroom" onClick={() => setCompose('create')}>
             <IconPlus size={15} />
             创建课堂
           </button>
-          <button type="button" className="btn btn-primary" disabled={!api} title={!api ? '接口模式下可上传课堂录像' : undefined} onClick={() => { setUploadNotice(null); setCompose('upload'); }}>
+          <button type="button" className="btn btn-primary" disabled={!api} title={!api ? '接口模式下可上传课堂录像' : undefined} data-guide="upload-recording" onClick={() => { setUploadNotice(null); setCompose('upload'); }}>
             <IconUpload size={15} />
             上传课堂录像
           </button>
@@ -143,9 +128,10 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
 
   const notes = (
     <>
-      <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
+
       <LoadStateNote status={loaded.status} error={loaded.error} />
-      {!showSearchScope ? <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} /> : null}
+      {loaded.status!=='ready'&&<LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore}/>}
+
     </>
   );
 
@@ -163,7 +149,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {notes}
       {head}
 
-      <FirstUseGuide sessions={tasks.map(task=>task.session)} onUpload={()=>{setUploadNotice(null);setCompose('upload');}} />
+
 
       {uploadNotice && <p className="notice-strip" role="status">{uploadNotice}</p>}
       {compose === 'create' ? (
@@ -205,11 +191,12 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
             ))}
           </div>
           <div className="toolbar-actions">
+            <label className="account-field"><span className="sr-only">课堂类型</span><select aria-label="课堂类型" value={dataScope} onChange={event=>setDataScope(event.target.value as typeof dataScope)}><option value="all">全部记录</option><option value="real">真实课堂</option><option value="demo">仅演示课堂</option></select></label>
             <input
               className="input filter-search"
               type="search"
               aria-label="筛选课堂"
-              placeholder="搜索课程、教师、班级"
+              placeholder="搜索课堂标题"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -218,6 +205,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setFilter('all');
+                setDataScope('all');
                 setQuery('');
                 if (injectedTasks === undefined && routeQuery !== '') {
                   window.location.hash = '#/sessions';
@@ -233,14 +221,14 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {showSearchScope ? (
         <div className="notice-strip search-scope-note">
           <IconInfo size={14} />
-          <span>当前结果只搜索已加载的课堂，后续页面可能还有匹配项。</span>
+          <span>{query.trim() ? '当前结果只搜索已加载的课堂，后续页面可能还有匹配项。' : '当前仅筛选已加载的课堂，后续页面可能还有匹配项。'}</span>
           <button type="button" className="btn btn-secondary btn-sm" disabled={loaded.actionLabel === null} onClick={loaded.loadMore}>
             {loaded.actionLabel ?? '正在读取…'}
           </button>
         </div>
       ) : null}
 
-      <section className="card session-archive-card">
+      <section className="card session-archive-card" data-guide="classroom-list">
         {shown.length === 0 ? (
           <p className="empty">
             {truncated
@@ -273,13 +261,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                         <strong>{session.title}</strong>
                         {session.is_demo ? <Pill label="示范数据" tone="blue" /> : null}
                       </div>
-                      <div className="cell-meta mono">
-                        <span title={`session.id = ${session.id}`}>课堂编号 {shortId(session.id)}</span>
-                        <span title={`session.offering_id = ${session.offering_id}`}>
-                          开课 {shortId(session.offering_id)}
-                        </span>
-                      </div>
-                    </td>
+                                          </td>
                     <td className="muted">—</td>
                     <td className="muted">—</td>
                     <td className="mono nowrap">
@@ -288,9 +270,6 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
                     </td>
                     <td>
                       <BadgeTag badge={sessionStatusBadge(session.status)} />
-                      <div className="muted tiny" title="session.transcript_lock_version">
-                        转写版本 v{session.transcript_lock_version}
-                      </div>
                     </td>
                     <td>
                       <a className="cell-link" href={`#/sessions/${session.id}`}>
@@ -308,43 +287,17 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
           </div>
         )}
 
-        <div className="table-footer">
+        <div className="table-footer">{!showSearchScope ? <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} /> : null}
           <span>
             共 {shown.length} 条记录
-            {shown.length === tasks.length ? '' : `（已筛选，本页共 ${tasks.length} 条）`}，已按当前角色过滤
+            {shown.length === tasks.length ? '' : `（已筛选，本页共 ${tasks.length} 条）`}
           </span>
-          <span className="badge badge-gray">{origin.kind === 'api' ? '接口课堂档案' : '固定样例档案'}</span>
+          {origin.kind !== 'api' && <span className="badge badge-gray">演示数据</span>}
         </div>
       </section>
 
       {/* 样例数据核对是给开发看的口径说明，收进折叠区，不占业务视线（UI约定第 4 节）。 */}
-      {tasks.map(({ session, disclosures }) =>
-        disclosures.length === 0 ? null : (
-          <TechDetails key={`notes-${session.id}`} summary={`样例数据核对：${session.title}`}>
-            <DisclosureList items={disclosures} />
-          </TechDetails>
-        ),
-      )}
-      {tasks.map(({ session }) => (
-        <TechDetails key={`refs-${session.id}`} summary={`技术引用：${session.title}`}>
-          <div className="reference-list">
-            <Reference label="主媒体" id={session.primary_media_asset_id} />
-            <Reference label="最新批次" id={session.latest_run_id} />
-            <Reference label="当前报告" id={session.current_report_id} />
           </div>
-          <div className="pill-row">
-            {session.allowed_actions.length === 0
-              ? <span className="muted tiny">服务端未授予操作</span>
-              : session.allowed_actions.map((action) => (
-                  <Pill key={action} label={sessionActionLabel(action)} />
-                ))}
-          </div>
-          <p className="muted tiny">
-            授课教师和班级展示名不在 Session DTO 中；页面不根据编号猜测名称。
-          </p>
-        </TechDetails>
-      ))}
-    </div>
   );
 }
 
@@ -438,9 +391,8 @@ function CreateSessionForm({
   }
 
   return (
-    <Card title="创建课堂" subtitle="课程是教学科目，开课关联学期、教师和班级；这里创建其中某一次上课的记录。">
-      <p className="field-hint">例如：“操作系统 · 秋季学期 · 李老师 · 软件2301班”是一条开课记录；周一上午的一次上课在这里创建。<a href="#/academic?tab=offerings">查看或维护开课实例</a>（由学院教务或系统管理员维护）。TEAM-WEB-DEV 是本机试用资料，正式使用时请先建立实际开课记录。</p>
-      {offerings === null ? (
+    <Card title="创建课堂" >
+            {offerings === null ? (
         <p className="load-note">正在读取开课实例……</p>
       ) : offerings.length === 0 ? (
         error ? <div role="alert"><p>开课资料读取失败：{error}</p><button type="button" className="btn btn-secondary" onClick={() => setLoadRevision(value => value + 1)}>重新读取开课资料</button></div>
@@ -471,7 +423,7 @@ function CreateSessionForm({
           </label>
           <label className="check-row">
             <input type="checkbox" checked={isDemo} onChange={(event) => setIsDemo(event.target.checked)} />
-            标记为演示课堂（与真实教学数据区分）
+            标记为演示课堂
           </label>
           <div className="directory-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
@@ -536,7 +488,7 @@ function UploadMediaForm({
   }
 
   return (
-    <Card title="上传课堂录像" subtitle="选择课堂与文件 → 选择或登记来源 → 上传 → 在课堂详情选择分析方式。上传本身不会启动识别。">
+    <Card title="上传课堂录像" >
       {uploadable.length === 0 ? (
         <EmptyState text="当前没有可上传的课堂。先点击“创建课堂”；已有课堂仍未显示时，请联系学院教务或系统管理员检查任课关联与授权范围。" />
       ) : (
@@ -560,7 +512,7 @@ function UploadMediaForm({
               required
             />
           </label>
-          {file && <p className="field-hint">已选择：{file.name}。下面登记或核验来源时会保留该文件。</p>}
+          {file && <p className="field-hint">{file.name}</p>}
           <UploadSourcePicker key={sessionId} sessionId={sessionId} value={sourceRecordId} onChange={setSourceRecordId} manualFallback={false} disabled={busy} />
           <div className="directory-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>

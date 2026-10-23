@@ -1,20 +1,11 @@
-import { useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { DimensionCode, Evidence, Report } from '../types';
-import { BadgeTag, TechDetails } from '../components/ui';
+import { useId,useRef,useState } from 'react';
 import { MediaPlayer } from '../components/MediaPlayer';
-import { useMediaDetail, usePlaybackProbe } from '../data/hooks';
+import { BadgeTag } from '../components/ui';
+import { useMediaDetail,usePlaybackProbe } from '../data/hooks';
 import { sameId } from '../data/ids';
-import { coverageStatusBadge, dimensionLabel, formatIntervals, formatTimestamp, observationTypeBadge, reviewStatusBadge } from '../format';
-
-const dimensionHelp: Record<DimensionCode, string> = {
-  content: '看核心问题、知识联系和例子如何组织。',
-  pace: '看教师按什么思路推进，以及可验证的活动安排。',
-  thinking: '看提问是否引导学生解释、比较和推理。',
-  expression: '看术语、例子和衔接是否清楚易懂。',
-  management: '看任务指令、讨论规则和反馈安排。',
-  technology: '看工具和演示是否服务于教学目标。',
-};
+import { coverageStatusBadge,dimensionLabel,formatIntervals,formatTimestamp,observationTypeBadge,reviewStatusBadge } from '../format';
+import type { DimensionCode,Evidence,Report } from '../types';
 
 export function reportLimitation(value: string): string {
   if (value.startsWith('MODEL_INPUT_TRUNCATED:')) return '部分课堂文字因输入额度限制被截短，结论只针对实际送入模型的文字';
@@ -27,13 +18,14 @@ export function CitedEvidence({ ids, evidenceById, onSelect }: {
   ids: string[]; evidenceById: Map<string, Evidence>; onSelect(evidence: Evidence): void;
 }): ReactElement {
   if (ids.length === 0) return <span className="muted">没有可引用的课堂记录</span>;
-  return <span className="report-citations">{ids.map((id, index) => {
+  const links=ids.map((id, index) => {
     const evidence = evidenceById.get(id);
     if (evidence === undefined) return <span key={id} className="muted">第 {index + 1} 处依据暂未加载</span>;
     return <button type="button" key={id} className="btn btn-secondary report-citation" onClick={() => onSelect(evidence)}>
       查看依据 · {formatTimestamp(evidence.start_ms)}–{formatTimestamp(evidence.end_ms)} · {Array.from(evidence.description).slice(0, 80).join('') || '课堂记录'}{Array.from(evidence.description).length > 80 ? '…' : ''}
     </button>;
-  })}</span>;
+  });
+  return <div className="report-citations">{links[0]}{links.length>1 && <details><summary>其他 {links.length-1} 处依据</summary>{links.slice(1)}</details>}</div>;
 }
 
 /** Playback is requested for the evidence's own media, never the current primary media. */
@@ -65,7 +57,7 @@ export function ReportEvidence({ evidence, onClose }: { evidence: Evidence; onCl
     <p className="report-prose">{evidence.description}</p>
     {evidence.availability === 'available' ? <EvidencePlayback evidence={evidence} />
       : <p className="notice-strip">原始依据{evidence.availability === 'expired' ? '已过期' : '已移除'}，保留文字供追溯，无法回放。</p>}
-    <TechDetails><p>证据：{evidence.id}</p><p>媒体：{evidence.media_asset_id}</p><p>分析批次：{evidence.run_id}</p></TechDetails>
+
   </section>;
 }
 
@@ -79,7 +71,7 @@ export function ReportAnalysis({ report, evidenceById, onSelect }: {
   if (dimension === undefined) return <p className="empty">暂未取得六维分析。</p>;
   const observations = report.observations.filter((item) => item.dimension_code === dimension.dimension_code);
   return <div className="report-analysis">
-    {report.provenance && typeof report.provenance['included_materials'] === 'object' && report.provenance['included_materials'] !== null ? <p className="notice-strip">本报告实际采用：{Object.entries(report.provenance['included_materials'] as Record<string, unknown>).filter(([, value]) => value === true).map(([key]) => ({ academic_schedule: '课程、教师、班级及课表登记', speech: '本录像的语音文字', visual: '本录像已完成的举手、低头画面观察' }[key] ?? '')).filter(Boolean).join('；')}。未提供或未纳入的材料不作推断。</p> : null}
+    {report.provenance && typeof report.provenance['included_materials'] === 'object' && report.provenance['included_materials'] !== null ? <p className="notice-strip">采用：{Object.entries(report.provenance['included_materials'] as Record<string, unknown>).filter(([, value]) => value === true).map(([key]) => ({ academic_schedule: '教务与课表', speech: '语音转写', visual: '视觉观察' }[key] ?? '')).filter(Boolean).join('；')}</p> : null}
     <nav className="report-dimension-nav" aria-label="六维分析导航">
       <div role="tablist" aria-label="选择分析维度" aria-orientation="vertical">
         {report.dimensions.map((item, index) => <button type="button" role="tab" key={item.dimension_code}
@@ -94,15 +86,14 @@ export function ReportAnalysis({ report, evidenceById, onSelect }: {
             if (target) { setSelected(target.dimension_code); buttons.current.get(next)?.focus(); }
           }}>
           <strong>{dimensionLabel(item.dimension_code)}</strong>
-          <span>{dimensionHelp[item.dimension_code]}</span>
+
           <BadgeTag badge={coverageStatusBadge(item.coverage_status)} />
         </button>)}
       </div>
     </nav>
     <section className="report-dimension-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${dimension.dimension_code}`} tabIndex={0}>
       <h3>{dimensionLabel(dimension.dimension_code)}</h3>
-      <p className="muted">{dimensionHelp[dimension.dimension_code]}</p>
-      {dimension.coverage_status === 'observed' ? <>
+            {dimension.coverage_status === 'observed' ? <>
         <h4>{dimension.dimension_code === 'pace' ? '课堂分析 · 教师讲解思路与推进' : '课堂分析'}</h4>
         <p className="report-prose">{dimension.summary || '本维度没有摘要，请核对下方课堂观察。'}</p>
         <CitedEvidence ids={dimension.summary_evidence_ids} evidenceById={evidenceById} onSelect={onSelect} />
@@ -116,7 +107,7 @@ export function ReportAnalysis({ report, evidenceById, onSelect }: {
           <p className="report-prose">{observation.observation_text}</p>
           {observation.suggestion ? <><h4>{observation.observation_type === 'highlight' ? '延续与应用建议' : '修改方向与实施建议'}</h4><p className="report-prose">{observation.suggestion}</p></> : null}
           <CitedEvidence ids={observation.evidence_ids} evidenceById={evidenceById} onSelect={onSelect} />
-          <TechDetails><p>观察记录：{observation.id}</p></TechDetails>
+
         </li>)}
       </ul>}
     </section>

@@ -1,5 +1,6 @@
 import type { CapturePublisher, LiveCapture } from '../captureTypes';
-import { gatherICE, mediaURL, outboundCodecs, resourceURL, selectCodecs, verifyAnswer } from './whip';
+import { compatibleOffer, gatherICE, mediaURL, outboundCodecs, resourceURL, selectCodecs, verifyAnswer } from './whip';
+import { fetchWithDeadline } from './compat';
 
 export interface PhoneState {
   phase: 'idle' | 'opening' | 'connecting' | 'publishing' | 'stopped';
@@ -38,11 +39,11 @@ export function captureHint(error: unknown): string {
   const code = error instanceof CaptureError ? error.code : error instanceof Error ? error.name : '';
   const message = error instanceof Error ? error.message : '';
   const hints: Record<string, string> = {
-    NotAllowedError: '请在浏览器站点设置中允许摄像头和麦克风；若被系统限制，请到安卓权限设置中开启后重试。',
+    NotAllowedError: '请在浏览器和手机系统设置中允许摄像头与麦克风。iPhone 请使用 Safari 打开链接。',
     NotFoundError: '未找到摄像头或麦克风，请检查设备是否具备两种输入。',
     NotReadableError: '设备可能被其他应用占用，请关闭相机、通话等应用后重试。',
     OverconstrainedError: '设备无法满足采集参数，请换用支持摄像头与麦克风的浏览器。',
-    SecurityError: '请使用后端提供的可信 HTTPS 地址，并在安卓安装匹配的 CA 公共证书。',
+    SecurityError: '请使用电脑提供的 HTTPS 地址并信任采集证书。iPhone 安装证书后还须在“证书信任设置”开启完全信任。',
     UNAUTHENTICATED: '配对已过期、已消费或凭据失效。请回电脑停止当前采集，再新建采集和配对链接。',
     FORBIDDEN: '配对或采集权限不可用。请回电脑检查课堂和来源授权，停止后重新创建。',
     RESOURCE_EXPIRED: '配对或采集已过期，请回电脑重新创建。',
@@ -51,7 +52,7 @@ export function captureHint(error: unknown): string {
     SERVICE_UNAVAILABLE: '采集服务尚未就绪，请联系后端检查媒体服务和配置。',
     ICE_TIMEOUT: '网络候选收集超时。请检查同一 Wi-Fi、VPN 与媒体端口；本次不自动重连。',
     CONNECTION_TIMEOUT: '媒体连接超时，请检查 Wi-Fi 和 UDP 8189；回电脑停止后重新建采集。',
-    CODEC_UNSUPPORTED: '浏览器未能提供兼容的 H.264/Opus，请更新安卓 Chrome 或与后端确认兼容方案。',
+    CODEC_UNSUPPORTED: '浏览器未能提供兼容的 H.264/Opus，请更新安卓 Chrome 或 iPhone Safari 后重试。',
     TRACKS_MISSING: '必须同时获得一个摄像头和一个麦克风，当前不能完成音视频采集。',
     WHIP_LOCATION_MISSING: '媒体代理未返回资源地址，请后端检查 Location 响应头。',
     WHIP_LOCATION_INVALID: '媒体资源地址与发布通道不匹配，请后端检查代理的 Location 重写。',
@@ -91,11 +92,11 @@ export class PhoneCapture {
   private emit(): void { if (!this.disposed) this.change({ ...this.state }); }
 
   private async request<T>(path: string, body?: object, token?: string): Promise<T> {
-    const response = await this.env.fetch('/api/v1/' + path, {
+    const response = await fetchWithDeadline(this.env.fetch, '/api/v1/' + path, {
       method: body === undefined ? 'GET' : 'POST', credentials: 'omit', cache: 'no-store', redirect: 'error',
       headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(12000),
-    });
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }, 12000);
     const envelope = await response.json() as { data: T; error?: { code: string } };
     if (!response.ok) throw new CaptureError(envelope.error?.code ?? 'REQUEST_FAILED');
     return envelope.data;
@@ -168,14 +169,14 @@ export class PhoneCapture {
           void this.interrupted('媒体连接已断开，本次采集结束。请回电脑确认收尾后创建新的采集。');
         }
       };
-      await peer.setLocalDescription(await peer.createOffer());
+      await peer.setLocalDescription(compatibleOffer(await peer.createOffer()));
       await gatherICE(peer, this.operation.signal);
       if (generation !== this.generation) return;
-      const response = await this.env.fetch(endpoint.href, {
+      const response = await fetchWithDeadline(this.env.fetch, endpoint.href, {
         method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
         headers: { 'Content-Type': 'application/sdp', Authorization: 'Bearer ' + this.publisher.publish_token },
-        body: peer.localDescription?.sdp, signal: AbortSignal.any([this.operation.signal, AbortSignal.timeout(15000)]),
-      });
+        body: peer.localDescription?.sdp,
+      }, 15000, this.operation.signal);
       if (response.status !== 201) throw new CaptureError('WHIP_HTTP_' + response.status);
       this.resource = resourceURL(response.headers.get('Location'), endpoint);
       if (!response.headers.get('Content-Type')?.toLowerCase().includes('application/sdp')) throw new Error('WHIP_RESPONSE_INVALID');
@@ -312,10 +313,10 @@ export class PhoneCapture {
     if (!resource || !this.publisher) return;
     this.resource = null;
     try {
-      const response = await this.env.fetch(resource, {
+      const response = await fetchWithDeadline(this.env.fetch, resource, {
         method: 'DELETE', credentials: 'omit', redirect: 'error',
-        headers: { Authorization: 'Bearer ' + this.publisher.publish_token }, signal: AbortSignal.timeout(5000),
-      });
+        headers: { Authorization: 'Bearer ' + this.publisher.publish_token },
+      }, 5000);
       if (!response.ok && response.status !== 404 && response.status !== 410) throw new Error('DELETE_FAILED');
     } catch {
       this.resource = resource;

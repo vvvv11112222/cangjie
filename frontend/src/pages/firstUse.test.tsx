@@ -43,7 +43,7 @@ it('preserves entered source fields after failure and does not accept incomplete
 it('explains unconfigured audio and keeps machine details collapsed',async()=>{
  await act(async()=>root.render(<ServiceChecklist data={{...ready,audio_report:{available:false,reasons:['ASR_NOT_CONFIGURED']}}} error="合成技术详情" onReload={()=>{}}/>));
  expect(node.textContent).toContain('尚未配置语音识别');expect(node.textContent).toContain('联系系统管理员');
- expect(node.querySelector('details')?.open).toBe(false);
+ expect(node.querySelector('details')).toBeNull();
 });
 it('points a reader without review rights to the responsible role',async()=>{
  await act(async()=>root.render(<ReportProgress report={{...report,status:'draft',allowed_actions:[]}}/>));

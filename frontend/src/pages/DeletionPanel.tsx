@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
+import { useEffect,useRef,useState } from 'react';
 import { useAuth } from '../auth';
-import { newIdempotencyKey } from '../data/actions';
-import { describeError, errorCodeText, isTerminalReadError } from '../data/errors';
-import { createDeletion, getDeletion } from '../data/m4Api';
-import { deletionStatusBadge, formatDateTime } from '../format';
-import type { Deletion, Session } from '../types';
-import { BadgeTag, Card, IdChip, TechDetails } from '../components/ui';
 import { IconAlert } from '../components/icons';
-import { readDeletionState, saveDeletionState } from './deletionState';
+import { BadgeTag,Card,IdChip } from '../components/ui';
+import { newIdempotencyKey } from '../data/actions';
+import { describeError,errorCodeText,isTerminalReadError } from '../data/errors';
+import { createDeletion,getDeletion } from '../data/m4Api';
+import { deletionStatusBadge,formatDateTime } from '../format';
+import type { Deletion,Session } from '../types';
+import { readDeletionState,saveDeletionState } from './deletionState';
 
 function isTerminal(status: Deletion['status']): boolean {
   return status === 'succeeded' || status === 'failed';
@@ -101,7 +101,7 @@ export function DeletionPanel({ session, api, onSessionChanged }: {
   return (
     <Card
       title="彻底清理课堂"
-      subtitle="清理会立即撤销新读取和新处理，并等待数据库、存储及 Worker 副本全部核验。"
+
       actions={deletion === null ? undefined : <BadgeTag badge={deletionStatusBadge(deletion.status)} />}
     >
       {requestId !== null && deletion === null ? (
@@ -114,15 +114,7 @@ export function DeletionPanel({ session, api, onSessionChanged }: {
           {deletion.status === 'blocked' ? <p className="notice-strip"><IconAlert size={14} aria-hidden="true" />清理受阻，通常表示仍有文件句柄、Worker 临时副本或清理回执尚未核验；不能把它当作完成。</p> : null}
           {deletion.error_code === null ? null : <p className="load-note load-note-error">{errorCodeText(deletion.error_code)}（错误码 {deletion.error_code}）</p>}
           {deletion.completed_at === null ? null : <p className="muted small">完成时间：{formatDateTime(deletion.completed_at)}</p>}
-          <TechDetails>
-            <ul className="tech-list">
-              <li className="mono">deletion.id = {deletion.id}</li>
-              <li className="mono">deletion.session_id = {deletion.session_id}</li>
-              <li className="mono">deletion.status = {deletion.status}</li>
-              <li className="mono">deletion.error_code = {deletion.error_code ?? 'null'}</li>
-            </ul>
-          </TechDetails>
-        </div>
+                  </div>
       ) : session.status === 'deleting' && pendingIntent === null ? (
         <p className="notice-strip"><IconAlert size={14} aria-hidden="true" />课堂已经处于清理中。本标签没有保存该账号的请求编号；请在发起清理的浏览器标签继续查看，或由后端管理员核验。</p>
       ) : session.status === 'deleted' && pendingIntent === null ? (

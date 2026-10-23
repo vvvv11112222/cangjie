@@ -109,6 +109,7 @@ export const NAV_ITEMS: readonly NavItem[] = NAV_GROUPS.flatMap((group) => group
  * 因此不放进 NAV_GROUPS。它的可见范围与课堂内容一致。
  */
 const AUXILIARY_ITEMS: readonly NavItem[] = [
+  { path: '#/help', label: '使用帮助', roles: ALL_ROLES },
   { path: '#/transcript', label: '转写', roles: CONTENT_ROLES },
 ];
 

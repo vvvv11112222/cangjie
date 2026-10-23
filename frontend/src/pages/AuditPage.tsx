@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import type { FormEvent, ReactElement } from 'react';
+import type { FormEvent,ReactElement } from 'react';
+import { useEffect,useRef,useState } from 'react';
 import { useAuth } from '../auth';
-import { BadgeTag, Card, IdChip, TechDetails } from '../components/ui';
-import { listAudit } from '../data/auditApi';
+import { BadgeTag,Card,IdChip,TechDetails } from '../components/ui';
 import type { AuditRecord } from '../data/auditApi';
+import { listAudit } from '../data/auditApi';
 import { describeError } from '../data/errors';
 import { isApiMode } from '../data/sources';
 import { formatDateTime } from '../format';
@@ -50,7 +50,7 @@ export function AuditPage(): ReactElement {
     finally { if (id === generation.current) { pending.current = false; setBusy(false); } }
   }
   function search(event: FormEvent): void { event.preventDefault(); setFilters({ action: action.trim(), result }); setReload(value => value + 1); }
-  return <div className="page"><header className="page-head"><div><p className="eyebrow">ACTIVITY LOG</p><h1>操作记录</h1><p className="muted">查看系统已保存的管理、来源核验、报告复核与清理记录。记录只读，不能在这里删除。</p></div></header>
+  return <div className="page"><header className="page-head"><div><h1>操作记录</h1></div></header>
     {!api ? <p className="notice-strip">演示模式不显示真实操作记录，请使用团队系统登录查看。</p> : status !== 'authenticated' ? <p className="notice-strip">{status === 'checking' ? '正在检查登录状态…' : '请先登录后查看操作记录。'}</p> : !allowed ? <p className="notice-strip">当前账号没有操作记录查询权限。</p> : <Card title="已保存的操作记录" subtitle={me?.roles.some(role => role.role_code === 'sys_admin') ? '系统管理员可查看全校记录。未纳入记录的操作不会补造。' : '当前只显示你本人执行的操作，不显示其他人员或学院的记录。'}>
       <form className="field-grid" onSubmit={search}><label className="account-field"><span>操作类型</span><select value={action} onChange={e => setAction(e.target.value)}><option value="">全部类型</option>{Object.entries(ACTIONS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><label className="account-field"><span>处理结果</span><select value={result} onChange={e => setResult(e.target.value)}><option value="">全部结果</option><option value="success">成功</option><option value="denied">已拒绝</option><option value="failure">失败</option></select></label><div className="form-actions"><button className="btn btn-primary" disabled={busy}>查询</button><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setReload(value => value + 1)}>刷新记录</button></div></form>
       {error && <p role="alert" className="load-note load-note-error">读取失败：{error}</p>}

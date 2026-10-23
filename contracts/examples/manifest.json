@@ -336,6 +336,7 @@
   "case_sets": [
     "api-cases.json",
     "capture-cases.json",
-    "password-cases.json"
+    "password-cases.json",
+    "live-vision-cases.json"
   ]
 }

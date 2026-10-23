@@ -1,26 +1,26 @@
-import { ErrorMessage } from '../components/ui';
-import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { CapturePairing, LiveCapture } from '../captureTypes';
-import type { Session } from '../types';
+import { useEffect,useRef,useState } from 'react';
+import type { WHEPSession } from '../capture/whep';
+import { connectWHEP } from '../capture/whep';
+import type { CapturePairing,LiveCapture } from '../captureTypes';
+import { BadgeTag,Card,ErrorMessage,Field,TechDetails } from '../components/ui';
+import { newIdempotencyKey } from '../data/actions';
+import { ApiError,describeError,errorCodeText,isTerminalReadError } from '../data/errors';
+import {
+createLiveCapture,
+createPairing,
+createViewer,
+getActiveLiveCapture,
+getLiveCapture,
+stopLiveCapture,
+} from '../data/liveCaptureApi';
 import type { SourceRecord } from '../data/m2Api';
 import { listSessionSources } from '../data/m2Api';
-import {
-  createLiveCapture,
-  createPairing,
-  createViewer,
-  getActiveLiveCapture,
-  getLiveCapture,
-  stopLiveCapture,
-} from '../data/liveCaptureApi';
-import { newIdempotencyKey } from '../data/actions';
-import { ApiError, describeError, isTerminalReadError, errorCodeText } from '../data/errors';
 import { collectPages } from '../data/pagination';
-import { connectWHEP } from '../capture/whep';
-import type { WHEPSession } from '../capture/whep';
-import { BadgeTag, Card, Field, TechDetails } from '../components/ui';
-import { formatDateTime, formatTimestamp } from '../format';
-import { featureProblem, getServiceCapabilities, useServiceCapabilities } from '../data/serviceCapabilities';
+import { featureProblem,getServiceCapabilities,useServiceCapabilities } from '../data/serviceCapabilities';
+import { formatDateTime,formatTimestamp } from '../format';
+import type { Session } from '../types';
+import { LiveVisionPreview } from './LiveVisionPreview';
 
 const terminal = (capture: LiveCapture): boolean => capture.state === 'ready' || capture.state === 'failed';
 async function verifiedSources(sessionId: string): Promise<SourceRecord[]> {
@@ -56,6 +56,8 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   const [notice, setNotice] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
   const [muted, setMuted] = useState(true);
+  const [liveDetection, setLiveDetection] = useState(false);
+  const livePlayer = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const whep = useRef<WHEPSession | null>(null);
   const watchAbort = useRef<AbortController | null>(null);
@@ -186,9 +188,8 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
 
   return (
     <div className="live-capture-layout">
-      <Card title="实时课堂" subtitle="手机发布音视频，电脑实时观看；停止后录像进入现有回放与分析链路。" actions={capture === null ? undefined : <BadgeTag badge={stateBadge(capture.state)} />}>
-        <div className="onboarding-next"><strong>手机录制前先完成三步检查</strong><ol><li>手机与电脑连接允许设备互访的同一网络；校园网无法互访时可使用手机热点。</li><li>用手机打开下方生成的配对链接，确认可信 HTTPS 可访问；电脑上的 localhost 地址不能作为手机地址。</li><li>在手机页面允许摄像头和麦克风，先确认预览有画面、麦克风有输入活动，再开始录制。配对链接过期时重新生成。</li></ol><p>{services.data ? services.data.live_capture.available ? '采集服务已配置。网络、证书和手机权限仍须在实际手机上确认。' : featureProblem(services.data.live_capture) : services.error ? '无法确认采集服务状态，请重新检查或联系系统管理员。' : '正在检查采集服务…'}</p><button type="button" className="btn btn-secondary btn-sm" onClick={services.reload}>重新检查采集服务</button></div>
-        {capture === null ? (
+      <Card title="实时课堂"  actions={capture === null ? undefined : <BadgeTag badge={stateBadge(capture.state)} />}>
+                {capture === null ? (
           <div className="capture-create">
             <label className="account-field">
               <span>已核验来源</span>
@@ -199,7 +200,7 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
             <button type="button" className="btn btn-primary" disabled={busy || pollStopped || captureLoading || captureUnavailable || sourceId === '' || !session.allowed_actions.includes('upload') || !services.data?.live_capture.available} onClick={() => void start()}>
               创建实时采集
             </button>
-            <p className="field-hint">没有可用来源时，请先登记来源并由学院教务或系统管理员核验回放用途。<a href={`#/sources?session=${session.id}`}>处理这节课堂的来源</a></p>
+            {!sources.length&&<p className="field-hint">没有可用来源时，请先登记来源并由学院教务或系统管理员核验回放用途。<a href={`#/sources?session=${session.id}`}>处理这节课堂的来源</a></p>}
           </div>
         ) : (
           <>
@@ -225,19 +226,21 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
         {(sourceError !== null || captureUnavailable) && <button type="button" className="btn btn-secondary" disabled={sourcesLoading || captureLoading || busy} onClick={() => setReload(value => value + 1)}>重新检查来源与采集服务</button>}
         {notice === null ? null : <p className="notice-strip">{notice}</p>}
         {capture?.error_code == null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={`${errorCodeText(capture.error_code)}（错误码 ${capture.error_code}）`}/><p>请先检查手机连接、权限和采集服务；确认本次采集已停止后，再创建新的采集。</p><TechDetails summary="采集结束技术详情"><p>{capture.end_reason ?? "未提供结束原因"}</p></TechDetails></div>}
-        {capture === null ? null : <TechDetails><ul className="tech-list"><li className="mono">live_capture.id = {capture.id}</li><li className="mono">media_asset_id = {capture.media_asset_id ?? 'null'}</li><li className="mono">media_prepare_run_id = {capture.media_prepare_run_id ?? 'null'}</li><li className="mono">allowed_actions = [{capture.allowed_actions.join(', ')}]</li></ul></TechDetails>}
+
       </Card>
-      <Card title="实时画面" subtitle="观看断开不代表服务端录像已经停止。">
+      <Card title="实时画面" >
+        <div className="live-player" ref={livePlayer}>
         <video ref={video} className="live-video" autoPlay playsInline muted={muted} aria-label="课堂实时画面" />
-        <div className="action-row">
-          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => { if (video.current !== null) { video.current.muted = !muted; setMuted(!muted); } }}>{muted ? '开启声音' : '静音'}</button>
-          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => void video.current?.requestFullscreen()}>全屏</button>
+        {capture !== null && <LiveVisionPreview captureId={capture.id} video={video} enabled={liveDetection && watching && capture.state === 'recording'} />}
         </div>
+        <div className="action-row">
+          <label><input type="checkbox" checked={liveDetection} onChange={event=>setLiveDetection(event.target.checked)} disabled={!watching} /> 直播显示举手与低头框</label>
+          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => { if (video.current !== null) { video.current.muted = !muted; setMuted(!muted); } }}>{muted ? '开启声音' : '静音'}</button>
+          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => void livePlayer.current?.requestFullscreen()}>全屏</button>
+        </div>
+        {liveDetection && watching && <p className="field-hint">红色举手、蓝色低头、绿色均未见、灰色看不清。框随检测画面更新；完整记录在停止录像后分析。</p>}
         {!watching ? <p className="empty">尚未建立观看连接。手机可以继续录像，观看状态与录像状态相互独立。</p> : null}
       </Card>
-      <Card title="课后分析" subtitle="实时采集只负责录像；转写、关键帧和报告仍走课后分析。">
-        <p className="muted">等待状态变为“录像就绪”后，点击“用此录像继续处理”。随后选择“举手与低头识别”或“语音转写与教学报告”。关闭观看、关闭浏览器与停止录像是不同操作；录制结束请明确点击“停止录像”并等待收尾。</p>
-      </Card>
-    </div>
+          </div>
   );
 }

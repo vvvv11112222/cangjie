@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatDateTime } from '../format';
 import type { ReactElement } from 'react';
-import { Card, StageFlow, TechDetails } from '../components/ui';
+import { useEffect,useMemo,useRef,useState } from 'react';
+import { Card,StageFlow,TechDetails } from '../components/ui';
+import { describeError } from '../data/errors';
 import { useRunPolling } from '../data/hooks';
 import { listSessionRuns } from '../data/m2Api';
-import { getMedia, isApiMode } from '../data/sources';
-import { describeError } from '../data/errors';
-import { getVisualSummary, getVisualPeople, getVisualObservations, observationAt, observationColor, verdictText } from '../data/visualApi';
-import type { Behavior, VisualObservation, VisualPerson, VisualSummary } from '../data/visualApi';
-import { loadVisualOverlay, sampledTimeAt } from '../data/visualOverlay';
-import type { PersonBox, VisualOverlayData } from '../data/visualOverlay';
-import type { Media, Run } from '../types';
-import { formatTimestamp, runStatusBadge } from '../format';
+import { getMedia,isApiMode } from '../data/sources';
+import type { Behavior,VisualObservation,VisualPerson,VisualSummary } from '../data/visualApi';
+import { getVisualObservations,getVisualPeople,getVisualSummary,observationAt,observationColor,verdictText } from '../data/visualApi';
+import type { PersonBox,VisualOverlayData } from '../data/visualOverlay';
+import { loadVisualOverlay,sampledTimeAt } from '../data/visualOverlay';
+import { formatDateTime,formatTimestamp,runStatusBadge } from '../format';
+import type { Media,Run } from '../types';
 
 const LABELS: Record<Behavior, string> = { hand_raise: '举手', head_down: '低头', leave_seat: '离座', possible_phone: '疑似持手机' };
 
@@ -48,7 +47,7 @@ export function VisualPanel({ sessionId, currentRun, onReplayMedia }: { sessionI
     catch (error) { setHistoryError(describeError(error)); } finally { setHistoryBusy(false); }
   }
   return <>
-    <Card title="视觉观察" subtitle="检查录像中的可见人数与动作。看不清的部分保留为“看不清”，不计为没有动作。">
+    <Card title="视觉观察" >
       <p className="onboarding-next">编号是本次录像的匿名轨迹，可能因遮挡或切镜变化。低头可能是阅读或书写；多条举手观察可能属于同一次持续动作。看不清表示无法判断，不等于未发现动作。<br/>颜色：红色发现举手，蓝色发现低头，绿色未见这两种动作，灰色看不清。记录只覆盖实际检查的画面。</p>
       {all.length > 0 && <label className="account-field"><span>选择视觉分析记录</span><select value={selected?.id ?? ''} onChange={event => setChosen(event.target.value)}>{all.map(r => <option key={r.id} value={r.id}>{r.created_at ? formatDateTime(r.created_at) : `历史分析 ${all.indexOf(r)+1}`} · {runStatusBadge(r.status).label}</option>)}</select></label>}
       {historyError && <p role="alert" className="load-note load-note-error">{historyError} <button type="button" className="btn btn-secondary" disabled={historyBusy} onClick={() => setHistoryReload(value => value + 1)}>重试读取分析记录</button></p>}
@@ -165,11 +164,10 @@ function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((med
   const hasPlayer = Boolean(media?.playback_url) && !playerFailed;
   const records = track && <><h3>{track} 的画面记录</h3><label className="account-field"><span>筛选动作</span><select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部已读取画面</option><option value="hand_raise">发现举手</option><option value="head_down">发现低头</option><option value="unknown">有动作看不清</option></select></label><p className="load-note">已读取 {rows.length} 次观察。每行对应一次实际检查，不代表动作持续了这么多次。{observations?.track === track && observations.cursor ? '还有记录未读取，可继续加载；筛选只作用于已读取部分。' : ''}</p><div className="table-wrap"><table className="table"><thead><tr><th>录像时间</th>{Object.values(LABELS).map(label => <th key={label}>{label}</th>)}<th>核对</th></tr></thead><tbody>{shown.map(row => <tr key={row.timestamp_ms}><td>{formatTimestamp(row.timestamp_ms)}</td>{(Object.keys(LABELS) as Behavior[]).map(kind => <td key={kind}>{verdictText(row.behaviors[kind])}</td>)}<td><button className="btn btn-secondary" onClick={() => jump(row)}>{hasPlayer ? '定位录像' : '查看记录'}</button></td></tr>)}</tbody></table></div>{!shown.length && <p className="empty">已读取的画面中没有符合筛选条件的记录。</p>}{observations?.track === track && observations.cursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void moreObservations()}>继续读取这个人的记录</button>}</>;
   return <>
-    <Card title="分析概况" subtitle={`每隔 ${summary.sampling.interval_ms / 1000} 秒检查一次；共检查 ${summary.visual.counts.length} 张画面。可见人数包含画面中的人员，不等于学生出勤人数。`}>
+    <Card title="分析概况" subtitle={`每隔 ${summary.sampling.interval_ms / 1000} 秒检查一次；共检查 ${summary.visual.counts.length} 张画面。`}>
       <div className="visual-metrics"><div><strong>{known.length ? (known.reduce((a, b) => a + b, 0) / known.length).toFixed(1) : '看不清'}</strong><span>平均可见人数</span></div><div><strong>{max('hand_raise_count')}</strong><span>同一画面举手最多人数</span></div><div><strong>{max('head_down_count')}</strong><span>同一画面低头最多人数</span></div></div>
-      <p className="load-note">低头可能是在阅读或书写；这些观察需要结合教学内容核对，不直接评价学生是否认真。</p>
-    </Card>
-    <Card title="按人物查看与回放" subtitle="编号只属于本次录像。选中人物不会改变行为颜色：红色举手，蓝色低头，绿色未见这两种动作，灰色看不清。">
+          </Card>
+    <Card title="按人物查看与回放" >
       <p className="load-note">正在查看分析 {run.id.slice(0, 8)} 对应的录像（编号 {run.media_asset_id.slice(0, 8)}）。同一课堂上传多份录像时，每条分析仍保留自己的录像。
         {media?.playback_url && onReplayMedia && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onReplayMedia(run.media_asset_id)}>在回放中打开此录像</button>}
       </p>
@@ -177,7 +175,7 @@ function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((med
       <label className="check-row"><input type="checkbox" checked={showAll} disabled={!hasPlayer && !showAll} onChange={e => setShowAll(e.target.checked)} />显示所有人物框</label>
       {showAll && allBusy && <p className="load-note" role="status">正在读取全班画框{allProgress.total ? `：已完成 ${allProgress.completed}/${allProgress.total} 个编号` : '…'}；读取完成前暂时只显示选中人物。</p>}
       {showAll && allError && <p className="notice-strip" role="alert">全班画框读取失败：{allError}。个人记录仍可查看。<button className="btn btn-secondary" onClick={() => setAllRetry(v => v + 1)}>重试读取全班画框</button></p>}
-      {showAll && allData && <p className="load-note" role="status">已读取全部 {allData.people.length} 个编号的记录，当前画面显示 {boxes.length} 个人的框。画框只对应附近实际检查过的画面；选人不会改变行为颜色。</p>}
+      {showAll && allData && <p className="load-note" role="status">已读取全部 {allData.people.length} 个编号的记录，当前画面显示 {boxes.length} 个人的框。</p>}
       {!hasPlayer && <p className="load-note" role="status">分析结果已保存。右侧选择人物，下方表格查看举手、低头的判断；录像不能播放不代表分析结果丢失。</p>}
       <div className="visual-workspace">
         <div>
@@ -191,11 +189,11 @@ function VisualResults({ run, onReplayMedia }: { run: Run; onReplayMedia?: ((med
           {imageFailed && <p role="alert">图片暂不可读取，可以定位原录像核对。</p>}
           {!hasPlayer && records}
         </div>
-        <aside className="visual-people" aria-label="人物列表"><h3>人物编号</h3><p className="muted">已读取 {people.length} 个编号；点击查看该人的记录。</p>{people.map(person => <button key={person.track_id} type="button" className={`visual-person${track === person.track_id ? ' selected' : ''}`} aria-pressed={track === person.track_id} onClick={() => setTrack(person.track_id)}><strong>{person.track_id}</strong><span>检查了 {person.sample_count} 次</span>{boxByTrack.has(person.track_id) ? <small>举手{verdictText(boxByTrack.get(person.track_id)!.behaviors.hand_raise)} · 低头{verdictText(boxByTrack.get(person.track_id)!.behaviors.head_down)}</small> : showAll && allData ? <small>此刻没有检查记录</small> : null}</button>)}{peopleCursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void morePeople()}>加载更多人物</button>}{!people.length && <p>这段录像没有检出可记录的人物。</p>}</aside>
+        <aside className="visual-people" aria-label="人物列表"><h3>人物编号</h3><p className="muted">{people.length} 个人物编号</p>{people.map(person => <button key={person.track_id} type="button" className={`visual-person${track === person.track_id ? ' selected' : ''}`} aria-pressed={track === person.track_id} onClick={() => setTrack(person.track_id)}><strong>{person.track_id}</strong><span>检查了 {person.sample_count} 次</span>{boxByTrack.has(person.track_id) ? <small>举手{verdictText(boxByTrack.get(person.track_id)!.behaviors.hand_raise)} · 低头{verdictText(boxByTrack.get(person.track_id)!.behaviors.head_down)}</small> : showAll && allData ? <small>此刻没有检查记录</small> : null}</button>)}{peopleCursor && <button className="btn btn-secondary" disabled={busy} onClick={() => void morePeople()}>加载更多人物</button>}{!people.length && <p>这段录像没有检出可记录的人物。</p>}</aside>
       </div>
       {personError && <p role="alert">{personError}</p>}
       {hasPlayer && records}
     </Card>
-    <Card title="观察范围与限制"><ul>{summary.limitations.map((text, index) => <li key={index}>{text}</li>)}</ul><TechDetails><p>批次：{run.id}；模型：{summary.model.name}；版本：{summary.model.revision}</p></TechDetails></Card>
+    <TechDetails summary="查看观察范围与限制"><ul>{summary.limitations.map((text, index) => <li key={index}>{text}</li>)}</ul><p>批次：{run.id}；模型：{summary.model.name}；版本：{summary.model.revision}</p></TechDetails>
   </>;
 }

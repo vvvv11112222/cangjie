@@ -148,6 +148,7 @@ func run() error {
 		governanceService.BeforeCaptureCleanup = captureService.CleanupSession
 	}
 	handler := httpapi.New(httpapi.Options{
+		LiveVisionEnabled:  captureEnabled && os.Getenv("CAPTURE_LIVE_VISION_ENABLED") == "true",
 		ModelSettings:      modelSettingsService,
 		Capture:            captureService,
 		Logger:             logger,

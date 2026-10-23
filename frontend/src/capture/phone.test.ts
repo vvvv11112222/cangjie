@@ -26,7 +26,7 @@ class Peer extends EventTarget {
   transceivers: { sender: { track: MediaStreamTrack }; setCodecPreferences: ReturnType<typeof vi.fn>; direction: string }[] = [];
   addTrack(track: MediaStreamTrack) { this.transceivers.push({sender:{track},setCodecPreferences:vi.fn(),direction:'sendrecv'}); }
   getTransceivers() { return this.transceivers; }
-  createOffer() { return Promise.resolve({type:'offer',sdp:'v=0\r\nsynthetic-offer'}); }
+  createOffer() { return Promise.resolve({type:'offer',sdp:answer}); }
   async setLocalDescription(description: RTCSessionDescriptionInit) { this.localDescription=description; }
   setRemoteDescription = vi.fn(async () => { this.connectionState='connected'; this.onconnectionstatechange?.(); });
   close = vi.fn(() => { this.connectionState='closed'; });
@@ -83,7 +83,7 @@ describe('phone capture lifecycle (synthetic browser APIs, not Android acceptanc
     expect(s.phone.state.audioActivity).toBe(true);
     const whip=s.fetch.mock.calls.find(([url])=>String(url).endsWith('/whip'));
     expect(whip?.[1]?.headers).toMatchObject({'Content-Type':'application/sdp',Authorization:'Bearer publish-secret'});
-    expect(whip?.[1]?.body).toBe('v=0\r\nsynthetic-offer');
+    expect(whip?.[1]?.body).toContain('H264/90000');
     expect(JSON.stringify(s.changes.mock.calls)).not.toContain('publish-secret');
     expect(JSON.stringify(s.changes.mock.calls)).not.toContain('control-secret');
     await s.phone.poll(); expect(s.phone.state.capture?.state).toBe('waiting');

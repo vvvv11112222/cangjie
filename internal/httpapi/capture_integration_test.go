@@ -168,6 +168,27 @@ func TestLiveCaptureAuthorizationConcurrencyAndStop(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	view := requestJSON(t, client, "POST", base+"/viewer-sessions", map[string]any{}, csrf, 201)
+	// Live inference requires analysis consent in addition to watching consent.
+	admin := queryID(t, pool, `SELECT id::text FROM teaching.user_accounts WHERE username='admin'`)
+	principal, err := ids.PrincipalByID(ctx, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs.AuthorizeVision(ctx, principal, id) == nil {
+		t.Fatal("playback consent was treated as analysis consent")
+	}
+	if _, e = pool.Exec(ctx, `UPDATE teaching.source_records SET allowed_uses='["playback","analysis"]' WHERE id=$1`, source); e != nil {
+		t.Fatal(e)
+	}
+	if e = cs.AuthorizeVision(ctx, principal, id); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = pool.Exec(ctx, `UPDATE teaching.source_records SET allowed_uses='["playback"]' WHERE id=$1`, source); e != nil {
+		t.Fatal(e)
+	}
+	if cs.AuthorizeVision(ctx, principal, id) == nil {
+		t.Fatal("revoked analysis consent remained active")
+	}
 	auth.Action = "read"
 	auth.Token = view["view_token"].(string)
 	auth.ID = "00000000-0000-4000-8000-000000000098"

@@ -1,56 +1,56 @@
-import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
-import type { ReactElement } from 'react';
+import type { FormEvent,ReactElement } from 'react';
+import { useEffect,useState } from 'react';
 import { useAuth } from './auth';
 import { AccountBar } from './components/AccountBar';
-import { RoleGuide } from './components/FirstUseGuide';
 import { NotificationBell } from './components/NotificationBell';
+import { GuideToolbar } from './components/Onboarding';
 import {
-  IconCalendar,
-  IconCamera,
-  IconBook,
-  IconChevronDown,
-  IconFolder,
-  IconGrid,
-  IconHistory,
-  IconHome,
-  IconInsights,
-  IconList,
-  IconReport,
-  IconSearch,
-  IconSettings,
-  IconShield,
-  IconTask,
-  IconTranscript,
-  IconVideo,
-  IconUser,
+IconBook,
+IconCalendar,
+IconCamera,
+IconChevronDown,
+IconFolder,
+IconGrid,
+IconHistory,
+IconHome,
+IconInsights,
+IconList,
+IconReport,
+IconSearch,
+IconSettings,
+IconShield,
+IconTask,
+IconTranscript,
+IconUser,
+IconVideo,
 } from './components/icons';
 import type { RoleCode } from './data/authApi';
-import { parseSessionRoute, sessionSearchFromHash, sessionSearchHash } from './data/route';
+import { parseSessionRoute,sessionSearchFromHash,sessionSearchHash } from './data/route';
 import { isApiMode } from './data/sources';
 import { roleLabel } from './format';
-import { PLANNED_PAGES, PlaceholderPage } from './pages/PlaceholderPage';
+import { AcademicPage } from './pages/AcademicPage';
 import { AccountsPage } from './pages/AccountsPage';
+import { AuditPage } from './pages/AuditPage';
 import { DevicesPage } from './pages/DevicesPage';
-import { OrganizationsPage } from './pages/OrganizationsPage';
+import { HelpPage } from './pages/HelpPage';
+import { DashboardPage,M1RoleContext,ManagementPage,RecordingsPage } from './pages/M1Pages';
 import { OperationsPage } from './pages/OperationsPage';
+import { OrganizationsPage } from './pages/OrganizationsPage';
+import { PlaceholderPage,PLANNED_PAGES } from './pages/PlaceholderPage';
 import { ReportPage } from './pages/ReportPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SessionListPage } from './pages/SessionListPage';
-import { TranscriptPage } from './pages/TranscriptPage';
-import { TasksPage } from './pages/TasksPage';
 import { SourcesPage } from './pages/SourcesPage';
-import { DashboardPage, M1RoleContext, ManagementPage, RecordingsPage } from './pages/M1Pages';
-import { AcademicPage } from './pages/AcademicPage';
-import { AuditPage } from './pages/AuditPage';
+import { TasksPage } from './pages/TasksPage';
+import { TranscriptPage } from './pages/TranscriptPage';
 import {
-  DEFAULT_ROUTE,
-  isVisiblePath,
-  navItemAt,
-  navLabel,
-  navLabelAt,
-  SESSIONS_PATH,
-  visibleGroups,
+DEFAULT_ROUTE,
+isVisiblePath,
+navItemAt,
+navLabel,
+navLabelAt,
+SESSIONS_PATH,
+visibleGroups,
 } from './roleNav';
 
 /**
@@ -82,6 +82,7 @@ const NAV_ICONS: Record<string, ReactElement> = {
 
 /** 已经实现的页面：课堂档案（列表 + 详情）、转写、教学报告。 */
 const IMPLEMENTED_PAGES: Record<string, () => ReactElement> = {
+  '#/help': () => <HelpPage />,
   '#/dashboard': () => <DashboardPage />,
   '#/management': () => <ManagementPage />,
   '#/recordings': () => <RecordingsPage />,
@@ -206,6 +207,7 @@ function PageNotice({ eyebrow, title, message }: {
 
 export function App(): ReactElement {
   const hash = useHashRoute();
+  useEffect(()=>{if(hash.startsWith('#/sessions?') && new URLSearchParams(hash.split('?')[1]).get('help')==='1')window.location.hash='#/help';},[hash]);
   const { me, sessionKey } = useAuth();
   const apiMode = isApiMode();
   const [previewRole, setPreviewRole] = useState<RoleCode | null>(null);
@@ -306,6 +308,7 @@ export function App(): ReactElement {
           </div>
           {CLASSROOM_SEARCH_PATHS.has(currentPath) ? <GlobalSessionSearch hash={hash} /> : null}
           <div className="topbar-actions">
+            <GuideToolbar />
             {/* 待办提醒（草图的 notification-button）。 */}
             <NotificationBell />
             {/* 账号入口：登录、退出、切换账号都在顶栏右上角。 */}
@@ -313,7 +316,6 @@ export function App(): ReactElement {
           </div>
         </header>
         <main id="main">
-          <RoleGuide />
           <M1RoleContext.Provider key={sessionKey} value={roles}>
           {sessionRoute.kind === 'invalid' ? (
             <PageNotice
@@ -340,9 +342,6 @@ export function App(): ReactElement {
           )}
           </M1RoleContext.Provider>
         </main>
-        <footer className="workspace-footer">
-          <span>观课 · 让教学观察有据可循</span>
-        </footer>
       </div>
     </div>
   );

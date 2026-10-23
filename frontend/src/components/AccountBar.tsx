@@ -298,7 +298,6 @@ export function AccountBar({
             </>
           )}
           {error === null ? null : <p className="account-error">{error}</p>}
-          {api ? <p className="account-meta">数据来源：接口数据 · 走 /api/v1</p> : null}
         </div>
       ) : null}
     </div>

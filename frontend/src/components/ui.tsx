@@ -1,22 +1,20 @@
-import { useState } from 'react';
-import type { ReactElement, ReactNode } from 'react';
-import type { JobStatus, Run } from '../types';
-import type { Badge, Tone } from '../format';
-import { jobStageLabel, jobStatusBadge, runActionLabel, shortId } from '../format';
-import type { Disclosure } from '../data/viewModel';
-import type { LoadStatus } from '../data/loadState';
+import type { ReactElement,ReactNode } from 'react';
 import { errorCodeText } from '../data/errors';
-import {
-  IconAlert,
-  IconCheck,
-  IconChevronDown,
-  IconChevronRight,
-  IconClock,
-  IconDot,
-  IconInfo,
-  IconPause,
-} from './icons';
+import type { LoadStatus } from '../data/loadState';
+import type { Disclosure } from '../data/viewModel';
+import type { Badge,Tone } from '../format';
+import { jobStageLabel,jobStatusBadge,runActionLabel,shortId } from '../format';
+import type { JobStatus,Run } from '../types';
 import type { IconProps } from './icons';
+import {
+IconAlert,
+IconCheck,
+IconChevronRight,
+IconClock,
+IconDot,
+IconInfo,
+IconPause,
+} from './icons';
 
 /**
  * 状态标签的图标按色调固定。成功、处理中、失败三档在颜色、图标、文字上都能区分，
@@ -52,6 +50,7 @@ export function Pill({
 }
 
 export function Card({
+  guideId,
   title,
   subtitle,
   icon,
@@ -59,6 +58,7 @@ export function Card({
   children,
 }: {
   title: string;
+  guideId?: string;
   subtitle?: string;
   /** 卡片标题左侧的小图标；不传则只显示文字标题。 */
   icon?: ReactNode;
@@ -66,7 +66,7 @@ export function Card({
   children: ReactNode;
 }): ReactElement {
   return (
-    <section className="card">
+    <section className="card" data-guide={guideId}>
       <header className="card-head">
         <div className="card-heading">
           {icon ? <span className="card-icon">{icon}</span> : null}
@@ -141,10 +141,9 @@ export function DataSourceNote({
   /** 结尾说明；接口模式传"。"。 */
   note?: string;
 }): ReactElement {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="source-note">
-      <IconCheck size={16} className="source-icon" />
+    <details className="tech-details">
+      <summary>{label.includes('样例') ? '演示数据说明（非真实课堂结果）' : '数据与接口详情'}</summary>
       <p className="source-line">
         <span className="source-tag">{label}</span>
         数据来源：
@@ -153,23 +152,7 @@ export function DataSourceNote({
         ))}
         {note}
       </p>
-      <button
-        type="button"
-        className="source-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {open ? '收起' : '展开'}
-        <IconChevronDown size={14} className={open ? 'is-open' : undefined} />
-      </button>
-      {open ? (
-        <p className="source-detail">
-          页面只呈现读取到的字段：课堂、最新批次、当前报告编号都按接口原值展示，
-          数据形状以 contracts/v1.schema.json 与 docs/开发协议.md 为准。
-          按钮按各资源返回的 allowed_actions 展示，能否执行仍由服务端逐次授权。
-        </p>
-      ) : null}
-    </div>
+    </details>
   );
 }
 
@@ -296,6 +279,7 @@ export function StageFlow({ run }: { run: Run }): ReactElement {
 /** 批次的三项协议字段：没有错误时直接显示，有错误时收进错误区的技术详情。 */
 export function RunFields({ run }: { run: Run }): ReactElement {
   return (
+    <TechDetails summary="分析记录技术详情">
     <div className="field-grid">
       <Field label="run.error_code">
         <span className={run.error_code === null ? 'muted' : 'danger'}>{run.error_code ?? 'null'}</span>
@@ -307,6 +291,7 @@ export function RunFields({ run }: { run: Run }): ReactElement {
         {run.allowed_actions.length === 0 ? '无' : run.allowed_actions.map(runActionLabel).join('、')}
       </Field>
     </div>
+    </TechDetails>
   );
 }
 
@@ -332,18 +317,6 @@ export function RunErrorBox({ run }: { run: Run }): ReactElement {
         )}
       </div>
       {run.error_code === null ? null : <p className="error-explanation">{errorCodeText(run.error_code)}</p>}
-      <TechDetails>
-        <RunFields run={run} />
-        <ul className="tech-list">
-          {run.jobs
-            .filter((job) => job.error_code !== null)
-            .map((job) => (
-              <li key={job.id} className="mono">
-                {job.stage} · {job.status} · {job.error_code} · 尝试 {job.attempts}/{job.max_attempts}
-              </li>
-            ))}
-        </ul>
-      </TechDetails>
-    </div>
+          </div>
   );
 }

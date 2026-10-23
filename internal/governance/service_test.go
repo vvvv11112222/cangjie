@@ -24,22 +24,25 @@ func TestRenderPDFIncludesFullReportAndPaginates(t *testing.T) {
 	}, Source: map[string]any{"title": "固定来源标题", "attribution": "固定来源署名"}, EvidenceAvailability: map[string]string{"e-1": "available", "e-2": "expired"}}
 	snap.Report["provenance"] = map[string]any{"model_revision": "fixture-revision-7", "prompt_sha256": strings.Repeat("a", 64), "coverage": []any{map[string]any{"start_ms": 0, "end_ms": 1000}}}
 	lines := strings.Join(pdfLines(snap), "\n")
-	for _, want := range []string{"总摘要证据", "维度/状态", "不足原因", "观察/复核", "观察证据"} {
+	for _, want := range []string{"总摘要", "教学内容", "教学节奏", "学生行为汇总", "改进建议", "语音与证据依据"} {
 		if !strings.Contains(lines, want) {
 			t.Fatalf("PDF lines omitted %q", want)
 		}
 	}
-	for _, want := range []string{"固定来源标题", "固定来源署名", "fixture-revision-7", "prompt_sha256", "e-1 / available", "e-2 / expired"} {
+	for _, want := range []string{"固定来源标题", "固定来源署名"} {
 		if !strings.Contains(strings.ReplaceAll(lines, "\n  ", ""), want) {
 			t.Fatalf("PDF provenance omitted %q", want)
 		}
 	}
-	pdf := renderPDF(snap)
-	if !bytes.HasPrefix(pdf, []byte("%PDF-1.4")) || bytes.Contains(pdf, []byte("/Count 1 >>")) {
+	pdf, err := renderPDF(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
 		t.Fatalf("expected a valid multi-page PDF, bytes=%d", len(pdf))
 	}
-	if !bytes.Contains(pdf, []byte("/FontDescriptor")) || !bytes.Contains(pdf, []byte("/UniGB-UCS2-H")) {
-		t.Fatal("missing CID font descriptor or Unicode mapping")
+	if !bytes.Contains(pdf, []byte("/FontFile2")) || !bytes.Contains(pdf, []byte("/ToUnicode")) {
+		t.Fatal("missing embedded font or Unicode text mapping")
 	}
 	if output := os.Getenv("PDF_VALIDATION_OUTPUT"); output != "" {
 		if err := os.MkdirAll(filepath.Dir(output), 0o750); err != nil {

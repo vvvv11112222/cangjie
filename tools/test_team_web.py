@@ -10,6 +10,41 @@ from unittest.mock import MagicMock, patch
 import team_web as dev
 
 class TeamWebTests(unittest.TestCase):
+    def test_subst_denial_uses_directory_alias_without_replacing_drives(self):
+        state=Path('课堂部署'); fallback=Path('C:/local/alias'); drive=MagicMock()
+        drive.exists.return_value=False
+        with patch.object(dev.os,'name','nt'), patch.object(dev,'Path',return_value=drive), \
+             patch.object(dev.subprocess,'run',return_value=MagicMock(returncode=1)) as create, \
+             patch.object(dev,'junction_root',return_value=fallback) as directory_alias:
+            self.assertEqual(dev.ascii_root(state),fallback)
+            self.assertEqual(create.call_count,1)
+            directory_alias.assert_called_once_with(state)
+
+    def test_directory_alias_is_reused_only_for_its_original_target(self):
+        state=Path('database');local=MagicMock();alias=MagicMock()
+        local.is_absolute.return_value=True;local.__str__.return_value='C:/local'
+        local.__truediv__.return_value.__truediv__.return_value=alias
+        alias.exists.return_value=True
+        with patch.object(dev,'Path',return_value=local), \
+             patch.object(dev.os.path,'samefile',return_value=False) as same, \
+             patch.object(dev.subprocess,'run') as create:
+            with self.assertRaisesRegex(RuntimeError,'belongs to another directory'):
+                dev.junction_root(state)
+            create.assert_not_called()
+            same.return_value=True
+            self.assertIs(dev.junction_root(state),alias)
+            create.assert_not_called()
+
+    def test_demo_seeding_requires_explicit_dedicated_local_deployment(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state=Path(temp); config=self.config(state)
+            with patch.object(dev,'sql') as query:
+                dev.seed_demo(config,state)
+                self.assertIn('generate_series(1,50)',query.call_args.args[2])
+                config['ports']['database']=5432
+                with self.assertRaisesRegex(RuntimeError,'dedicated local'):
+                    dev.seed_demo(config,state)
+                self.assertEqual(query.call_count,1)
     def test_existing_later_alias_is_reused_before_a_free_drive(self):
         state=Path('课堂部署')
         drives={letter:MagicMock(name=letter) for letter in ('V','W','Y','Z')}

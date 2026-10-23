@@ -1,24 +1,24 @@
-import { ResultContext } from '../components/ResultContext';
-import { useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Evidence, Run, Segment, Session } from '../types';
-import { useTranscriptData } from '../data/hooks';
-import type { TranscriptView } from '../data/viewModel';
-import {
-  evidenceAvailabilityBadge,
-  evidenceKindLabel,
-  formatDateTime,
-  formatInterval,
-  formatTimestamp,
-  runStatusBadge,
-  shortId,
-  sourceTypeBadge,
-  speakerLabel,
-} from '../format';
-import { BadgeTag, Card, DataSourceNote, DisclosureList, Field, IdChip, LoadControls, LoadStateNote, TechDetails } from '../components/ui';
+import { useState } from 'react';
 import { IconAlert } from '../components/icons';
+import { ResultContext } from '../components/ResultContext';
+import { BadgeTag,Card,DisclosureList,Field,IdChip,LoadControls,LoadStateNote,TechDetails } from '../components/ui';
+import { useTranscriptData } from '../data/hooks';
 import { apiPath } from '../data/http';
 import { isApiMode } from '../data/sources';
+import type { TranscriptView } from '../data/viewModel';
+import {
+evidenceAvailabilityBadge,
+evidenceKindLabel,
+formatDateTime,
+formatInterval,
+formatTimestamp,
+runStatusBadge,
+shortId,
+sourceTypeBadge,
+speakerLabel,
+} from '../format';
+import type { Evidence,Run,Segment,Session } from '../types';
 import { TranscriptRevisionPanel } from './TranscriptRevisionPanel';
 
 /** 证据与片段的业务关联在后端建立；样例用 provenance.source_segment_no 表达。 */
@@ -48,7 +48,7 @@ export function TranscriptPage({
 } = {}): ReactElement {
   const loaded = useTranscriptData(injectedView === undefined);
   const view = injectedView ?? loaded.data.view;
-  const origin = loaded.origin;
+
   const { results, revision: incomingRevision, run, evidence, disclosures } = view;
   const [revisionState, setRevisionState] = useState({ input: incomingRevision, value: incomingRevision });
   const revision = revisionState.input === incomingRevision ? revisionState.value : incomingRevision;
@@ -60,18 +60,16 @@ export function TranscriptPage({
   const head = (
     <header className="page-head">
       <div>
-        <p className="eyebrow">转写与证据</p>
+
         <h1>转写</h1>
-        <p className="muted">
-          按原录像时间展示识别内容，可在“回放”中点击片段核对声音；说话人未知表示系统未区分教师和学生。
-        </p>
+
       </div>
       {ready ? <BadgeTag badge={runStatusBadge(results.run_status)} /> : null}
     </header>
   );
   const notes = (
     <>
-      <DataSourceNote sources={origin.sources} label={origin.label} note={origin.note} />
+
       <LoadStateNote status={loaded.status} error={loaded.error} />
       <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
       {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
@@ -95,7 +93,7 @@ export function TranscriptPage({
 
       <Card
         title="结果摘要"
-        subtitle="查看语音识别进度、文字记录和可核对的画面。"
+
       >
         <div className="field-grid">
           <Field label="批次状态">
@@ -116,31 +114,11 @@ export function TranscriptPage({
           </Field>
         </div>
         {/* 协议字段名下沉到技术详情，页面上只留人能读懂的信息。 */}
-        <TechDetails>
-          <ul className="tech-list">
-            <li className="mono">results.run_status = {results.run_status}</li>
-            <li className="mono">
-              results.transcript_revision_id = {results.transcript_revision_id ?? 'null'}
-            </li>
-            <li className="mono">
-              results.segments = {segments.length} 项 · results.evidence = {evidence.length} 项
-            </li>
-            <li className="mono">
-              results.frames = {results.frames.length} 项 · results.events = {results.events.length} 项
-            </li>
-            <li className="mono">
-              run-partial.status ={' '}
-              {run === null
-                ? 'null（没有对应批次数据）'
-                : `${run.status}（${run.status === results.run_status ? '与结果一致' : '与结果不一致'}）`}
-            </li>
-          </ul>
-        </TechDetails>
-        {results.limitations.length > 0 ? (
-          <p className="notice-strip">
+                {results.limitations.length > 0 ? (
+          <TechDetails summary="查看转写范围与限制"><p>
             <IconAlert size={14} aria-hidden="true" />
             结果限制：{results.limitations.join('；')}
-          </p>
+          </p></TechDetails>
         ) : null}
       </Card>
 
@@ -166,7 +144,7 @@ export function TranscriptPage({
       {revision === null ? null : (
         <Card
           title={`转写修订第 ${revision.revision_no} 版`}
-          subtitle="修订保留父版本、操作者、时间与原因；旧报告继续引用旧证据。"
+
           actions={<BadgeTag badge={sourceTypeBadge(revision.source_type)} />}
         >
           <div className="field-grid">
@@ -192,16 +170,7 @@ export function TranscriptPage({
             </Field>
             <Field label="修订原因">{revision.reason}</Field>
           </div>
-          <TechDetails>
-            <ul className="tech-list">
-              <li className="mono">revision.source_type = {revision.source_type}</li>
-              <li className="mono">
-                revision.transcript_lock_version = v{revision.transcript_lock_version}
-              </li>
-              <li className="mono">revision.content_sha256 = {revision.content_sha256}</li>
-            </ul>
-          </TechDetails>
-        </Card>
+                  </Card>
       )}
 
       {isApiMode() && revision !== null && session !== undefined ? (
@@ -254,7 +223,7 @@ export function TranscriptPage({
         )}
       </Card>
 
-      <Card title="证据" subtitle="证据必须归属同一课堂和同一批次，不能跨课堂引用。">
+      <Card title="证据" >
         {evidence.length === 0 ? (
           <p className="empty">当前没有可供核对的证据，请检查本次分析是否成功。</p>
         ) : (

@@ -172,7 +172,7 @@ func TestPhaseSevenExportGovernanceAndDeletionRecovery(t *testing.T) {
 	}
 	pdfBody, _ := io.ReadAll(pdfResponse.Body)
 	pdfResponse.Body.Close()
-	if pdfResponse.StatusCode != http.StatusOK || !bytes.HasPrefix(pdfBody, []byte("%PDF-1.4")) {
+	if pdfResponse.StatusCode != http.StatusOK || !bytes.HasPrefix(pdfBody, []byte("%PDF-")) {
 		t.Fatalf("PDF status=%d prefix=%q", pdfResponse.StatusCode, pdfBody[:min(8, len(pdfBody))])
 	}
 	if _, err = pool.Exec(ctx, `UPDATE teaching.source_records SET allowed_uses='["playback","analysis"]',rights_version=rights_version+1 WHERE id=$1`, sourceID); err != nil {

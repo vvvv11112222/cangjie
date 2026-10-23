@@ -41,9 +41,9 @@ it('shows only the material categories actually included in the report request',
   const { view } = viewWithAdvice();
   view.report.provenance!.included_materials = { academic_schedule: true, speech: true, visual: false };
   await act(async () => root.render(<ReportAnalysis report={view.report} evidenceById={view.evidenceById} onSelect={vi.fn()}/>));
-  expect(container.textContent).toContain('课程、教师、班级及课表登记');
-  expect(container.textContent).toContain('本录像的语音文字');
-  expect(container.textContent).not.toContain('本录像已完成的举手、低头画面观察');
+  expect(container.textContent).toContain('教务与课表');
+  expect(container.textContent).toContain('语音转写');
+  expect(container.textContent).not.toContain('视觉观察');
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 async function click(text: string) {
