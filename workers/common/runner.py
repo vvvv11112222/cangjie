@@ -1,5 +1,6 @@
 """Reusable stage dispatch. Go owns queue/retry state; this only runs the claimed lease."""
 import logging
+import os
 from contextlib import contextmanager
 import multiprocessing as mp
 from queue import Empty
@@ -182,6 +183,10 @@ class Runner:
 
     def _run(self, once=False):
         cleanup_expired(self.settings.temp_root)
+        live = None
+        if self.settings.vision_enabled and os.environ.get('CAPTURE_LIVE_VISION_ENABLED')=='true':
+            from .live import LiveProcessor
+            live=LiveProcessor(self.transport)
         try:
             failures = 0
             while True:
@@ -204,12 +209,22 @@ class Runner:
                     continue
                 failures = 0
                 if claim is not None:
+                    if live is not None: live.close()  # Never share GPU with an offline analysis child.
                     LOG.info("job=%s stage=%s started", claim["job_id"], claim["stage"])
                     outcome = self.run_claim(claim)
                     LOG.info("job=%s outcome=%s", claim["job_id"], outcome)
                 if once:
                     return
                 if claim is None:
-                    time.sleep(5)
+                    if live is None: time.sleep(5)
+                    else:
+                        # Go waits up to four seconds for a fresh frame. Offline
+                        # work gets priority at the next iteration, without a
+                        # high-frequency empty HTTP polling loop.
+                        try: live.poll()
+                        except WorkerError as error:
+                            LOG.warning('live preview unavailable; offline polling continues: %s',error.code)
+                        time.sleep(.25)
         finally:
+            if live is not None: live.close()
             self.transport.close()

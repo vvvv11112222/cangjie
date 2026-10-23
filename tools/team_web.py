@@ -99,6 +99,9 @@ def environment(config, state):
     env.update(execution_environment(config.get('vision_execution', {'engine':'cpu','batch_size':1}), ROOT))
     for name in list(env):
         if name.startswith('MTX_'): del env[name]
+    if config.get('capture'):
+        from team_capture import environment as capture_environment
+        env.update(capture_environment(config, state))
     # Optional private configuration enables the unified audio/report flow.
     # Keep the visual-only default free of external calls and credentials.
     if config.get('analysis_config'):
@@ -198,6 +201,13 @@ def database_start(config, state):
 def records(state): return load(state / 'processes.json') if (state / 'processes.json').exists() else {}
 
 
+def website_url(config):
+    if config.get('capture'):
+        from team_capture import origin
+        return origin(config)+'/#/sessions'
+    return f"http://127.0.0.1:{config['ports']['web']}/#/sessions"
+
+
 def alive(record):
     from capture_dev import alive as check
     return check(record)
@@ -210,7 +220,9 @@ def stop(config, state):
     if any(alive(r) for r in current.values()):
         if sql(config, state, "SELECT count(*) FROM teaching.analysis_jobs WHERE status='running'") != '0':
             raise RuntimeError('Analysis is running; cancel it in the page and wait before stopping')
-    for name in ('worker', 'web', 'api'):
+        if config.get('capture') and sql(config,state,"SELECT count(*) FROM teaching.live_captures WHERE state IN ('waiting','recording','finalizing')") != '0':
+            raise RuntimeError('Phone capture is active; stop the recording in the page and wait before stopping')
+    for name in ('worker', 'web', 'mediamtx', 'api'):
         record = current.get(name)
         if record:
             if name == 'worker':
@@ -238,6 +250,7 @@ def prepare(args, state):
                   node=str(Path(args.node).resolve(strict=True)), python=str(Path(args.python).resolve(strict=True)),
                   models=str(Path(args.models).resolve(strict=True)))
     analysis_config = args.analysis_config or prior.get('analysis_config')
+    if prior.get('capture'): config['capture'] = prior['capture']
     if analysis_config: config['analysis_config'] = str(Path(analysis_config).resolve(strict=True))
     config['vision_runtime'] = args.vision_runtime or prior.get('vision_runtime','directml')
     config['vision_batch_size'] = args.vision_batch_size or prior.get('vision_batch_size',16)
@@ -250,7 +263,7 @@ def prepare(args, state):
     config['code_sha'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     config['source_dirty'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     select_vision(config, state); env = environment(config, state)
-    for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger', 'model-config'):
+    for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger', 'model-config', 'capture-hook'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
     run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')
     run([config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'build'], env, state, cwd=ROOT / 'frontend')
@@ -262,7 +275,7 @@ def prepare(args, state):
     run([state / 'bin/seed-dev.exe'], env, state)
     seed = (ROOT / 'deploy/team-web/development.sql').read_text(encoding='utf-8')
     sql(config, state, seed)
-    receipt = dict(url='http://127.0.0.1:8088/#/sessions', code_sha=config['code_sha'], source_dirty=config['source_dirty'],
+    receipt = dict(url=website_url(config), code_sha=config['code_sha'], source_dirty=config['source_dirty'],
                    processor_version=config['runtime']['processor_version'], visual_model=config['runtime']['visual_model'],
                    execution=config['vision_execution']['engine'], vision_execution=config['vision_execution'])
     save(state / 'deployment.json', receipt)
@@ -293,11 +306,15 @@ def seed_demo(config, state):
 
 def start(config, state):
     from capture_dev import identity
+    if config.get('capture'):
+        from team_capture import check_address
+        check_address(config)
     current = records(state)
     if any(alive(r) for r in current.values()):
-        if set(current) != {'api','web','worker'} or not all(alive(r) for r in current.values()):
+        expected = {'api','web','worker','mediamtx'} if config.get('capture') else {'api','web','worker'}
+        if set(current) != expected or not all(alive(r) for r in current.values()):
             raise RuntimeError('Deployment is only partly running; stop the owned deployment before restarting')
-        wait_ready(config, 5); print('Team website already running: http://127.0.0.1:8088/#/sessions'); return
+        wait_ready(config, 5); print('Team website already running: '+website_url(config)); return
     for name in ('web', 'api'): check_port(config['ports'][name])
     select_vision(config, state)  # Re-enumerate on every start; never copy this PC's GPU ordinal to another PC.
     database_start(config, state)
@@ -311,6 +328,13 @@ def start(config, state):
         ('web', [config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'preview', ROOT / 'frontend', '--host', '127.0.0.1', '--port', str(config['ports']['web']), '--strictPort'], env),
         ('worker', [config['python'], Path(__file__).resolve(), '--data-root', state, 'supervise-worker', '--job', job_name],
          worker_env)]
+    if config.get('capture'):
+        from team_capture import generate,secure_private_storage
+        secure_private_storage(state)
+        generate(config,state)
+        for port in ('https','ca','media','control'): check_port(config['capture'][port])
+        services[1] = ('web',[config['capture']['caddy'],'run','--config',state/'Caddyfile','--adapter','caddyfile'],env)
+        services.insert(1,('mediamtx',[config['capture']['mediamtx'],state/'mediamtx.yml'],env))
     save(state / 'processes.json', {})
     try:
         for name, command, child_env in services:
@@ -322,10 +346,13 @@ def start(config, state):
             if name == 'worker': record['job'] = job_name
             current[name] = record; save(state / 'processes.json', current)
         wait_ready(config)
+        if config.get('capture'):
+            from team_capture import publish_certificate
+            publish_certificate(config,state)
         if not all(alive(r) for r in current.values()): raise RuntimeError('A team process exited; inspect local logs')
     except Exception:
         stop(config, state); raise
-    print('Team website running: http://127.0.0.1:8088/#/sessions', flush=True)
+    print('Team website running: '+website_url(config), flush=True)
 
 
 def main():
@@ -342,6 +369,8 @@ def main():
     sub.add_parser('start'); sub.add_parser('start-detached'); sub.add_parser('stop'); sub.add_parser('status')
     sub.add_parser('startup-paths')
     sub.add_parser('seed-demo', help='Explicitly add 50 fictional classrooms to this local development database; no analysis')
+    capture = sub.add_parser('enable-capture', help='Use trusted LAN HTTPS with the existing database and accounts; stop first')
+    for name in ('ip','caddy','mediamtx','ffmpeg','ffprobe'): capture.add_argument('--'+name,required=True)
     worker = sub.add_parser('supervise-worker'); worker.add_argument('--job', required=True)
     args = parser.parse_args(); state = args.data_root.resolve(); state.mkdir(parents=True, exist_ok=True)
     if args.command == 'supervise-worker':
@@ -349,6 +378,21 @@ def main():
         return supervise(args.job, "import sys; sys.argv=['workers','run']; from workers.__main__ import main; main()")
     if args.command == 'prepare': prepare(args, state); return 0
     config = load(state / 'private.json')
+    if args.command == 'enable-capture':
+        if any(alive(r) for r in records(state).values()): raise RuntimeError('Stop this deployment before configuring capture')
+        from team_capture import configure,generate
+        configure(config,state,args); generate(config,state)
+        config['code_sha']=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+        config['source_dirty']=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip())
+        env=environment(config,state)
+        for name in ('api','capture-hook'):
+            run([config['go'],'build','-o',state/f'bin/{name}.exe',f'./cmd/{name}'],env,state)
+        run([config['node'],ROOT/'frontend/node_modules/vite/bin/vite.js','build'],env,state,cwd=ROOT/'frontend')
+        save(state/'private.json',config)
+        save(state/'deployment.json',dict(url=website_url(config),code_sha=config['code_sha'],source_dirty=config['source_dirty'],
+            processor_version=config['runtime']['processor_version'],visual_model=config['runtime']['visual_model'],
+            execution=config['vision_execution']['engine'],vision_execution=config['vision_execution']))
+        print('LAN phone capture configured; start this deployment, then trust its public CA on each device.'); return 0
     if args.command == 'startup-paths':
         # Only paths are printed for the native BAT wrapper; credentials stay private.
         for target in (state,):
@@ -365,7 +409,7 @@ def main():
         if code: raise RuntimeError('Detached start failed; inspect launcher.log')
         wait_ready(config)
         if (state/'vision-runtime.json').exists(): describe_vision(load(state/'vision-runtime.json'))
-        print('Team website running: http://127.0.0.1:8088/#/sessions'); return 0
+        print('Team website running: '+website_url(config)); return 0
     if args.command == 'start': start(config, state)
     elif args.command == 'stop': stop(config, state); print('Team website stopped')
     elif args.command == 'seed-demo': seed_demo(config, state)

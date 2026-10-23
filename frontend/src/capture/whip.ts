@@ -42,10 +42,38 @@ export function selectCodecs(pc: RTCPeerConnection, capabilities: (kind: 'audio'
     if (kind !== 'video' && kind !== 'audio') continue;
     const mime = kind === 'video' ? 'video/h264' : 'audio/opus';
     const codecs = capabilities(kind)?.codecs.filter(codec => codec.mimeType.toLowerCase() === mime);
-    if (!codecs?.length || !transceiver.setCodecPreferences) throw new Error('CODEC_UNSUPPORTED');
+    if (codecs && !codecs.length) throw new Error('CODEC_UNSUPPORTED');
     transceiver.direction = 'sendonly';
-    transceiver.setCodecPreferences(codecs);
+    if (codecs?.length && transceiver.setCodecPreferences) transceiver.setCodecPreferences(codecs);
   }
+}
+
+/** Older Safari lacks setCodecPreferences. Restrict the actual offer as well;
+ * never silently publish VP8/HEVC when the recording contract requires H264. */
+export function compatibleOffer(offer: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
+  const parts = (offer.sdp ?? '').split(/\r?\nm=/);
+  if (parts.length < 3) throw new Error('CODEC_UNSUPPORTED');
+  for (let i = 1; i < parts.length; i++) {
+    const lines = parts[i]!.split(/\r?\n/), media = lines[0]!.split(' ');
+    const kind = media[0];
+    if (kind !== 'video' && kind !== 'audio') continue;
+    const codec = kind === 'video' ? 'h264' : 'opus';
+    const allowed = new Set(lines.filter(line => /^a=rtpmap:/.test(line) && line.split(' ')[1]?.split('/')[0]?.toLowerCase() === codec)
+      .map(line => line.split(':')[1]!.split(' ')[0]!));
+    if (!allowed.size) throw new Error('CODEC_UNSUPPORTED');
+    // Keep only retransmission payloads associated with an allowed video codec.
+    if (kind === 'video') for (const line of lines) {
+      const match = /^a=fmtp:(\d+) .*\bapt=(\d+)(?:;|$)/.exec(line);
+      if (match && allowed.has(match[2]!)) allowed.add(match[1]!);
+    }
+    const payloads = media.slice(3).filter(payload => allowed.has(payload));
+    lines[0] = [...media.slice(0, 3), ...payloads].join(' ');
+    parts[i] = lines.filter(line => {
+      const payload = /^a=(?:rtpmap|fmtp|rtcp-fb):(\d+)\b/.exec(line)?.[1];
+      return !payload || allowed.has(payload);
+    }).join('\r\n');
+  }
+  return { type: offer.type, sdp: parts.join('\r\nm=') };
 }
 
 export function verifyAnswer(sdp: string): void {

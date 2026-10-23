@@ -28,6 +28,7 @@ type CheckFunc func(context.Context) error
 type ReadinessChecks map[string]CheckFunc
 
 type Options struct {
+	LiveVisionEnabled  bool
 	ModelSettings      *modelsettings.Service
 	Capture            *capture.Service
 	Logger             *slog.Logger
@@ -50,6 +51,7 @@ type Options struct {
 }
 
 type server struct {
+	liveVision         *liveVisionBroker
 	modelSettings      *modelsettings.Service
 	announcements      workerAnnouncements
 	capture            *capture.Service
@@ -94,6 +96,9 @@ func New(options Options) http.Handler {
 		maxUploadBytes: options.MaxUploadBytes, uploadTimeout: options.UploadTimeout,
 	}
 	s.workerCapabilities = map[string]bool{}
+	if options.LiveVisionEnabled {
+		s.liveVision = &liveVisionBroker{}
+	}
 	for _, capability := range options.WorkerCapabilities {
 		s.workerCapabilities[capability] = true
 	}
@@ -111,6 +116,7 @@ func New(options Options) http.Handler {
 	}
 	mux := http.NewServeMux()
 	s.registerCaptureRoutes(mux)
+	s.registerLiveVisionRoutes(mux)
 	mux.HandleFunc("/health/live", requireGet(s.live))
 	mux.HandleFunc("/health/ready", requireGet(s.ready))
 	if s.identity != nil && s.academic != nil {

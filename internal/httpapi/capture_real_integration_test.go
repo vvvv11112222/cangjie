@@ -202,7 +202,7 @@ paths:
 	}
 	worker := exec.CommandContext(ctx, python, "-m", "workers", "run", "--once")
 	worker.Dir = root
-	worker.Env = append(os.Environ(), "WORKER_API_BASE="+server.URL+"/internal/v1", "WORKER_TOKEN="+workerToken, "WORKER_ID=capture-real", "WORKER_CAPABILITIES=probe,video_analysis", "WORKER_PROCESSOR_VERSION="+runtime.Processor, "FFMPEG_BUILD_SHA256="+runtime.SHA, "WORKER_TEMP_ROOT="+filepath.Join(dir, "worker"), "PYTHONUTF8=1")
+	worker.Env = append(os.Environ(), "WORKER_API_BASE="+server.URL+"/internal/v1", "WORKER_TOKEN="+workerToken, "WORKER_ID=capture-real", "WORKER_CAPABILITIES=probe,video_analysis", "WORKER_PROCESSOR_VERSION="+runtime.Processor, "FFMPEG_BUILD_SHA256="+runtime.SHA, "WORKER_TEMP_ROOT="+filepath.Join(dir, "worker"), "PYTHONUTF8=1", "WORKER_CLEANUP_ENABLED=0", "CAPTURE_LIVE_VISION_ENABLED=false")
 	if out, e := worker.CombinedOutput(); e != nil {
 		t.Fatalf("probe worker: %v %s", e, out)
 	}

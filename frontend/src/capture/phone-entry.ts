@@ -95,9 +95,11 @@ const environment: PhoneEnvironment = {
     return navigator.mediaDevices.getUserMedia(constraints);
   },
   makePeer: () => new RTCPeerConnection(),
-  capabilities: kind => RTCRtpReceiver.getCapabilities(kind),
+  capabilities: kind => RTCRtpSender.getCapabilities?.(kind) ?? RTCRtpReceiver.getCapabilities?.(kind) ?? null,
   meter: async (stream, update) => {
-    const context = new AudioContext();
+    const Audio = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Audio) throw new Error('METER_UNAVAILABLE');
+    const context = new Audio();
     let source: MediaStreamAudioSourceNode | undefined;
     let analyser: AnalyserNode | undefined;
     let frame = 0;

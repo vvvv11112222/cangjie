@@ -206,6 +206,37 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Cap
 	return r.Capture, nil
 }
 
+// AuthorizeVision is checked before accepting a transient frame and again before
+// returning its result. Live preview does not create evidence or an analysis run.
+func (s *Service) AuthorizeVision(ctx context.Context, p identity.Principal, id string) error {
+	var e error
+	p, e = s.identity.PrincipalByID(ctx, p.UserID)
+	if e != nil {
+		return e
+	}
+	r, e := load(ctx, s.pool, id, false)
+	if e != nil {
+		return e
+	}
+	if e = s.media.AuthorizeCaptureRead(ctx, p, r.SessionID); e != nil {
+		return e
+	}
+	if e = s.valid(ctx, s.pool, r); e != nil {
+		return e
+	}
+	if r.State != "recording" || r.StopAt != nil {
+		return denied()
+	}
+	var allowed bool
+	if e = s.pool.QueryRow(ctx, `SELECT allowed_uses ? 'analysis' FROM teaching.source_records WHERE id=$1`, r.SourceID).Scan(&allowed); e != nil {
+		return e
+	}
+	if !allowed {
+		return denied()
+	}
+	return nil
+}
+
 // Active returns the single non-terminal capture for a lesson. The partial
 // unique index in migration 009 enforces that there can be at most one.
 func (s *Service) Active(ctx context.Context, p identity.Principal, session string) (Capture, error) {

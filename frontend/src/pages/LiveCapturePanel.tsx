@@ -20,6 +20,7 @@ import { collectPages } from '../data/pagination';
 import { featureProblem,getServiceCapabilities,useServiceCapabilities } from '../data/serviceCapabilities';
 import { formatDateTime,formatTimestamp } from '../format';
 import type { Session } from '../types';
+import { LiveVisionPreview } from './LiveVisionPreview';
 
 const terminal = (capture: LiveCapture): boolean => capture.state === 'ready' || capture.state === 'failed';
 async function verifiedSources(sessionId: string): Promise<SourceRecord[]> {
@@ -55,6 +56,8 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
   const [notice, setNotice] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
   const [muted, setMuted] = useState(true);
+  const [liveDetection, setLiveDetection] = useState(false);
+  const livePlayer = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const whep = useRef<WHEPSession | null>(null);
   const watchAbort = useRef<AbortController | null>(null);
@@ -226,11 +229,16 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
 
       </Card>
       <Card title="实时画面" >
+        <div className="live-player" ref={livePlayer}>
         <video ref={video} className="live-video" autoPlay playsInline muted={muted} aria-label="课堂实时画面" />
-        <div className="action-row">
-          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => { if (video.current !== null) { video.current.muted = !muted; setMuted(!muted); } }}>{muted ? '开启声音' : '静音'}</button>
-          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => void video.current?.requestFullscreen()}>全屏</button>
+        {capture !== null && <LiveVisionPreview captureId={capture.id} video={video} enabled={liveDetection && watching && capture.state === 'recording'} />}
         </div>
+        <div className="action-row">
+          <label><input type="checkbox" checked={liveDetection} onChange={event=>setLiveDetection(event.target.checked)} disabled={!watching} /> 直播显示举手与低头框</label>
+          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => { if (video.current !== null) { video.current.muted = !muted; setMuted(!muted); } }}>{muted ? '开启声音' : '静音'}</button>
+          <button type="button" className="btn btn-secondary" disabled={!watching} onClick={() => void livePlayer.current?.requestFullscreen()}>全屏</button>
+        </div>
+        {liveDetection && watching && <p className="field-hint">红色举手、蓝色低头、绿色均未见、灰色看不清。框随检测画面更新；完整记录在停止录像后分析。</p>}
         {!watching ? <p className="empty">尚未建立观看连接。手机可以继续录像，观看状态与录像状态相互独立。</p> : null}
       </Card>
           </div>

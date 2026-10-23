@@ -1221,6 +1221,40 @@
       "success_statuses": [
         200
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/live-captures/{id}/vision-frames",
+      "request": "LiveVisionFrame",
+      "response": "LiveVisionResult",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/live-vision/claim",
+      "request": "Empty",
+      "response": "LiveVisionClaim",
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        200,
+        204
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/live-vision/{id}/complete",
+      "request": "LiveVisionResult",
+      "response": null,
+      "transport": "json",
+      "query": null,
+      "success_statuses": [
+        204
+      ]
     }
   ]
 }
