@@ -153,7 +153,7 @@ export function TasksPage(): ReactElement {
     return <section className="card task-card" key={run.id}>
       <div className="task-head"><div><h2>{session.title}</h2><p className="muted small">{formatDateTime(session.planned_start_at)} · {runModeLabel(run.mode)}</p></div><BadgeTag badge={runStatusBadge(run.status)}/></div>
       <StageFlow run={run}/>
-      {run.error_code === null ? null : <RunErrorBox run={run}/>} 
+      {run.error_code === null ? null : <RunErrorBox run={run}/>}
       {run.limitations.length === 0 ? null : <TechDetails summary="查看本次分析范围与限制"><p>{run.limitations.join('；')}</p></TechDetails>}
       <div className="task-footer"><span>阶段完成 {run.jobs.filter((job) => job.status === 'succeeded').length}/{run.stage_plan.length}</span><div className="page-actions">
         <a className="btn btn-secondary btn-sm" href={`#/sessions/${session.id}`}>查看课堂</a>

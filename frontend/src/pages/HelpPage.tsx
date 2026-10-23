@@ -14,7 +14,7 @@ export function HelpPage(){
   const roles:RoleCode[]=actual.includes('sys_admin')||!actual.length?['teacher','academic_admin','supervisor','sys_admin']:[...new Set(actual)];
   const selected=loaded.data.tasks.some(item=>item.session.id===sessionId)?sessionId:'';
   const effective=roles.includes(role)?role:roles[0]??'teacher';const steps=guideSteps(effective,selected||null);const at=Math.min(index,steps.length-1);const current=steps[at]!;
-  useEffect(()=>{change({active:false});heading.current?.scrollIntoView?.({block:'start'});},[]);
+  useEffect(()=>{change({active:false});heading.current?.closest('.workspace')?.scrollIntoView?.({block:'start'});},[]);
   function select(next:number){change({role:effective,index:next,sessionId:sessionId||null,active:false,seen:true});}
   function visit(){change({role:effective,index:at,sessionId:selected||null,active:true,seen:true});window.location.hash=current.path;}
   return <div className="page help-page"><header className="page-head"><h1 ref={heading}>使用帮助</h1><a className="btn btn-secondary" href="#/sessions">返回课堂</a></header>

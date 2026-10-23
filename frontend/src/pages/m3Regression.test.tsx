@@ -120,17 +120,16 @@ it('cancelling report edits restores all saved fields before editing again', asy
   expect(container.querySelector<HTMLTextAreaElement>('.report-editor textarea')?.value).toBe(report.summary);
 });
 
-it('keeps report choices stable and clears the old review reason when changing reports', async () => {
+it('keeps report choices stable without repetitive review reason entry', async () => {
   const other:Report={...reportFixture,id:'other-choice',summary:'另一份报告摘要',allowed_actions:['review'],status:'in_review'};
   reports=[other,reportFixture];
   await mount(<ReportWorkflowPanel session={session} initial={reportFixture}/>);
   const choices=()=>[...container.querySelectorAll<HTMLOptionElement>('.workflow-toolbar option')].map(item=>({id:item.value,label:item.textContent}));
   const before=choices();
-  const input=container.querySelector<HTMLInputElement>('.workflow-toolbar input')!;
-  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'仅适用于上一份报告');input.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(container.querySelector('.workflow-toolbar input')).toBeNull();
   await select(other.id);
   expect(choices()).toEqual(before);
-  expect(container.querySelector<HTMLInputElement>('.workflow-toolbar input')?.value).toBe('');
+  expect(container.querySelector('.workflow-toolbar input')).toBeNull();
   expect(choices().find(item=>item.id===other.id)?.label).toContain('另一份报告摘要');
 });
 
@@ -144,13 +143,12 @@ it('reviews one pending observation at a time and advances only after the server
   expect(container.querySelectorAll('.review-row')).toHaveLength(1);
   expect(container.querySelector('.review-row')?.textContent).toContain(first.observation_text);
   expect(h.reviewReport).not.toHaveBeenCalled();
-  const explanation=container.querySelector<HTMLInputElement>('.workflow-toolbar input')!;
-  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(explanation,'核对当前观察');explanation.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(container.querySelector('.workflow-toolbar input')).toBeNull();
   h.reviewReport.mockRejectedValueOnce(new Error('暂时无法保存复核'));
   await click('确认');
   expect(container.querySelector('.review-row')?.textContent).toContain(first.observation_text);
   await click('确认');
-  expect(h.reviewReport).toHaveBeenCalledWith(reviewable.id,expect.objectContaining({observation_id:first.id,action:'accept'}));
+  expect(h.reviewReport).toHaveBeenCalledWith(reviewable.id,expect.objectContaining({observation_id:first.id,action:'accept',reason:'报告页面操作（系统自动记录）'}));
   expect(container.querySelectorAll('.review-row')).toHaveLength(1);
   expect(container.querySelector('.review-row')?.textContent).toContain(second.observation_text);
   expect(button('确认整篇内容').disabled).toBe(true);
@@ -254,8 +252,7 @@ it('refreshes publication state across tab reentry and after withdrawal', async 
   expect(h.publishReport.mock.calls[1]![1].expected_current_report_id).toBe(a.id);
   expect(refresh).toHaveBeenCalledTimes(2);
   expect(container.textContent).not.toContain('stale publication');
-  const input = container.querySelector('.workflow-toolbar input')!;
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '撤回测试'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(container.querySelector('.workflow-toolbar input')).toBeNull();
   await click('撤回报告'); expect(refresh).toHaveBeenCalledTimes(3);
   expect(container.textContent).not.toContain('导出当前发布版');
 });
@@ -264,8 +261,7 @@ it('requires observation review before whole confirmation, and whole confirmatio
   const reviewable: Report = { ...reportFixture, status: 'in_review', content_sha256: 'current-content', reviewed_content_sha256: null, allowed_actions: ['review', 'confirm_report', 'publish'], observations: reportFixture.observations.map(item => ({ ...item, review_status: 'unreviewed' })) };
   reports = [reviewable];
   await mount(<ReportWorkflowPanel session={session} initial={reviewable}/>);
-  const input = container.querySelector('.workflow-toolbar input')!;
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '已核对依据'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(container.querySelector('.workflow-toolbar input')).toBeNull();
   expect(button('确认整篇内容').disabled).toBe(true);
   expect(button('发布报告').disabled).toBe(true);
   const reviewed: Report = { ...reviewable, observations: reviewable.observations.map(item => ({ ...item, review_status: 'accepted' })) };

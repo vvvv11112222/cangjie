@@ -368,14 +368,14 @@ export function SessionDetailPage({ sessionId }: { sessionId: string }): ReactEl
     <div className="page">
       <header className="page-head">
         <div>
-          
+
           <a className="text-button" href="#/sessions">← 返回课堂列表</a><h1>{session?.title ?? '课堂详情'}</h1>{session&&<span className="muted small">{formatDateTime(session.planned_start_at)} – {formatDateTime(session.planned_end_at)}</span>}
-          
+
         </div>
         {session === null ? null : <BadgeTag badge={sessionStatusBadge(session.status)} />}
       </header>
 
-      
+
       <LoadStateNote status={detail.status} error={detail.error} />
       <LoadControls actionLabel={detail.actionLabel} loadMore={detail.loadMore} />
 

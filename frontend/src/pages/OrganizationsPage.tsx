@@ -60,9 +60,9 @@ function OrganizationsHead(): ReactElement {
   return (
     <header className="page-head">
       <div>
-        
+
         <h1>学院、年级与班级</h1>
-        
+
       </div>
     </header>
   );

@@ -50,4 +50,3 @@ it('points a reader without review rights to the responsible role',async()=>{
  expect(node.textContent).toContain('当前账号没有本步骤的操作权限');
  expect(node.querySelector('[aria-current=step]')?.textContent).toBe('草稿与提交复核');
 });
-

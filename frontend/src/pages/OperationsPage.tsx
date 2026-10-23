@@ -168,9 +168,9 @@ export function OperationsPage(): ReactElement {
     <div className="page">
       <header className="page-head">
         <div>
-          
+
           <h1>运行与设置</h1>
-          
+
         </div>
         {api ? <button type="button" className="btn btn-secondary" disabled={refreshDisabled} onClick={() => setReloadKey((value) => value + 1)}>刷新状态</button> : null}
       </header>

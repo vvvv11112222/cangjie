@@ -105,9 +105,9 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
   const head = (
     <header className="page-head">
       <div>
-        
+
         <h1>课堂档案</h1>
-        
+
       </div>
       {/*
         草图的页头操作：学院教务只有"创建课堂"，其它角色还能"上传课堂录像"。
@@ -128,10 +128,10 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
 
   const notes = (
     <>
-      
+
       <LoadStateNote status={loaded.status} error={loaded.error} />
       {loaded.status!=='ready'&&<LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore}/>}
-      
+
     </>
   );
 
@@ -149,7 +149,7 @@ export function SessionListPage({ tasks: injectedTasks }: { tasks?: SessionTaskV
       {notes}
       {head}
 
-      
+
 
       {uploadNotice && <p className="notice-strip" role="status">{uploadNotice}</p>}
       {compose === 'create' ? (

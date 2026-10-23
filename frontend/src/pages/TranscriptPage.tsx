@@ -60,16 +60,16 @@ export function TranscriptPage({
   const head = (
     <header className="page-head">
       <div>
-        
+
         <h1>转写</h1>
-        
+
       </div>
       {ready ? <BadgeTag badge={runStatusBadge(results.run_status)} /> : null}
     </header>
   );
   const notes = (
     <>
-      
+
       <LoadStateNote status={loaded.status} error={loaded.error} />
       <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
       {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
@@ -93,7 +93,7 @@ export function TranscriptPage({
 
       <Card
         title="结果摘要"
-        
+
       >
         <div className="field-grid">
           <Field label="批次状态">
@@ -144,7 +144,7 @@ export function TranscriptPage({
       {revision === null ? null : (
         <Card
           title={`转写修订第 ${revision.revision_no} 版`}
-          
+
           actions={<BadgeTag badge={sourceTypeBadge(revision.source_type)} />}
         >
           <div className="field-grid">

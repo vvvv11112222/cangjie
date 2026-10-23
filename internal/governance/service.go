@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -315,6 +314,7 @@ type exportSnapshot struct {
 	Report               map[string]any    `json:"report"`
 	Source               map[string]any    `json:"source"`
 	EvidenceAvailability map[string]string `json:"evidence_availability"`
+	Details              *reportDetails    `json:"-"`
 }
 
 func (s *Service) buildExport(ctx context.Context, reportID string) (exportSnapshot, error) {
@@ -350,7 +350,12 @@ func (s *Service) buildExport(ctx context.Context, reportID string) (exportSnaps
 		}
 		snap.EvidenceAvailability[id] = state
 	}
-	return snap, rows.Err()
+	if err = rows.Err(); err != nil {
+		return snap, err
+	}
+	rows.Close()
+	snap.Details, err = s.reportDetails(ctx, reportID)
+	return snap, err
 }
 
 func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
@@ -371,7 +376,7 @@ func (s *Service) ProcessExport(ctx context.Context) (bool, error) {
 	var body []byte
 	mime := "application/json"
 	if format == "pdf" {
-		body = renderPDF(snap)
+		body, err = renderPDF(snap)
 		mime = "application/pdf"
 	} else {
 		body, err = json.MarshalIndent(snap, "", "  ")
@@ -454,138 +459,9 @@ func (s *Service) failExport(ctx context.Context, id, token string, cause error)
 	return cause
 }
 
-func renderPDF(s exportSnapshot) []byte {
-	lines := pdfLines(s)
-	const linesPerPage = 44
-	pages := make([][]string, 0, (len(lines)+linesPerPage-1)/linesPerPage)
-	for len(lines) > 0 {
-		count := min(linesPerPage, len(lines))
-		if count < len(lines) {
-			for i := count - 1; i > 0; i-- {
-				if strings.HasPrefix(lines[i], "维度/状态: ") || strings.HasPrefix(lines[i], "观察/复核: ") {
-					count = i
-					break
-				}
-			}
-		}
-		pages = append(pages, lines[:count])
-		lines = lines[count:]
-	}
-	if len(pages) == 0 {
-		pages = append(pages, []string{"教学质量报告"})
-	}
-	fontObject := 3 + len(pages)*2
-	kids := make([]string, 0, len(pages))
-	for i := range pages {
-		kids = append(kids, fmt.Sprintf("%d 0 R", 3+i*2))
-	}
-	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), len(pages))}
-	for i, pageLines := range pages {
-		content := ""
-		contentY := 810
-		if i > 0 {
-			content = "BT /F1 9 Tf 42 820 Td <" + utf16Hex("教学质量报告（续）") + "> Tj ET "
-			contentY = 794
-		}
-		content += fmt.Sprintf("BT /F1 11 Tf 42 %d Td 16 TL ", contentY)
-		for _, line := range pageLines {
-			content += "<" + utf16Hex(line) + "> Tj T* "
-		}
-		content += "ET BT /F1 9 Tf 260 28 Td <" + utf16Hex(fmt.Sprintf("第 %d / %d 页", i+1, len(pages))) + "> Tj ET"
-		contentObject := 4 + i*2
-		objects = append(objects,
-			fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>", fontObject, contentObject),
-			fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content))
-	}
-	objects = append(objects,
-		fmt.Sprintf("<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [%d 0 R] >>", fontObject+1),
-		fmt.Sprintf("<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> /DW 1000 /W [1 95 500] /FontDescriptor %d 0 R >>", fontObject+2),
-		"<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [-25 -254 1000 880] /ItalicAngle 0 /Ascent 752 /Descent -271 /CapHeight 737 /StemV 58 /MissingWidth 1000 >>")
-	var out bytes.Buffer
-	out.WriteString("%PDF-1.4\n")
-	offsets := []int{0}
-	for i, o := range objects {
-		offsets = append(offsets, out.Len())
-		fmt.Fprintf(&out, "%d 0 obj\n%s\nendobj\n", i+1, o)
-	}
-	xref := out.Len()
-	fmt.Fprintf(&out, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
-	for _, off := range offsets[1:] {
-		fmt.Fprintf(&out, "%010d 00000 n \n", off)
-	}
-	fmt.Fprintf(&out, "trailer << /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xref)
-	return out.Bytes()
-}
-
-func pdfLines(s exportSnapshot) []string {
-	lines := []string{"教学质量报告", "报告ID: " + fmt.Sprint(s.Report["id"]), "版本: " + fmt.Sprint(s.Report["revision"]), "导出时间: " + s.ExportedAt.Format(time.RFC3339)}
-	appendWrapped := func(label string, value any) {
-		if value == nil {
-			value = "未提供"
-		}
-		text := label + fmt.Sprint(value)
-		for len([]rune(text)) > 42 {
-			runes := []rune(text)
-			lines = append(lines, string(runes[:42]))
-			text = "  " + string(runes[42:])
-		}
-		lines = append(lines, text)
-	}
-	appendWrapped("总摘要: ", s.Report["summary"])
-	appendWrapped("总摘要证据: ", s.Report["summary_evidence_ids"])
-	appendWrapped("报告限制: ", s.Report["limitations"])
-	for _, field := range []struct{ key, label string }{
-		{"title", "来源标题"}, {"attribution", "来源署名"}, {"source_type", "来源类型"},
-		{"license_name", "许可名称"}, {"license_url", "许可链接"}, {"rights_status", "核验状态"}, {"allowed_uses", "授权用途"},
-	} {
-		if value := s.Source[field.key]; value != nil {
-			appendWrapped(field.label+": ", value)
-		}
-	}
-	appendWrapped("内容摘要 SHA-256: ", s.Report["content_sha256"])
-	if provenance := s.Report["provenance"]; provenance != nil {
-		// JSON provides deterministic map order and preserves nested versions,
-		// hashes, coverage and limitations from this fixed export snapshot.
-		raw, _ := json.Marshal(provenance)
-		appendWrapped("执行溯源: ", string(raw))
-	}
-	evidenceIDs := make([]string, 0, len(s.EvidenceAvailability))
-	for id := range s.EvidenceAvailability {
-		evidenceIDs = append(evidenceIDs, id)
-	}
-	sort.Strings(evidenceIDs)
-	for _, id := range evidenceIDs {
-		appendWrapped("证据可用性: ", id+" / "+s.EvidenceAvailability[id])
-	}
-	for _, raw := range anySlice(s.Report["dimensions"]) {
-		dimension, _ := raw.(map[string]any)
-		appendWrapped("维度/状态: ", fmt.Sprintf("%v / %v", dimension["dimension_code"], dimension["coverage_status"]))
-		appendWrapped("维度结论: ", dimension["summary"])
-		appendWrapped("不足原因: ", dimension["limitation"])
-		appendWrapped("维度证据: ", dimension["summary_evidence_ids"])
-		appendWrapped("维度覆盖: ", dimension["coverage"])
-	}
-	for _, raw := range anySlice(s.Report["observations"]) {
-		observation, _ := raw.(map[string]any)
-		appendWrapped("观察/复核: ", fmt.Sprintf("%v / %v", observation["dimension_code"], observation["review_status"]))
-		appendWrapped("观察内容: ", observation["observation_text"])
-		appendWrapped("改进建议: ", observation["suggestion"])
-		appendWrapped("观察证据: ", observation["evidence_ids"])
-	}
-	return lines
-}
-
 func anySlice(value any) []any {
 	items, _ := value.([]any)
 	return items
-}
-func utf16Hex(value string) string {
-	units := utf16.Encode([]rune(value))
-	var b strings.Builder
-	for _, u := range units {
-		fmt.Fprintf(&b, "%04X", u)
-	}
-	return b.String()
 }
 
 func scanDeletion(row pgx.Row) (Deletion, error) {

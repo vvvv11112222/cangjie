@@ -70,16 +70,16 @@ export function ReportPage({
   const head = (
     <header className="page-head">
       <div>
-        
+
         <h1>报告</h1>
-        
+
       </div>
       {ready ? <BadgeTag badge={reportStatusBadge(report.status)} /> : null}
     </header>
   );
   const notes = (
     <>
-      
+
       <LoadStateNote status={loaded.status} error={loaded.error} />
       <LoadControls actionLabel={loaded.actionLabel} loadMore={loaded.loadMore} />
       {loaded.data.selection === null ? null : <p className="load-note">{loaded.data.selection}</p>}
@@ -112,7 +112,7 @@ export function ReportPage({
       </Card> : <>
 
       <Card title="课堂概览" >
-        
+
         {report.provenance?.limitations.length ? <TechDetails summary="查看分析范围与限制"><p>{report.provenance.limitations.map(reportLimitation).join('；')}</p></TechDetails> : null}
         <p className="summary-text">{report.summary === '' ? '（空）' : report.summary}</p>
         <div className="cite-row">
@@ -129,7 +129,7 @@ export function ReportPage({
         <ReportEvidence key={activeEvidence.id} evidence={activeEvidence} onClose={() => { setSelectedEvidence(null); evidenceTrigger.current?.focus(); }} />
       </div>}
 
-      
+
       </>}
     </div>
   );

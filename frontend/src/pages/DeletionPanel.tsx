@@ -101,7 +101,7 @@ export function DeletionPanel({ session, api, onSessionChanged }: {
   return (
     <Card
       title="彻底清理课堂"
-      
+
       actions={deletion === null ? undefined : <BadgeTag badge={deletionStatusBadge(deletion.status)} />}
     >
       {requestId !== null && deletion === null ? (

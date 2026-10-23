@@ -27,7 +27,6 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   const [summary, setSummary] = useState(initial.summary);
   const [observations, setObservations] = useState(() => writable(initial));
   const [dimensions, setDimensions] = useState<Dimension[]>(() => initial.dimensions.map((item) => ({ ...item })));
-  const [reason, setReason] = useState('');
   const [editing, setEditing] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,7 +54,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   }, [initial]);
 
   const adopt = (next: Report): void => {
-    if (next.id !== report.id) { setShowAllReviews(false); setReason(''); }
+    if (next.id !== report.id) { setShowAllReviews(false);  }
     setReport(next); setSummary(next.summary); setObservations(writable(next)); setDimensions(next.dimensions.map((item) => ({ ...item }))); setEditing(false);
     setHistory((items) => items.some(item=>item.id===next.id) ? items.map(item=>item.id===next.id ? next : item) : [next,...items]); onChange?.(next);
   };
@@ -104,10 +103,10 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
       const next = await operation();
       adopt(next);
       historyGeneration.current += 1; setHistoryReady(false); setHistoryReload((value) => value + 1);
-      after?.(next); setReason(''); setMessage(success);
+      after?.(next);  setMessage(success);
     } catch (value) { setError(describeError(value)); } finally { setBusy(false); }
   }
-  const explanation = reason.trim() || '前端人工复核操作';
+  const explanation = '报告页面操作（系统自动记录）';
 
   async function exportReport(): Promise<void> {
     if (blocked) return;
@@ -125,27 +124,27 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
   }
 
   return <Card title="复核、发布与导出"  actions={<BadgeTag badge={reportStatusBadge(report.status)} />}>
-    
+
     <div data-guide="report-review" className="workflow-toolbar">
       <label className="account-field"><span>报告版本</span><select disabled={busy} value={report.id} onChange={(event) => {
         const selected = history.find((item) => item.id === event.target.value); if (selected !== undefined) adopt(selected);
       }}>{history.map(item => <option key={item.id} value={item.id} title={item.id}>第 {item.revision} 版 · {reportStatusBadge(item.status).label} · {Array.from(item.summary).slice(0,24).join('') || '暂无摘要'}{Array.from(item.summary).length>24 ? '…' : ''}</option>)}</select></label>
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setHistoryReload((value) => value + 1)}>刷新报告版本</button>
-      {report.allowed_actions.some(action => ['edit', 'revise', 'submit', 'confirm_report', 'review', 'withdraw'].includes(action)) ? <label className="account-field"><span>操作说明（写操作必填）</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明修改或复核原因" /></label> : null}
+
     </div>
     <div className="action-row">
       {report.allowed_actions.includes('edit') ? <button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => { setSummary(report.summary); setObservations(writable(report)); setDimensions(report.dimensions.map(item => ({ ...item }))); setEditing(value => !value); }}>{editing ? '取消编辑' : '编辑草稿'}</button> : null}
-      {report.allowed_actions.includes('revise') ? <button type="button" className="btn btn-secondary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => copyReport(report.id, report.lock_version, explanation), '已复制为新的可编辑草稿。')}>新建修订</button> : null}
-      {report.allowed_actions.includes('submit') ? <button type="button" className="btn btn-primary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'submit', observation_id: null, content_sha256: null, reason: explanation }), '报告已提交复核。')}>提交复核</button> : null}
-      {report.allowed_actions.includes('confirm_report') ? <button type="button" className="btn btn-primary" disabled={blocked || editing || unreviewedCount > 0 || reason.trim() === '' || report.content_sha256 === null} title={unreviewedCount > 0 ? `请先逐条处理剩余 ${unreviewedCount} 条观察` : undefined} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'confirm_report', observation_id: null, content_sha256: report.content_sha256, reason: explanation }), '整篇内容已确认。')}>确认整篇内容</button> : null}
+      {report.allowed_actions.includes('revise') ? <button type="button" className="btn btn-secondary" disabled={blocked} onClick={() => void act(() => copyReport(report.id, report.lock_version, explanation), '已复制为新的可编辑草稿。')}>新建修订</button> : null}
+      {report.allowed_actions.includes('submit') ? <button type="button" className="btn btn-primary" disabled={blocked} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'submit', observation_id: null, content_sha256: null, reason: explanation }), '报告已提交复核。')}>提交复核</button> : null}
+      {report.allowed_actions.includes('confirm_report') ? <button type="button" className="btn btn-primary" disabled={blocked || editing || unreviewedCount > 0 || report.content_sha256 === null} title={unreviewedCount > 0 ? `请先逐条处理剩余 ${unreviewedCount} 条观察` : undefined} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'confirm_report', observation_id: null, content_sha256: report.content_sha256, reason: explanation }), '整篇内容已确认。')}>确认整篇内容</button> : null}
       {report.allowed_actions.includes('publish') ? <button type="button" className="btn btn-primary" disabled={blocked || editing || !historyReady || unreviewedCount > 0 || !wholeConfirmed} onClick={() => void act(() => publishReport(report.id, { lock_version: report.lock_version, expected_current_report_id: expectedCurrent }), '报告已发布为课堂当前版本。', (next) => publicationChanged(next.id))}>发布报告</button> : null}
-      {report.allowed_actions.includes('withdraw') ? <button type="button" className="btn btn-danger" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => withdrawReport(report.id, report.lock_version, explanation), '当前报告已撤回；不会自动恢复旧版本。', () => publicationChanged(null))}>撤回报告</button> : null}
+      {report.allowed_actions.includes('withdraw') ? <button type="button" className="btn btn-danger" disabled={blocked} onClick={() => void act(() => withdrawReport(report.id, report.lock_version, explanation), '当前报告已撤回；不会自动恢复旧版本。', () => publicationChanged(null))}>撤回报告</button> : null}
     </div>
     {editing ? <div className="report-editor">
       <label className="account-field"><span>总摘要</span><textarea value={summary} onChange={(event) => setSummary(event.target.value)} /></label>
       <details><summary>修改各方面的分析摘要（可选）</summary>{dimensions.map((item, index) => <label className="account-field" key={item.dimension_code}><span>{dimensionLabel(item.dimension_code)}</span><textarea value={item.summary} disabled={item.coverage_status !== 'observed'} onChange={(event) => setDimensions((items) => items.map((candidate, position) => position === index ? { ...candidate, summary: event.target.value } : candidate))}/></label>)}</details>
       {observations.map((item, index) => <div className="report-observation-editor" key={item.id ?? index}><label className="account-field"><span>{dimensionLabel(item.dimension_code)} · 观察 {index + 1}</span><textarea value={item.observation_text} onChange={(event) => setObservations((items) => items.map((candidate, position) => position === index ? { ...candidate, observation_text: event.target.value } : candidate))}/></label><label className="account-field"><span>改进建议</span><textarea value={item.suggestion} onChange={(event) => setObservations((items) => items.map((candidate, position) => position === index ? { ...candidate, suggestion: event.target.value } : candidate))}/></label></div>)}
-      <button type="button" className="btn btn-primary" disabled={blocked || reason.trim() === ''} onClick={() => void act(() => patchReport(report.id, { lock_version: report.lock_version, summary, summary_evidence_ids: report.summary_evidence_ids, dimensions, observations, reason: explanation }), '草稿已保存；内容变化后需要重新提交和确认。')}>保存草稿</button>
+      <button type="button" className="btn btn-primary" disabled={blocked} onClick={() => void act(() => patchReport(report.id, { lock_version: report.lock_version, summary, summary_evidence_ids: report.summary_evidence_ids, dimensions, observations, reason: explanation }), '草稿已保存；内容变化后需要重新提交和确认。')}>保存草稿</button>
     </div> : null}
     {report.allowed_actions.includes('review') ? <div className="review-list">
       <div className="action-row"><span>待核对 {unreviewedCount} 条 · 逐条核对课堂观察</span><button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={()=>setShowAllReviews(value=>!value)}>{showAllReviews ? '返回待核对内容' : '查看全部观察与处理记录'}</button></div>
@@ -154,7 +153,7 @@ export function ReportWorkflowPanel({ session, initial, onChange, onPublicationC
           {item.suggestion && <p className="field-hint">建议：{item.suggestion}</p>}
           {evidenceById && onSelectEvidence && <CitedEvidence ids={item.evidence_ids} evidenceById={evidenceById} onSelect={onSelectEvidence}/>}
         </div>
-        <div className="action-row"><button type="button" className="btn btn-secondary" disabled={blocked || editing || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'accept', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已确认，继续核对下一条。')}>确认</button><button type="button" className="btn btn-danger" disabled={blocked || editing || reason.trim() === ''} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'reject', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已驳回，发布内容将排除该项。')}>驳回</button></div>
+        <div className="action-row"><button type="button" className="btn btn-secondary" disabled={blocked || editing} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'accept', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已确认，继续核对下一条。')}>确认</button><button type="button" className="btn btn-danger" disabled={blocked || editing} onClick={() => void act(() => reviewReport(report.id, { lock_version: report.lock_version, action: 'reject', observation_id: item.id, content_sha256: null, reason: explanation }), '观察已驳回，发布内容将排除该项。')}>驳回</button></div>
       </div>)}
       {!showAllReviews && !nextObservation && null}
     </div> : null}

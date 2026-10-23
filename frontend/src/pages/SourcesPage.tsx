@@ -93,7 +93,7 @@ export function SourcesPage(): ReactElement {
     catch (cause) { if (isCurrent()) setError(describeError(cause)); } finally { if (isCurrent()) setLoading(false); }
   }
 
-  return <div className="page" data-guide="source-list">
+  return <div className="page">
     <header className="page-head"><div><h1>素材与来源</h1></div>
       {canRegister && sessionId !== '' ? <button className="btn btn-primary" type="button" disabled={loading} onClick={() => setForm('create')}>登记新素材</button> : null}
     </header>
@@ -104,7 +104,7 @@ export function SourcesPage(): ReactElement {
     {form === 'upload' && target !== null ? <Card key={`upload:${target.id}`} title={`上传录像：${target.title}`} ><form className="source-form" onSubmit={(event) => void submitUpload(event)}><label className="account-field">录像文件<input name="file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,.mp4,.mov,.mkv" required/></label><div className="form-actions"><button className="btn btn-secondary" type="button" disabled={loading} onClick={() => setForm(null)}>取消</button><button className="btn btn-primary" disabled={loading}>{loading ? '上传中…' : '开始上传'}</button></div></form></Card> : null}
     {error ? <div className="notice-strip"><ErrorMessage text={error}/>{sessionId !== '' ? <button type="button" className="btn btn-secondary btn-sm" disabled={loading} onClick={() => void reload()}>{loading ? '重新读取中…' : '重新读取素材'}</button> : null}</div> : null}{message ? <p className="notice-strip" role="status">{message}</p> : null}
     {sessionId && <a className="text-button" href={sessionDetailHash(sessionId, uploadedMedia ? {mediaId:uploadedMedia} : {})}>{uploadedMedia ? '继续：为这段录像选择分析方式' : '返回这节课堂继续操作'}</a>}
-    <Card title="课堂素材登记" subtitle={sessionId === '' ? '先选择课堂' : `${items.length} 条已加载记录`}>
+    <Card guideId="source-list" title="课堂素材登记" subtitle={sessionId === '' ? '先选择课堂' : `${items.length} 条已加载记录`}>
       {loading && items.length === 0 ? <p className="load-note">正在读取数据…</p> : null}
       {sessionId !== '' && !loading && !error && items.length === 0 ? <EmptyState text="该课堂尚未登记素材。"/> : null}
       {items.length > 0 ? <div className="table-wrap"><table className="table"><thead><tr><th>素材</th><th>来源</th><th>申请 / 允许用途</th><th>核验</th><th>外部处理</th><th>操作</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.title}</strong><br/><span className="muted small">{item.attribution}</span></td><td>{sourceTypeLabel[item.source_type]}</td><td><div className="pill-row">{item.requested_uses.map((use) => <Pill key={`r-${use}`} label={`申请${useLabel[use]}`}/>)}</div><div className="pill-row">{item.allowed_uses.map((use) => <Pill key={`a-${use}`} label={`允许${useLabel[use]}`} tone="green"/>)}</div></td><td><BadgeTag badge={statusBadge[item.rights_status]}/></td><td><span className="muted small">申请：{item.external_processing_requested ? '是' : '否'}</span><br/>{item.external_processing_allowed ? <Pill label="已允许" tone="green"/> : <Pill label="未允许"/>}</td><td><div className="page-actions">{item.allowed_actions.includes('verify') ? <button className="text-button" type="button" disabled={loading} onClick={() => { setTarget(item); setForm('verify'); }}>核验</button> : null}{item.allowed_actions.includes('upload') && selected?.allowed_actions.includes('upload') ? <button className="text-button" type="button" disabled={loading} onClick={() => { setTarget(item); setForm('upload'); }}>上传录像</button> : null}</div></td></tr>)}</tbody></table></div> : null}

@@ -15,9 +15,9 @@ export function PlaceholderPage({ page }: { page: PlannedPage }): ReactElement {
     <div className="page">
       <header className="page-head">
         <div>
-          
+
           <h1>{page.title}</h1>
-          
+
         </div>
       </header>
 

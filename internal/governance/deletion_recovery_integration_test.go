@@ -3,6 +3,7 @@ package governance
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -290,11 +291,18 @@ func TestPublishedPDFPreservesSourceAndProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rawSnapshot, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{"中文固定摘要", "固定来源标题", "固定来源署名", "fixed-revision", "fixed-prompt-digest"} {
-		// Content wrapping can split metadata; the projection and rendered
-		// artifact are independently verified by the PDF renderer check.
-		if !strings.Contains(strings.ReplaceAll(strings.Join(pdfLines(snap), ""), "  ", ""), want) {
-			t.Fatalf("fixed field missing: %s %v", want, err)
+		if !bytes.Contains(rawSnapshot, []byte(want)) {
+			t.Fatalf("JSON trace missing: %s", want)
+		}
+	}
+	for _, want := range []string{"中文固定摘要", "固定来源标题", "固定来源署名"} {
+		if !strings.Contains(strings.Join(pdfLines(snap), ""), want) {
+			t.Fatalf("PDF content missing: %s", want)
 		}
 	}
 	if output := os.Getenv("PDF_VALIDATION_OUTPUT"); output != "" {

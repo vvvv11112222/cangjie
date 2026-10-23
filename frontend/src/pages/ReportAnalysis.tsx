@@ -57,7 +57,7 @@ export function ReportEvidence({ evidence, onClose }: { evidence: Evidence; onCl
     <p className="report-prose">{evidence.description}</p>
     {evidence.availability === 'available' ? <EvidencePlayback evidence={evidence} />
       : <p className="notice-strip">原始依据{evidence.availability === 'expired' ? '已过期' : '已移除'}，保留文字供追溯，无法回放。</p>}
-    
+
   </section>;
 }
 
@@ -86,7 +86,7 @@ export function ReportAnalysis({ report, evidenceById, onSelect }: {
             if (target) { setSelected(target.dimension_code); buttons.current.get(next)?.focus(); }
           }}>
           <strong>{dimensionLabel(item.dimension_code)}</strong>
-          
+
           <BadgeTag badge={coverageStatusBadge(item.coverage_status)} />
         </button>)}
       </div>
@@ -107,7 +107,7 @@ export function ReportAnalysis({ report, evidenceById, onSelect }: {
           <p className="report-prose">{observation.observation_text}</p>
           {observation.suggestion ? <><h4>{observation.observation_type === 'highlight' ? '延续与应用建议' : '修改方向与实施建议'}</h4><p className="report-prose">{observation.suggestion}</p></> : null}
           <CitedEvidence ids={observation.evidence_ids} evidenceById={evidenceById} onSelect={onSelect} />
-          
+
         </li>)}
       </ul>}
     </section>

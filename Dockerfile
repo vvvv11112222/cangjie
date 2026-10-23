@@ -18,6 +18,7 @@ RUN apt-get update \
     && useradd --system --uid 10001 --create-home app
 WORKDIR /app
 COPY --from=build /out/ /app/bin/
+COPY internal/governance/fonts/OFL.txt /app/licenses/NotoSansSC-OFL.txt
 COPY database/ /app/database/
 RUN mkdir -p /data/media /data/worker-tmp /data/governance \
     && chown -R app:app /data

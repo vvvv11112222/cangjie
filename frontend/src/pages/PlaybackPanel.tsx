@@ -142,7 +142,7 @@ export function PlaybackPanel({
       <p className="result-context">当前回放：{media?.original_filename || "历史录像（文件名未记录）"}</p>
       <Card
         title="回放"
-        
+
         actions={
           playbackUrl === null ? undefined : (
             <button
@@ -251,7 +251,7 @@ export function PlaybackPanel({
                   reloadToken={retryNonce}
                   suspended={detail.status !== 'ready'}
                 />
-                
+
               </>
             )}
 
@@ -262,7 +262,7 @@ export function PlaybackPanel({
 
       <Card
         title="跳到证据与片段"
-        
+
       >
         <LoadStateNote status={transcript.status} error={transcript.error} />
         <LoadControls actionLabel={transcript.actionLabel} loadMore={transcript.loadMore} />

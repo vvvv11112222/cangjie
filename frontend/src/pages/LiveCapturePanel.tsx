@@ -223,7 +223,7 @@ export function LiveCapturePanel({ session, enabled, onUseMedia }: {
         {(sourceError !== null || captureUnavailable) && <button type="button" className="btn btn-secondary" disabled={sourcesLoading || captureLoading || busy} onClick={() => setReload(value => value + 1)}>重新检查来源与采集服务</button>}
         {notice === null ? null : <p className="notice-strip">{notice}</p>}
         {capture?.error_code == null ? null : <div className="notice-strip load-note-error"><ErrorMessage text={`${errorCodeText(capture.error_code)}（错误码 ${capture.error_code}）`}/><p>请先检查手机连接、权限和采集服务；确认本次采集已停止后，再创建新的采集。</p><TechDetails summary="采集结束技术详情"><p>{capture.end_reason ?? "未提供结束原因"}</p></TechDetails></div>}
-        
+
       </Card>
       <Card title="实时画面" >
         <video ref={video} className="live-video" autoPlay playsInline muted={muted} aria-label="课堂实时画面" />

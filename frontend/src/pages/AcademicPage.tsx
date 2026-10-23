@@ -274,7 +274,7 @@ function AcademicEditor({ editor, data, saving, error, onCancel, onSubmit }: { e
     {editor.kind === 'term' ? <><label className="account-field"><span>学期编码</span><input name="code" defaultValue={editor.item?.code} required/></label><label className="account-field"><span>学期名称</span><input name="name" defaultValue={editor.item?.name} required/></label><label className="account-field"><span>开始日期</span><input name="start_date" type="date" defaultValue={editor.item?.start_date} required/></label><label className="account-field"><span>结束日期</span><input name="end_date" type="date" defaultValue={editor.item?.end_date} required/></label></> : null}
     {editor.kind === 'classroom' ? <><label className="account-field"><span>教室编码</span><input name="code" defaultValue={editor.item?.code} required/></label><label className="account-field"><span>教室名称</span><input name="name" defaultValue={editor.item?.name} required/></label><label className="account-field"><span>容量</span><input name="capacity" type="number" min="0" step="1" defaultValue={editor.item?.capacity ?? ''}/></label></> : null}
     {error ? <p className="load-note load-note-error">{error}</p> : null}
-    
+
     <div className="form-actions"><button className="btn btn-secondary" type="button" disabled={saving} onClick={onCancel}>取消</button><button className="btn btn-primary" disabled={saving}>{saving ? '保存中…' : '保存'}</button></div>
   </form></Card>;
 }
