@@ -17,9 +17,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"cangjie-demo/integration/asrrequest"
 	"github.com/jackc/pgx/v5"
 	"github.com/vvvv11112222/cangjie/internal/apperror"
+	"github.com/vvvv11112222/cangjie/internal/asrrequest"
 )
 
 type ASRSnapshot struct {

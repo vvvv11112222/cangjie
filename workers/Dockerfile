@@ -1,12 +1,9 @@
 FROM golang:1.26.0-bookworm AS audio-planner
 WORKDIR /planner
-COPY demos/ai-language-analysis/go.mod demos/ai-language-analysis/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
-COPY demos/ai-language-analysis/*.go ./
-COPY demos/ai-language-analysis/*.txt demos/ai-language-analysis/*.md ./
-COPY demos/ai-language-analysis/web/ ./web/
-COPY demos/ai-language-analysis/integration/asrrequest/ ./integration/asrrequest/
-RUN CGO_ENABLED=0 go build -trimpath -o /out/audio-plan .
+COPY cmd/audio-plan/ ./cmd/audio-plan/
+RUN CGO_ENABLED=0 go build -trimpath -o /out/audio-plan ./cmd/audio-plan
 
 FROM python:3.12.12-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libgomp1 \

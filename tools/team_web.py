@@ -209,12 +209,12 @@ def website_url(config):
 
 
 def alive(record):
-    from capture_dev import alive as check
+    from process_identity import alive as check
     return check(record)
 
 
 def stop(config, state):
-    from capture_dev import identity
+    from process_identity import identity
     from capture_worker_job import Job
     current = records(state)
     if any(alive(r) for r in current.values()):
@@ -265,7 +265,7 @@ def prepare(args, state):
     select_vision(config, state); env = environment(config, state)
     for name in ('api', 'migrate', 'seed-dev', 'init-deletion-ledger', 'model-config', 'capture-hook'):
         run([config['go'], 'build', '-o', state / f'bin/{name}.exe', f'./cmd/{name}'], env, state)
-    run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', '.'], env, state, cwd=ROOT / 'demos/ai-language-analysis')
+    run([config['go'], 'build', '-o', state / 'bin/audio-plan.exe', './cmd/audio-plan'], env, state)
     run([config['node'], ROOT / 'frontend/node_modules/vite/bin/vite.js', 'build'], env, state, cwd=ROOT / 'frontend')
     database_start(config, state)
     if sql(config, state, "SELECT count(*) FROM pg_database WHERE datname='cangjie_visual'", database='postgres') == '0':
@@ -305,7 +305,7 @@ def seed_demo(config, state):
 
 
 def start(config, state):
-    from capture_dev import identity
+    from process_identity import identity
     if config.get('capture'):
         from team_capture import check_address
         check_address(config)

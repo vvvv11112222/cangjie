@@ -2,7 +2,6 @@ FROM golang:1.26.0-bookworm AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
-COPY demos/ai-language-analysis/go.mod demos/ai-language-analysis/go.sum ./demos/ai-language-analysis/
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -o /out/api ./cmd/api \

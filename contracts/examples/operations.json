@@ -1,6 +1,0 @@
-{
-  "workers": [{"worker_id": "worker-01", "last_seen_at": "2026-10-20T10:00:00+08:00", "capabilities": ["probe", "video_analysis"]}],
-  "queued_jobs": 2,
-  "storage_free_bytes": 1073741824,
-  "budget": {"currency": "CNY", "billing_period": "2026-10-01", "limit": "10.000000", "charged": "2.000000", "reserved": "1.000000", "unknown": "0.500000"}
-}
